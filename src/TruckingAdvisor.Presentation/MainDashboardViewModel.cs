@@ -17,7 +17,7 @@ namespace TruckingAdvisor.Presentation;
 /// there (cheap, deterministic), and only display updates are posted to the UI thread via
 /// <c>postToUi</c>. AI work never runs on the telemetry path.
 /// </summary>
-public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
 {
     private static readonly TimeSpan UiRefresh = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan AdvisorRefresh = TimeSpan.FromSeconds(1);
@@ -88,6 +88,7 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
         _radio.TruckerUpdated += (_, t) => SafeDb(db => db.SaveTrucker(t));
         _radio.Notice += (_, msg) => _postToUi(() => RadioNotice = msg);
         _radio.StateChanged += (_, _) => _postToUi(() => Raise(nameof(RadioStateText)));
+        InitFeatures();
     }
 
     // ---- Bindable display properties ----
@@ -119,7 +120,9 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
     public string EngineTempText => _current.WaterTempFahrenheit > 0 && _current.IsLive ? $"WATER {_current.WaterTempFahrenheit:F0}°F" : "WATER --";
     public string CruiseText => _current.CruiseControlOn ? $"CRUISE {_current.CruiseControlSpeedMph:F0}" : "CRUISE OFF";
     public string GameTimeText => _current.GameTimeMinutes > 0 ? _current.FormattedGameTime : "--:--";
-    public string RestText => _current.HasRestData ? $"Rest due in {_current.NextRestStopGameMinutes / 60}h {_current.NextRestStopGameMinutes % 60:D2}m (game time)" : "Rest data unavailable";
+    public string RestText =>
+        (_current.HasRestData ? $"Rest due in {_current.NextRestStopGameMinutes / 60}h {_current.NextRestStopGameMinutes % 60:D2}m (game time)" : "Rest data unavailable")
+        + $"  •  Session {(int)SessionDuration.TotalHours}h {SessionDuration.Minutes:D2}m (real time)";
 
     public string CargoText => _current.JobActive && !string.IsNullOrEmpty(_current.CargoName)
         ? $"{_current.CargoName}{(_current.CargoWeightLbs > 0 ? $" ({_current.CargoWeightLbs:N0} lbs)" : "")}"
@@ -183,6 +186,7 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
     {
         _analyzer.EvaluateSnapshot(snapshot, _previous);
         _trips.Update(snapshot);
+        OnTelemetryFeatures(snapshot, _previous);
         _previous = snapshot;
 
         var now = snapshot.Timestamp;
@@ -195,6 +199,7 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
         if (now - _lastAdvice >= AdvisorRefresh)
         {
             _lastAdvice = now;
+            _dispatcher?.Evaluate(snapshot, _trips.ActiveTrip);
             var advice = _advisor.GenerateAdvisories(snapshot, LastTripMpg(), LastServiceOdometer()).ToArray();
             if (!advice.SequenceEqual(_lastAdvisories))
             {
@@ -243,7 +248,10 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
             "High" => AudioPriority.High,
             _ => AudioPriority.Normal
         };
-        _audio.EnqueueAnnouncement(incident.AdvisoryMessage, priority, "advisor");
+        if (incident.IncidentType == "HarshBraking") AchievementManager.OnHarshBraking(Career);
+        // The onboard co-driver words it in the chosen personality (or stays quiet in Minimal mode).
+        if (CoDriverPhrase(incident) is { } spoken)
+            _audio.EnqueueAnnouncement(spoken, priority, "advisor");
         _postToUi(() =>
         {
             RecentIncidents.Insert(0, incident);
@@ -255,6 +263,7 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
     {
         int levels = CareerManager.ApplyTrip(Company, Career, trip);
         if (trip.State == DeliveryState.Completed && trip.AverageMpg > 0) _lastTripMpg = trip.AverageMpg;
+        var unlocked = OnTripFinishedFeatures(trip);
         SafeDb(db =>
         {
             db.SaveTrip(trip);
@@ -269,6 +278,8 @@ public sealed class MainDashboardViewModel : INotifyPropertyChanged, IDisposable
                 $"Delivery complete. Score {trip.ScoreBreakdown.FinalScore}, {trip.ScoreBreakdown.RatingLabel}.{(levels > 0 ? $" You reached career level {Career.Level}." : "")}",
                 AudioPriority.Normal);
         }
+        foreach (var a in unlocked)
+            _audio.EnqueueAnnouncement($"Achievement unlocked: {a.Title}.", AudioPriority.Low, "notifications");
         _postToUi(() =>
         {
             LastReport = report;

@@ -1,11 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
 
 namespace TruckingAdvisor.AI;
 
 /// <summary>One line said on the radio, kept briefly for conversation continuity.</summary>
-public sealed record RadioTurn(string Handle, string Text);
+public sealed record RadioTurn(string Handle, string Text, int Channel = 19);
 
 /// <summary>
 /// Builds the small, structured context sent to the AI. Unknown values are left out entirely
@@ -18,6 +19,8 @@ public static class ContextBuilder
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false
     };
+
+    private static string Lower(string s) => string.IsNullOrEmpty(s) ? "on the road" : char.ToLowerInvariant(s[0]) + s[1..];
 
     private static string? Text(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
     private static double? Positive(float v, int digits = 0) => v > 0 ? Math.Round(v, digits) : null;
@@ -55,12 +58,24 @@ public static class ContextBuilder
         };
     }
 
+    /// <summary>Reply length guidance for each conversation mode.</summary>
+    public static string LengthRule(ConversationTimingMode mode) => mode switch
+    {
+        ConversationTimingMode.Brief => "ONE short CB transmission: a single sentence, under 20 words",
+        ConversationTimingMode.Chatty => "ONE CB transmission of 2-5 sentences, under 90 words; a short story or joke is fine when it fits",
+        _ => "ONE short CB transmission (1-3 sentences, under 50 words)"
+    };
+
     public static string BuildTruckerSystemPrompt(TruckerPersonality trucker, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry,
-        IReadOnlyList<RadioTurn> recentTurns, int channel)
+        IReadOnlyList<RadioTurn> recentTurns, int channel,
+        ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null)
     {
         var context = new
         {
             channel,
+            // Fictional radio-world gossip: what this trucker has heard about other simulated drivers.
+            otherDriversYouKnow = otherDrivers?.Where(o => o.Id != trucker.Id).Take(3)
+                .Select(o => $"{o.Handle} ({o.Truck}, from {o.HomeState}): last heard {Lower(o.CurrentFictionalStatus)}").ToArray(),
             situation = BuildTelemetryContext(company, telemetry),
             relationship = new
             {
@@ -70,7 +85,8 @@ public static class ContextBuilder
                 daysSinceLastTalk = trucker.LastSpokenAt is { } last ? Math.Round((DateTimeOffset.UtcNow - last).TotalDays, 1) : (double?)null,
                 memories = trucker.SummarizedMemories.TakeLast(6).ToArray()
             },
-            recentRadio = recentTurns.TakeLast(6).Select(r => $"{r.Handle}: {r.Text}").ToArray()
+            // Knowledge boundary: truckers never hear the private dispatch channel.
+            recentRadio = recentTurns.Where(r => r.Channel != CBRadioService.DispatchChannel).TakeLast(6).Select(r => $"{r.Handle}: {r.Text}").ToArray()
         };
 
         string playerName = string.IsNullOrWhiteSpace(company.PlayerHandle) ? "(handle unknown - you may ask for it)" : company.PlayerHandle;
@@ -81,11 +97,12 @@ Favorite topics: {string.Join(", ", trucker.FavoriteTopics)}. Usual roads: {truc
 You are talking on CB radio with the player, handle {playerName}.
 
 Rules:
-1. Reply with ONE short CB transmission (1-3 sentences, under 50 words). Plain spoken words only: no stage directions, emojis or markdown.
+1. Reply with {LengthRule(mode)}. Plain spoken words only: no stage directions, emojis or markdown.
 2. Sound like a real trucker: natural, warm, unhurried. Use slang (ten-four, copy, driver) only where it fits, not in every line.
 3. Only state facts about the player's truck, load, speed, fuel or location that appear in the JSON below. If something isn't there, you don't know it.
 4. You are a simulated radio voice. Never claim to see the player's truck, nearby traffic, police, weather or road conditions; say you can't tell from where you are.
 5. Stay consistent with your identity and with the memories listed. If this is your first conversation, act like it.
+   You may mention the other drivers you know, but only what's listed; it's radio gossip, not something you saw.
 6. Don't end every message with a question. Sign off naturally when the player says goodbye.
 7. Never give advice that conflicts with driving safely.
 
@@ -100,10 +117,11 @@ Context JSON:
         {
             company = company.CompanyName,
             situation = BuildTelemetryContext(company, telemetry),
-            recentRadio = recentTurns.TakeLast(6).Select(r => $"{r.Handle}: {r.Text}").ToArray()
+            // Knowledge boundary: dispatch only knows the company channel, not CB chatter.
+            recentRadio = recentTurns.Where(r => r.Channel == CBRadioService.DispatchChannel).TakeLast(6).Select(r => $"{r.Handle}: {r.Text}").ToArray()
         };
         return $"""
-You are the dispatcher for {company.CompanyName}, talking to your driver on the private company channel.
+You are {company.DispatcherName}, the dispatcher for {company.CompanyName}, talking to your driver on the private company channel. You know this driver from earlier calls listed below.
 Be brief, professional and friendly (1-2 sentences, under 40 words). Plain spoken words only.
 Use only facts from the JSON below; if ETA, fuel or damage data is missing, say you don't have it.
 Remind about fuel or rest only when the data shows it is relevant. Never pressure the driver to speed or skip rest.

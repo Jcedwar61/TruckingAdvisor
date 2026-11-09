@@ -65,6 +65,15 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        _viewModel.AttachDispatcher(new DispatcherService(_aiSettings, (facts, important, ct) => _cbRadio.SendDispatchMessageAsync(facts, important, ct)));
+        _viewModel.MuteRequested += (_, mute) => { _sink.Muted = mute; if (mute) _audio.StopAll(); };
+        _viewModel.HandleChangeProposed += (_, handle) =>
+        {
+            if (MessageBox.Show(this, $"You said your CB handle is \"{handle}\". Save it as your handle?", "CB Handle",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                _viewModel.ConfirmHandle(handle);
+        };
+        ApplyAudioSettings();
 
         // Hook callbacks must return fast (Windows drops slow low-level hooks), so never block here.
         _keyboardHook.LoadBindings(KeybindingsPath);
@@ -75,6 +84,21 @@ public partial class MainWindow : Window
         UpdatePttLabels();
 
         _telemetry.Start();
+    }
+
+    private void ApplyAudioSettings()
+    {
+        _sink.CleanAudio = _aiSettings.CleanAudio;
+        _sink.DeviceSelector = channel => channel switch
+        {
+            "cb" => _aiSettings.RadioOutputDevice,
+            "dispatcher" => _aiSettings.DispatcherOutputDevice,
+            _ => _aiSettings.AdvisorOutputDevice
+        };
+        _mic.DeviceNumber = Math.Max(0, _aiSettings.MicrophoneDevice);
+        _audio.SetChannelVolume("cb", _aiSettings.RadioVolume);
+        _audio.SetChannelVolume("dispatcher", _aiSettings.DispatcherVolume);
+        _audio.SetChannelVolume("advisor", _aiSettings.AdvisorVolume);
     }
 
     // ---- Push-to-talk ----
@@ -191,6 +215,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true)
         {
             _db.SaveCompany(_company);
+            ApplyAudioSettings();
         }
     }
 
@@ -244,6 +269,37 @@ public partial class MainWindow : Window
     }
 
     private void BtnToggleOverlay_Click(object sender, RoutedEventArgs e) => ToggleOverlay();
+
+    // ---- Contacts & trips ----
+
+    private void BtnForgetContact_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstContacts.SelectedItem is not ContactView c) return;
+        if (MessageBox.Show(this, $"Delete everything {c.Handle} remembers about your conversations?", "Forget Conversations",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            _viewModel.DeleteContactMemories(c.Id);
+    }
+
+    private void BtnExportCsv_Click(object sender, RoutedEventArgs e) =>
+        SaveExport("trips.csv", "CSV files|*.csv", TruckingAdvisorDatabase.ExportDeliveryReportCsv(_viewModel.TripHistory));
+
+    private void BtnExportJson_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstTrips.SelectedItem is DeliveryTripRecord t)
+            SaveExport($"trip-{t.StartedAt:yyyyMMdd-HHmm}.json", "JSON files|*.json", TruckingAdvisorDatabase.ExportDeliveryReportJson(t));
+    }
+
+    private void BtnCopyReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstTrips.SelectedItem is DeliveryTripRecord t)
+            Clipboard.SetText(TruckingAdvisorDatabase.ExportDeliveryReportText(t));
+    }
+
+    private void SaveExport(string fileName, string filter, string content)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { FileName = fileName, Filter = filter };
+        if (dlg.ShowDialog(this) == true) File.WriteAllText(dlg.FileName, content);
+    }
 
     private void ToggleOverlay()
     {

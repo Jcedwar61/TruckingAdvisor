@@ -35,9 +35,9 @@ public sealed class AiAndRadioTests
         }
     }
 
-    private static CBRadioService Radio(RecordingAudio audio, ILlmClient? llm, List<TruckerPersonality>? roster = null, AtsTelemetrySnapshot? snap = null) =>
+    private static CBRadioService Radio(RecordingAudio audio, ILlmClient? llm, List<TruckerPersonality>? roster = null, AtsTelemetrySnapshot? snap = null, AiSettings? settings = null) =>
         new(roster ?? PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile { PlayerHandle = "Highway Ghost" },
-            audio, () => snap ?? new AtsTelemetrySnapshot(), new AiSettings(), llm, random: new Random(1));
+            audio, () => snap ?? new AtsTelemetrySnapshot(), settings ?? new AiSettings(), llm, random: new Random(1)) { ReplyPause = (0, 0) };
 
     [Fact]
     public async Task Radio_WorksWithAiOff_UsingOfflineLines()
@@ -147,7 +147,7 @@ public sealed class AiAndRadioTests
     {
         var audio = new HoldingAudio();
         var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile(), audio,
-            () => new AtsTelemetrySnapshot(), new AiSettings(), llm: new FakeLlm());
+            () => new AtsTelemetrySnapshot(), new AiSettings(), llm: new FakeLlm()) { ReplyPause = (0, 0) };
 
         radio.BeginPushToTalk();
         var reply = radio.EndPushToTalkAsync("Anybody out there?");

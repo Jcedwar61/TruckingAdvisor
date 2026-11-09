@@ -23,9 +23,12 @@ No game handy? Click **Try Demo Data**. Demo values are clearly bannered and nev
 | Audio priority | One voice at a time. Critical alerts cut off radio chatter; normal messages wait while the radio is busy. |
 | Deliveries | Detects job start, cargo attached, underway, trailer dropped, delivered, cancelled, and starting mid-delivery. Distance from the odometer, fuel from the tank, damage as the increase during the trip. |
 | Scoring | 10 categories, normalized per 100 miles; ratings from Needs Improvement to Legendary Trucker. Delivery report as text, JSON or CSV. |
-| Career & company | Your company's miles, deliveries, damage-free count, in-game income, MPG and cities, plus XP levels. Starts at zero and only counts trips this app recorded. |
-| Fuel & maintenance | Low-fuel and range-to-destination advice, MPG vs. last trip, engine/trailer damage, service due (from your service log), rest reminders. |
-| CB radio | Channels 19, 9, 17, 21, 25 and 30 (dispatch). Hold push-to-talk (Left Alt by default) or type. Five recurring truckers plus generated ones; they remember past conversations and relationships grow from Stranger to Old Friend based on conversation quality and coming back over days. Background chatter (Off/Quiet/Normal/Busy/Very Busy), AI-to-AI exchanges in a single API call, CB radio audio filter with a clean-audio option. |
+| Career & company | Your company's miles, deliveries, damage-free rate, in-game income, MPG and cities, plus XP levels (Rookie Driver to Legendary Trucker), 8 achievements and 4 company milestones with progress, personal insights from your history, and MPG per truck. Starts at zero and only counts trips this app recorded. |
+| Fuel & maintenance | Low-fuel and range-to-destination advice, MPG vs. last trip, engine/trailer damage, service due (from your service log), rest reminders, deadline risk from the navigation estimate. Real-time session length is shown next to the game's rest timer. |
+| Co-driver | Onboard voice with 5 personalities (Professional, Friendly, Old-School Trucker, Strict Instructor, Minimal). Critical warnings stay plain in every personality; Minimal only speaks serious ones. No radio effects, so it never sounds like the CB. |
+| CB radio | Channels 19, 9, 17, 21, 25 and 30 (dispatch). Hold push-to-talk (Left Alt by default) or type. Five recurring truckers plus up to four generated ones; they remember you, mention each other (radio gossip), and relationships grow from Stranger to Old Friend based on conversation quality and coming back over days. Conversation modes (Brief, Natural, Chatty, Quiet, Immersive), background chatter levels, an hourly cap on unprompted calls, relaxed truck-stop talk when you're parked, AI-to-AI exchanges in one API call, CB audio filter with a clean-audio option. CB Contacts tab shows each trucker and what they remember; you can make them forget. |
+| Dispatcher | A named dispatcher (default "Sarah") who briefs you on new loads, checks in at your chosen frequency, and calls about approaching the destination, low fuel vs. distance, rest, new damage and deadline risk, then wraps up each delivery. Dispatch and CB truckers don't share what you told the other. |
+| Voice commands | Say "TruckingAdvisor, ..." to switch channels, call dispatch, ask fuel range or distance left, change radio volume, mute/unmute or repeat. Introduce yourself on the radio ("call me Highway Ghost") and the app offers to save your handle. |
 | HUD overlay | Small click-through, always-on-top panel (F8). Works over the game in borderless/windowed mode. |
 
 ### About the radio
@@ -77,8 +80,8 @@ Plugins/                                  plugin manifest and download script
 
 ## Not done yet
 
-- Achievements list, trend charts and PDF/image export.
-- Widget rearranging and theme picker.
-- Grade warnings ahead and map-based location (need a map integration).
-- Dispatcher check-ins on a schedule (dispatch currently answers when you call on channel 30 or press F10).
+- Trend charts, PDF and shareable-image exports (CSV, JSON and text work today).
+- Widget rearranging, theme picker, overlay resizing and per-row settings.
+- Map-based location (city/state) and grade warnings ahead; the game's telemetry doesn't provide them.
 - Real-time speech-to-speech (the current pipeline is modular; a realtime model could be added behind the same interfaces).
+- Local speech recognition fallback (transcription uses OpenAI).

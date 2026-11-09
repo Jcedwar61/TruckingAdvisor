@@ -1,5 +1,19 @@
 # Changelog — TruckingAdvisor
 
+## [v2.3.0] — 2026-11-09 — Spec completion
+
+Reviewed with GPT, Gemini and DeepSeek; their confirmed findings are fixed and covered by tests (91 total).
+
+### Added
+- Achievements (8) and company milestones (4) with progress, computed only from recorded trips.
+- Proactive dispatcher with a persistent name: load briefings, check-ins (Off/Rare/Normal/Frequent), approaching destination, low fuel vs. distance, rest, new damage, deadline risk, wrap-ups. One-time notices retry if the radio was busy.
+- Onboard co-driver personalities; personal driving insights; MPG per truck; deadline-risk advice; real-time session length.
+- CB radio: conversation modes, hourly cap on unprompted calls, truck-stop talk when parked, truckers mention each other, overheard exchanges become shared memories, knowledge boundary between dispatch and CB, option to store no memories.
+- Voice commands with a wake word, and handle introductions with confirmation.
+- Tabs for Career & Company, CB Contacts (with "forget"), and Trips (CSV/JSON export, copy report).
+- Separate output devices and volumes for CB, dispatcher and co-driver; microphone selection; settings note on what is sent to OpenAI.
+
+
 ## [v2.2.0] — 2026-11-09 — Review fixes
 
 Reviewed by Claude with independent second opinions from GPT, Gemini and DeepSeek. Every item below was a confirmed defect in v2.1.

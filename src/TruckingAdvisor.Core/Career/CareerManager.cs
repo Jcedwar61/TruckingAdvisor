@@ -40,6 +40,14 @@ public static class CareerManager
         career.BestDamageFreeStreak = Math.Max(career.BestDamageFreeStreak, career.CurrentDamageFreeStreak);
         career.PersonalBestScore = Math.Max(career.PersonalBestScore, trip.ScoreBreakdown.FinalScore);
         if (trip.AverageMpg > 0 && trip.DistanceMiles >= 50) career.BestTripMpg = Math.Max(career.BestTripMpg, trip.AverageMpg);
+        if (!string.IsNullOrWhiteSpace(trip.TruckMakeModel) && trip.DistanceMiles > 0 && trip.FuelUsedGallons > 0)
+        {
+            if (!career.TruckEconomy.TryGetValue(trip.TruckMakeModel, out var econ))
+                career.TruckEconomy[trip.TruckMakeModel] = econ = new TruckEconomy();
+            econ.Miles += trip.DistanceMiles;
+            econ.Gallons += trip.FuelUsedGallons;
+            econ.Trips++;
+        }
 
         int levels = 0;
         career.CurrentXp += XpForTrip(trip);

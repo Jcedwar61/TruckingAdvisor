@@ -24,6 +24,11 @@ public sealed class WindowsAudioSink : IAudioSink
     public int WindowsVoiceRate { get; set; }
     /// <summary>Master mute: items complete immediately without sound.</summary>
     public bool Muted { get; set; }
+    /// <summary>Output device per channel ("cb", "dispatcher", "advisor", ...). -1 = Windows default.</summary>
+    public Func<string, int>? DeviceSelector { get; set; }
+
+    public static IReadOnlyList<string> ListOutputDevices() =>
+        Enumerable.Range(0, WaveOut.DeviceCount).Select(i => WaveOut.GetCapabilities(i).ProductName).ToList();
 
     public async Task PlayAsync(AudioItem item, float volume0To1, CancellationToken cancellationToken)
     {
@@ -52,7 +57,8 @@ public sealed class WindowsAudioSink : IAudioSink
         for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1;
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var output = new WaveOutEvent();
+        int device = DeviceSelector?.Invoke(item.Channel) ?? -1;
+        using var output = new WaveOutEvent { DeviceNumber = device >= -1 && device < WaveOut.DeviceCount ? device : -1 };
         output.Init(new ArraySampleProvider(samples, sampleRate));
         output.PlaybackStopped += (_, e) =>
         {

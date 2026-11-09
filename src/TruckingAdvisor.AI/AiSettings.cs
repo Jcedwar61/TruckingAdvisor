@@ -47,7 +47,25 @@ public sealed class AiSettings
     public int DailyRequestLimit { get; set; } = 300;
 
     public RadioActivitySetting RadioActivity { get; set; } = RadioActivitySetting.Normal;
+    /// <summary>Brief / Natural / Chatty / Quiet (only answer when called) / Immersive.</summary>
+    public TruckingAdvisor.Shared.Enums.ConversationTimingMode ConversationMode { get; set; } = TruckingAdvisor.Shared.Enums.ConversationTimingMode.Natural;
+    /// <summary>Cap on radio calls nobody asked for (chatter, banter, dispatch check-ins) per hour.</summary>
+    public int MaxUnsolicitedPerHour { get; set; } = 12;
+    public DispatchContactLevel DispatchContact { get; set; } = DispatchContactLevel.Normal;
     public bool MicrophoneEnabled { get; set; }
+    /// <summary>Keep short memories of conversations so truckers remember you. Off = nothing is stored.</summary>
+    public bool RememberConversations { get; set; } = true;
+    public TruckingAdvisor.Shared.Enums.CoDriverPersonality CoDriver { get; set; } = TruckingAdvisor.Shared.Enums.CoDriverPersonality.Friendly;
+
+    // Audio devices (-1 = Windows default) and per-channel volumes (0..1).
+    public int MicrophoneDevice { get; set; } = -1;
+    public int RadioOutputDevice { get; set; } = -1;
+    public int AdvisorOutputDevice { get; set; } = -1;
+    public int DispatcherOutputDevice { get; set; } = -1;
+    public bool CleanAudio { get; set; }
+    public float RadioVolume { get; set; } = 0.85f;
+    public float DispatcherVolume { get; set; } = 0.9f;
+    public float AdvisorVolume { get; set; } = 0.95f;
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor", "ai-settings.json");
@@ -73,3 +91,6 @@ public sealed class AiSettings
 }
 
 public enum RadioActivitySetting { Off, Quiet, Normal, Busy, VeryBusy }
+
+/// <summary>How often dispatch calls you on its own. Important notices (damage, deadline risk) still come through unless Off.</summary>
+public enum DispatchContactLevel { Off, Rare, Normal, Frequent }

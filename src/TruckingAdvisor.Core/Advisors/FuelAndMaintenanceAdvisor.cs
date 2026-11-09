@@ -56,6 +56,16 @@ public sealed class FuelAndMaintenanceAdvisor
                 advisories.Add($"Preventive maintenance due: {milesSinceService:N0} miles since your last logged service.");
         }
 
+        // Deadline risk from the navigation estimate (both in game time).
+        if (snapshot.JobActive && snapshot.JobDeadlineGameMinutes > 0 && snapshot.GameTimeMinutes > 0 && snapshot.NavigationTimeRemainingMinutes > 0)
+        {
+            double slack = snapshot.JobDeadlineGameMinutes - (snapshot.GameTimeMinutes + snapshot.NavigationTimeRemainingMinutes);
+            if (slack < 0)
+                advisories.Add($"Navigation estimate puts you about {-slack / 60:F1} game hours past the deadline. Don't speed to make it up; arriving safe beats arriving early.");
+            else if (snapshot.HasRestData && snapshot.NextRestStopGameMinutes < snapshot.NavigationTimeRemainingMinutes && slack < 9 * 60)
+                advisories.Add("You'll need to rest before you arrive, and the deadline is tight once you add a rest stop.");
+        }
+
         if (snapshot.HasRestData && snapshot.NextRestStopGameMinutes <= RestWarningGameMinutes)
             advisories.Add("You've been running a while, driver. Might be a good time to start looking for a place to shut down.");
 

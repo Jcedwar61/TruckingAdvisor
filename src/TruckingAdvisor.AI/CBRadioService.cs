@@ -35,6 +35,7 @@ public sealed class CBRadioService : ICBRadioService
     private readonly object _stateLock = new();
     /// <summary>Bumped on every player key-up; older exchanges and chatter must not touch newer state.</summary>
     private int _txVersion;
+    private readonly Queue<DateTimeOffset> _unsolicited = new();
 
     public event EventHandler<CBRadioState>? StateChanged;
     public event EventHandler<(string Speaker, string Handle, string Transcript, int Channel)>? TransmissionReceived;
@@ -42,6 +43,10 @@ public sealed class CBRadioService : ICBRadioService
     public event EventHandler<TruckerPersonality>? TruckerUpdated;
     /// <summary>Short status for the UI ("AI offline", "No speech heard", ...).</summary>
     public event EventHandler<string>? Notice;
+    /// <summary>The player addressed the app ("TruckingAdvisor, ..."); handled outside the radio.</summary>
+    public event EventHandler<VoiceCommand>? CommandReceived;
+    /// <summary>The player introduced a new CB handle; the UI should confirm before saving it.</summary>
+    public event EventHandler<string>? HandleChangeProposed;
 
     public CBRadioState CurrentState { get; private set; } = CBRadioState.RadioIdle;
     public int ActiveChannel { get; private set; } = 19;
@@ -49,6 +54,12 @@ public sealed class CBRadioService : ICBRadioService
     public TruckerPersonality? ActivePartner { get; private set; }
     public IReadOnlyList<TruckerPersonality> Roster { get { lock (_roster) return _roster.ToArray(); } }
     public bool AiAvailable => _llm?.IsAvailable == true;
+    /// <summary>How long the truck has been parked (set by the dashboard); enables truck-stop talk.</summary>
+    public TimeSpan ParkedFor { get; set; }
+    /// <summary>Random pause before an AI reply, so it doesn't answer instantly like a machine.</summary>
+    public (int MinMs, int MaxMs) ReplyPause { get; set; } = (350, 1200);
+    /// <summary>Clock used for rate limits (replaceable in tests).</summary>
+    public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
 
     public CBRadioService(
         List<TruckerPersonality> roster,
@@ -140,6 +151,20 @@ public sealed class CBRadioService : ICBRadioService
             var snapshot = _telemetry();
             int channel = ActiveChannel;
             string playerHandle = _company.DisplayHandle;
+
+            // "TruckingAdvisor, ..." is an app command, not radio talk.
+            if (VoiceCommandParser.TryParse(playerText) is { } command)
+            {
+                _audio.IsRadioChannelBusy = false;
+                if (command.Kind == VoiceCommandKind.SwitchChannel && command.Channel is { } ch) SwitchChannel(ch);
+                CommandReceived?.Invoke(this, command);
+                return;
+            }
+
+            if (HandleDetector.TryDetect(playerText) is { } newHandle &&
+                !string.Equals(newHandle, _company.PlayerHandle, StringComparison.OrdinalIgnoreCase))
+                HandleChangeProposed?.Invoke(this, newHandle);
+
             Say(playerHandle, playerHandle, playerText, channel);
             _audio.IsRadioChannelBusy = false;
             TransitionTo(CBRadioState.GeneratingResponse);
@@ -149,7 +174,8 @@ public sealed class CBRadioService : ICBRadioService
                 string reply = await GenerateAsync(
                     ContextBuilder.BuildDispatcherSystemPrompt(_company, snapshot, RecentTurns()), playerText, ct)
                     ?? OfflineDispatchReply();
-                await SpeakAsync("Dispatch", "Dispatch", reply, "coral", AudioPriority.Normal, channel, ct);
+                await PauseAsync(ct);
+                await SpeakAsync(DispatchSpeaker, "Dispatch", reply, DispatchVoice, AudioPriority.Normal, channel, ct);
             }
             else if (channel == EmergencyChannel)
             {
@@ -161,13 +187,14 @@ public sealed class CBRadioService : ICBRadioService
                 var partner = PickPartner(playerText);
                 ActivePartner = partner;
                 string reply = await GenerateAsync(
-                    ContextBuilder.BuildTruckerSystemPrompt(partner, _company, snapshot, RecentTurns(), channel), playerText, ct)
+                    TruckerPrompt(partner, snapshot, channel), playerText, ct, MaxTokensForMode())
                     ?? OfflineTruckerReply(partner, playerText);
 
                 string where = string.IsNullOrEmpty(snapshot.DestinationCity) || !snapshot.JobActive
                     ? string.Empty : $" while hauling toward {snapshot.DestinationCity}";
-                RelationshipManager.ApplyExchange(partner, playerText, reply, where, DateTimeOffset.UtcNow, _settings.MaxMemoriesPerTrucker);
+                RelationshipManager.ApplyExchange(partner, playerText, reply, where, DateTimeOffset.UtcNow, MemoryLimit);
                 TruckerUpdated?.Invoke(this, partner);
+                await PauseAsync(ct);
                 await SpeakAsync(partner.FullName, partner.Handle, reply, partner.VoiceId, AudioPriority.Normal, channel, ct);
             }
         }
@@ -185,7 +212,7 @@ public sealed class CBRadioService : ICBRadioService
 
     public async Task TriggerDynamicEncounterAsync(AtsTelemetrySnapshot snapshot, CancellationToken cancellationToken = default)
     {
-        if (CurrentState != CBRadioState.RadioIdle || _roster.Count == 0 || ActiveChannel is DispatchChannel or EmergencyChannel) return;
+        if (!ChatterAllowed() || CurrentState != CBRadioState.RadioIdle || _roster.Count == 0 || ActiveChannel is DispatchChannel or EmergencyChannel) return;
         if (!await _gate.WaitAsync(0, cancellationToken)) return;
         CancellationToken chatterToken;
         int version;
@@ -194,12 +221,13 @@ public sealed class CBRadioService : ICBRadioService
         cancellationToken = linked.Token;
         try
         {
+            if (!TryConsumeUnsolicited()) return;
             var trucker = MaybeMeetNewTrucker() ?? PickRandomTrucker();
-            string situation = DescribeEncounter(snapshot, trucker);
+            string situation = DescribeEncounter(snapshot, trucker, ParkedFor, _random);
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return;
             string line = await GenerateAsync(
-                ContextBuilder.BuildTruckerSystemPrompt(trucker, _company, snapshot, RecentTurns(), ActiveChannel),
-                $"(No one has spoken to you. Make one unprompted CB call to the channel about: {situation})", cancellationToken)
+                TruckerPrompt(trucker, snapshot, ActiveChannel),
+                $"(No one has spoken to you. Make one unprompted CB call to the channel about: {situation})", cancellationToken, MaxTokensForMode())
                 ?? OfflineEncounterLine(snapshot, trucker);
             ActivePartner = trucker;
             await SpeakAsync(trucker.FullName, trucker.Handle, line, trucker.VoiceId, AudioPriority.Low, ActiveChannel, cancellationToken, chatterVersion: version);
@@ -214,7 +242,7 @@ public sealed class CBRadioService : ICBRadioService
 
     public async Task TriggerAiToAiBanterAsync(AtsTelemetrySnapshot snapshot, CancellationToken cancellationToken = default)
     {
-        if (CurrentState != CBRadioState.RadioIdle || _roster.Count < 2 || ActiveChannel is DispatchChannel or EmergencyChannel) return;
+        if (!ChatterAllowed() || CurrentState != CBRadioState.RadioIdle || _roster.Count < 2 || ActiveChannel is DispatchChannel or EmergencyChannel) return;
         if (!await _gate.WaitAsync(0, cancellationToken)) return;
         CancellationToken chatterToken;
         int version;
@@ -223,6 +251,7 @@ public sealed class CBRadioService : ICBRadioService
         cancellationToken = linked.Token;
         try
         {
+            if (!TryConsumeUnsolicited()) return;
             TruckerPersonality a, b;
             lock (_roster)
             {
@@ -234,6 +263,7 @@ public sealed class CBRadioService : ICBRadioService
             if (!TryChatterState(CBRadioState.PlayingTransmission, version)) return;
             // One API call for the whole exchange keeps cost down.
             var lines = await GenerateBanterAsync(a, b, snapshot, cancellationToken) ?? OfflineBanter(a, b);
+            RememberBanter(a, b, lines);
             foreach (var (handle, text) in lines)
             {
                 var speaker = handle.Equals(b.Handle, StringComparison.OrdinalIgnoreCase) ? b : a;
@@ -288,10 +318,101 @@ public sealed class CBRadioService : ICBRadioService
         }
     }
 
-    private async Task<string?> GenerateAsync(string systemPrompt, string userPrompt, CancellationToken ct)
+    /// <summary>
+    /// Dispatch calls the driver on its own (briefing, check-in, reminder). Delivered on the company
+    /// channel whatever CB channel is selected. Yields to the player and to an exchange in progress;
+    /// returns false if it couldn't go out now so the caller can retry later.
+    /// </summary>
+    public async Task<bool> SendDispatchMessageAsync(string facts, bool important, CancellationToken cancellationToken = default)
+    {
+        if (CurrentState is not (CBRadioState.RadioIdle or CBRadioState.AwaitingPlayerResponse)) return false;
+        if (!await _gate.WaitAsync(0, cancellationToken)) return false;
+        CancellationToken chatterToken;
+        int version;
+        lock (_stateLock) { chatterToken = _chatterCts.Token; version = _txVersion; }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, chatterToken);
+        var ct = linked.Token;
+        try
+        {
+            if (!important && !TryConsumeUnsolicited()) return true; // over the hourly cap: drop quietly
+            if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return false;
+            string line = await GenerateAsync(
+                ContextBuilder.BuildDispatcherSystemPrompt(_company, _telemetry(), RecentTurns()),
+                $"(Make one short call to your driver, starting by hailing them, to tell them: {facts})", ct)
+                ?? $"{DispatchSpeaker} to {_company.DisplayHandle}. {facts}";
+            await SpeakAsync(DispatchSpeaker, "Dispatch", line, DispatchVoice, important ? AudioPriority.High : AudioPriority.Normal,
+                DispatchChannel, ct, chatterVersion: version);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+            ReturnToIdleIfCurrent(version);
+        }
+    }
+
+    private const string DispatchVoice = "coral";
+    private string DispatchSpeaker => $"{_company.DispatcherName} (Dispatch)";
+
+    private string TruckerPrompt(TruckerPersonality trucker, AtsTelemetrySnapshot snapshot, int channel) =>
+        ContextBuilder.BuildTruckerSystemPrompt(trucker, _company, snapshot, RecentTurns(), channel, _settings.ConversationMode, Roster);
+
+    private int MemoryLimit => _settings.RememberConversations ? _settings.MaxMemoriesPerTrucker : 0;
+
+    private int MaxTokensForMode() => _settings.ConversationMode switch
+    {
+        ConversationTimingMode.Brief => Math.Min(80, _settings.MaxResponseTokens),
+        ConversationTimingMode.Chatty => _settings.MaxResponseTokens * 2,
+        _ => _settings.MaxResponseTokens
+    };
+
+    /// <summary>Quiet mode and activity "Off" mean truckers only talk when you call them.</summary>
+    private bool ChatterAllowed() =>
+        _settings.ConversationMode != ConversationTimingMode.Quiet && _settings.RadioActivity != RadioActivitySetting.Off;
+
+    /// <summary>Hourly cap on calls nobody asked for. Returns false when the cap is reached.</summary>
+    private bool TryConsumeUnsolicited()
+    {
+        var now = Clock();
+        lock (_unsolicited)
+        {
+            while (_unsolicited.Count > 0 && now - _unsolicited.Peek() > TimeSpan.FromHours(1)) _unsolicited.Dequeue();
+            if (_settings.MaxUnsolicitedPerHour > 0 && _unsolicited.Count >= _settings.MaxUnsolicitedPerHour) return false;
+            _unsolicited.Enqueue(now);
+            return true;
+        }
+    }
+
+    private Task PauseAsync(CancellationToken ct)
+    {
+        var (min, max) = ReplyPause;
+        int ms = max > min ? _random.Next(min, max) : min;
+        return ms > 0 ? Task.Delay(ms, ct) : Task.CompletedTask;
+    }
+
+    /// <summary>Overheard exchanges become shared radio-world memories for both truckers.</summary>
+    private void RememberBanter(TruckerPersonality a, TruckerPersonality b, List<(string Handle, string Text)> lines)
+    {
+        if (!_settings.RememberConversations || lines.Count == 0) return;
+        string gist = lines[0].Text.Length > 80 ? lines[0].Text[..80].TrimEnd() + "..." : lines[0].Text;
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (me, other) in new[] { (a, b), (b, a) })
+        {
+            me.SummarizedMemories.Add($"{now:MMM d}: chatted on the radio with {other.Handle} (\"{gist.Replace('"', '\'')}\")");
+            if (me.SummarizedMemories.Count > _settings.MaxMemoriesPerTrucker)
+                me.SummarizedMemories.RemoveRange(0, me.SummarizedMemories.Count - _settings.MaxMemoriesPerTrucker);
+            TruckerUpdated?.Invoke(this, me);
+        }
+    }
+
+    private async Task<string?> GenerateAsync(string systemPrompt, string userPrompt, CancellationToken ct, int? maxTokens = null)
     {
         if (_llm?.IsAvailable != true) return null;
-        var result = await _llm.CompleteAsync(systemPrompt, userPrompt, _settings.MaxResponseTokens, ct);
+        var result = await _llm.CompleteAsync(systemPrompt, userPrompt, maxTokens ?? _settings.MaxResponseTokens, ct);
         return result?.Text;
     }
 
@@ -326,7 +447,7 @@ public sealed class CBRadioService : ICBRadioService
     {
         lock (_recent)
         {
-            _recent.Add(new RadioTurn(handle, text));
+            _recent.Add(new RadioTurn(handle, text, channel));
             if (_recent.Count > Math.Max(2, _settings.MaxConversationTurns * 2)) _recent.RemoveAt(0);
         }
         TransmissionReceived?.Invoke(this, (speaker, handle, text, channel));
@@ -366,8 +487,21 @@ public sealed class CBRadioService : ICBRadioService
         return newcomer;
     }
 
-    private static string DescribeEncounter(AtsTelemetrySnapshot s, TruckerPersonality t)
+    private static readonly string[] TruckStopTopics =
     {
+        "asking if anyone else is shutting down for the night at a truck stop",
+        "looking for a decent place to grab breakfast nearby",
+        "what a long haul today has been",
+        "favorite trucks or truck customization",
+        "a memorable delivery from years back",
+        "favorite highways and scenery",
+        "fuel economy tricks"
+    };
+
+    private static string DescribeEncounter(AtsTelemetrySnapshot s, TruckerPersonality t, TimeSpan parkedFor, Random random)
+    {
+        if (parkedFor >= TimeSpan.FromMinutes(5))
+            return TruckStopTopics[random.Next(TruckStopTopics.Length)] + " (relaxed truck-stop talk; you're parked too)";
         if (s.HasFuelCapacity && s.FuelPercent < 25 && t.Relationship >= RelationshipLevel.RoadAcquaintance)
             return "checking whether the player plans a fuel stop soon (their fuel is low)";
         if (s.JobActive && s.CargoWeightLbs >= 38000)

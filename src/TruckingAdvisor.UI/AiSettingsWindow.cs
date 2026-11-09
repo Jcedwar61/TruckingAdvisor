@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using TruckingAdvisor.AI;
+using TruckingAdvisor.Audio;
+using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
 
 namespace TruckingAdvisor.UI;
@@ -26,6 +28,12 @@ public sealed class AiSettingsWindow : Window
     private readonly CheckBox _openAiVoices = new() { Content = "Use OpenAI voices (costs more; off = free Windows voices)" };
     private readonly ComboBox _activity = new();
     private readonly TextBlock _usage = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBox _dispatcherName = new(), _hq = new(), _maxUnsolicited = new();
+    private readonly ComboBox _mode = new(), _coDriver = new(), _dispatch = new();
+    private readonly CheckBox _remember = new() { Content = "Truckers remember our conversations (stored only on this PC)" };
+    private readonly CheckBox _clean = new() { Content = "Clean audio (no radio static or filter)" };
+    private readonly ComboBox _micDevice = new(), _radioOut = new(), _advisorOut = new(), _dispatchOut = new();
+    private readonly Slider _radioVol = Vol(), _dispatchVol = Vol(), _advisorVol = Vol();
 
     public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company)
     {
@@ -43,6 +51,32 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Header("Driver"));
         form.Children.Add(Row("Your CB handle", _handle));
         form.Children.Add(Row("Company name", _companyName));
+        form.Children.Add(Row("Headquarters", _hq));
+        form.Children.Add(Row("Dispatcher's name", _dispatcherName));
+
+        form.Children.Add(Header("Radio, dispatch & co-driver"));
+        _mode.ItemsSource = Enum.GetValues<ConversationTimingMode>();
+        _coDriver.ItemsSource = Enum.GetValues<CoDriverPersonality>();
+        _dispatch.ItemsSource = Enum.GetValues<DispatchContactLevel>();
+        form.Children.Add(Row("Conversation mode", _mode));
+        form.Children.Add(Indent(new TextBlock { Text = "Brief / Natural / Chatty set reply length. Quiet: truckers only answer when called. Immersive: occasional unsolicited chatter.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11 }));
+        form.Children.Add(Row("Co-driver personality", _coDriver));
+        form.Children.Add(Row("Dispatch contact", _dispatch));
+        form.Children.Add(Row("Max unprompted calls / hour", _maxUnsolicited));
+        form.Children.Add(_remember);
+
+        form.Children.Add(Header("Audio devices & volume"));
+        var outputs = new[] { "Windows default" }.Concat(WindowsAudioSink.ListOutputDevices()).ToList();
+        foreach (var c in new[] { _radioOut, _advisorOut, _dispatchOut }) c.ItemsSource = outputs;
+        _micDevice.ItemsSource = MicrophoneRecorder.ListDevices();
+        form.Children.Add(Row("Microphone", _micDevice));
+        form.Children.Add(Row("CB radio output", _radioOut));
+        form.Children.Add(Row("Dispatcher output", _dispatchOut));
+        form.Children.Add(Row("Co-driver output", _advisorOut));
+        form.Children.Add(Row("CB radio volume", _radioVol));
+        form.Children.Add(Row("Dispatcher volume", _dispatchVol));
+        form.Children.Add(Row("Co-driver volume", _advisorVol));
+        form.Children.Add(_clean);
 
         form.Children.Add(Header("OpenAI"));
         form.Children.Add(_enabled);
@@ -57,6 +91,11 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Text-to-speech model", _tts));
         form.Children.Add(Row("Max reply tokens", _maxTokens));
         form.Children.Add(_mic);
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "When AI is on, OpenAI receives: your push-to-talk recording (for transcription), what was said on the radio, and a short summary of game data (speed, fuel, load, destination). Nothing is sent while you aren't talking or chatter is off.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
         form.Children.Add(_openAiVoices);
         _activity.ItemsSource = Enum.GetValues<RadioActivitySetting>();
         form.Children.Add(Row("Background radio activity", _activity));
@@ -103,6 +142,21 @@ public sealed class AiSettingsWindow : Window
         _priceOut.Text = _s.ChatOutputPricePerMillionTokens.ToString(inv);
         _priceStt.Text = _s.SpeechToTextPricePerMinute.ToString(inv);
         _priceTts.Text = _s.TextToSpeechPricePerMillionChars.ToString(inv);
+        _hq.Text = _company.Headquarters;
+        _dispatcherName.Text = _company.DispatcherName;
+        _mode.SelectedItem = _s.ConversationMode;
+        _coDriver.SelectedItem = _s.CoDriver;
+        _dispatch.SelectedItem = _s.DispatchContact;
+        _maxUnsolicited.Text = _s.MaxUnsolicitedPerHour.ToString(inv);
+        _remember.IsChecked = _s.RememberConversations;
+        _clean.IsChecked = _s.CleanAudio;
+        _radioOut.SelectedIndex = _s.RadioOutputDevice + 1;
+        _dispatchOut.SelectedIndex = _s.DispatcherOutputDevice + 1;
+        _advisorOut.SelectedIndex = _s.AdvisorOutputDevice + 1;
+        _micDevice.SelectedIndex = Math.Max(0, _s.MicrophoneDevice);
+        _radioVol.Value = _s.RadioVolume;
+        _dispatchVol.Value = _s.DispatcherVolume;
+        _advisorVol.Value = _s.AdvisorVolume;
         _keyStatus.Text = ApiKeyStore.Exists(_s.Provider) ? "A key is saved (encrypted for your Windows account)." : "No key saved.";
         var u = _client.Usage.Data;
         _usage.Text = $"Today: {u.Today.Requests} requests, {u.Today.InputTokens + u.Today.OutputTokens:N0} tokens, ~${u.Today.EstimatedCostUsd:F4}\n" +
@@ -129,6 +183,21 @@ public sealed class AiSettingsWindow : Window
         var inv = CultureInfo.InvariantCulture;
         _company.PlayerHandle = _handle.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_companyName.Text)) _company.CompanyName = _companyName.Text.Trim();
+        _company.Headquarters = _hq.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(_dispatcherName.Text)) _company.DispatcherName = _dispatcherName.Text.Trim();
+        if (_mode.SelectedItem is ConversationTimingMode m) _s.ConversationMode = m;
+        if (_coDriver.SelectedItem is CoDriverPersonality cd) _s.CoDriver = cd;
+        if (_dispatch.SelectedItem is DispatchContactLevel dl) _s.DispatchContact = dl;
+        if (int.TryParse(_maxUnsolicited.Text, NumberStyles.Integer, inv, out var mu)) _s.MaxUnsolicitedPerHour = Math.Clamp(mu, 0, 120);
+        _s.RememberConversations = _remember.IsChecked == true;
+        _s.CleanAudio = _clean.IsChecked == true;
+        _s.RadioOutputDevice = _radioOut.SelectedIndex - 1;
+        _s.DispatcherOutputDevice = _dispatchOut.SelectedIndex - 1;
+        _s.AdvisorOutputDevice = _advisorOut.SelectedIndex - 1;
+        if (_micDevice.SelectedIndex >= 0) _s.MicrophoneDevice = _micDevice.SelectedIndex;
+        _s.RadioVolume = (float)_radioVol.Value;
+        _s.DispatcherVolume = (float)_dispatchVol.Value;
+        _s.AdvisorVolume = (float)_advisorVol.Value;
         _s.GlobalAiEnabled = _enabled.IsChecked == true;
         _s.ChatModel = NonEmpty(_chat.Text, _s.ChatModel);
         _s.SpeechToTextModel = NonEmpty(_stt.Text, _s.SpeechToTextModel);
@@ -146,6 +215,8 @@ public sealed class AiSettingsWindow : Window
         _s.Save();
         DialogResult = true;
     }
+
+    private static Slider Vol() => new() { Minimum = 0, Maximum = 1, SmallChange = 0.05, LargeChange = 0.1 };
 
     private static string NonEmpty(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 

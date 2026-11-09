@@ -123,6 +123,8 @@ public sealed class VirtualCompanyProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string CompanyName { get; set; } = "My Trucking Company";
+    /// <summary>The company dispatcher's on-air name (a persistent character).</summary>
+    public string DispatcherName { get; set; } = "Sarah";
     public string Headquarters { get; set; } = string.Empty;
     public string Motto { get; set; } = string.Empty;
     public string PrimaryColorHex { get; set; } = "#F59E0B";
@@ -154,6 +156,12 @@ public sealed class CareerProfile
     public int BestDamageFreeStreak { get; set; }
     public int PersonalBestScore { get; set; }
     public double BestTripMpg { get; set; }
+    /// <summary>Miles driven (app-recorded) since the last harsh braking event.</summary>
+    public double MilesSinceHarshBraking { get; set; }
+    /// <summary>Achievement id -> when it was unlocked.</summary>
+    public Dictionary<string, DateTimeOffset> UnlockedAchievements { get; set; } = new();
+    /// <summary>Per-truck lifetime totals (app-recorded), keyed by "Make Model".</summary>
+    public Dictionary<string, TruckEconomy> TruckEconomy { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string RankTitle => Level switch
     {
@@ -162,8 +170,16 @@ public sealed class CareerProfile
         >= 20 => "Professional Operator",
         >= 10 => "Interstate Trucker",
         >= 5 => "Regional Hauler",
-        _ => "Rookie"
+        _ => "Rookie Driver"
     };
+}
+
+public sealed class TruckEconomy
+{
+    public double Miles { get; set; }
+    public double Gallons { get; set; }
+    public int Trips { get; set; }
+    public double AverageMpg => Gallons > 0 ? Miles / Gallons : 0;
 }
 
 public sealed class AchievementItem
@@ -172,6 +188,8 @@ public sealed class AchievementItem
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Icon { get; set; } = "🏆";
+    /// <summary>"Driver" achievements or "Company" milestones.</summary>
+    public string Category { get; set; } = "Driver";
     public bool IsUnlocked { get; set; }
     public DateTimeOffset? UnlockedAt { get; set; }
     public double ProgressPercent { get; set; }
