@@ -31,6 +31,10 @@ public sealed partial class MainDashboardViewModel
 
     public TimeSpan SessionDuration => DateTimeOffset.UtcNow - _sessionStart;
 
+    private string _gameStatus = "Looking for American Truck Simulator...";
+    /// <summary>Where the game was found and whether its telemetry plugin is installed.</summary>
+    public string GameStatusText { get => _gameStatus; set { _gameStatus = value; Raise(); } }
+
     public string CareerSummary =>
         $"Level {Career.Level} {Career.RankTitle} • {Career.CurrentXp:N0}/{Career.NextLevelXp:N0} XP • best score {Career.PersonalBestScore} • damage-free streak {Career.CurrentDamageFreeStreak} (best {Career.BestDamageFreeStreak})";
 

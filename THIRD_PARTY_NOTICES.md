@@ -5,6 +5,7 @@
 - **NAudio** — https://github.com/naudio/NAudio (MIT). Audio playback and microphone capture.
 - **Microsoft.Data.Sqlite / SQLitePCLRaw** — https://github.com/dotnet/efcore (MIT), https://github.com/ericsink/SQLitePCL.raw (Apache-2.0). Local database.
 - **System.Speech**, **System.Security.Cryptography.ProtectedData** — Microsoft (MIT). Windows voices and DPAPI.
+- **NSIS** — https://nsis.sourceforge.io (zlib/libpng license). Builds the Windows installer.
 - **xUnit** — https://github.com/xunit/xunit (Apache-2.0). Tests only.
 
 Optional local text-to-speech servers listed in `FreeNeuralTtsService.cs` (Kokoro-82M, Piper, Edge-TTS, Chatterbox) are not bundled or used by default.

@@ -83,7 +83,74 @@ public partial class MainWindow : Window
         _keyboardHook.Install();
         UpdatePttLabels();
 
+        RestoreWindowBounds();
+        _ = Task.Run(RefreshGameStatus);
         _telemetry.Start();
+    }
+
+    // ---- Window size & game detection ----
+
+    private void RestoreWindowBounds()
+    {
+        if (_aiSettings.WindowWidth is > 0 && _aiSettings.WindowHeight is > 0)
+        {
+            Width = Math.Max(MinWidth, _aiSettings.WindowWidth.Value);
+            Height = Math.Max(MinHeight, _aiSettings.WindowHeight.Value);
+        }
+        if (_aiSettings.WindowLeft is { } l && _aiSettings.WindowTop is { } t && HudOverlayWindow.IsOnScreen(l, t, Width, Height))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = l;
+            Top = t;
+        }
+        if (_aiSettings.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void SaveWindowBounds()
+    {
+        var b = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        _aiSettings.WindowLeft = b.Left;
+        _aiSettings.WindowTop = b.Top;
+        _aiSettings.WindowWidth = b.Width;
+        _aiSettings.WindowHeight = b.Height;
+        _aiSettings.WindowMaximized = WindowState == WindowState.Maximized;
+        if (_overlay is not null)
+        {
+            _aiSettings.HudLeft = _overlay.Left;
+            _aiSettings.HudTop = _overlay.Top;
+            _aiSettings.HudWidth = _overlay.Width;
+            _aiSettings.HudHeight = _overlay.Height;
+        }
+        try { _aiSettings.Save(); } catch { /* settings are best effort on exit */ }
+    }
+
+    /// <summary>Searches every drive for ATS/ETS2 and reports whether the telemetry plugin is in place.</summary>
+    private void RefreshGameStatus()
+    {
+        IReadOnlyList<GameInstall> games;
+        try { games = _pluginInstaller.FindGames(_aiSettings.GameFolders); }
+        catch (Exception ex) { games = Array.Empty<GameInstall>(); Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = $"Game search failed: {ex.Message}"); return; }
+
+        string text = games.Count == 0
+            ? "American Truck Simulator not found. Use \"Install Telemetry Plugin\" to pick the game folder."
+            : string.Join("   ", games.Select(g =>
+                $"{g.Name}: {g.InstallFolder} - plugin {(File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)) ? "installed" : "NOT installed")}"));
+        Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = text);
+
+        // First run: the game is there but can't send data yet. Offer to fix it once.
+        var missing = games.FirstOrDefault(g => !File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)));
+        if (missing is not null && !_aiSettings.PluginPromptShown)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                _aiSettings.PluginPromptShown = true;
+                try { _aiSettings.Save(); } catch { }
+                if (MessageBox.Show(this,
+                        $"Found {missing.Name} at\n{missing.InstallFolder}\n\nbut its telemetry plugin isn't installed yet, so TruckingAdvisor can't read live data.\n\nInstall the plugin now?",
+                        "Telemetry Plugin", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    BtnPlugin_Click(this, new RoutedEventArgs());
+            });
+        }
     }
 
     private void ApplyAudioSettings()
@@ -231,14 +298,28 @@ public partial class MainWindow : Window
 
     private async void BtnPlugin_Click(object sender, RoutedEventArgs e)
     {
-        var games = _pluginInstaller.DiscoverGameBinFolders();
         var release = GitHubPluginInstallerService.RenCloudPlugin;
-        if (MessageBox.Show(this,
-                $"Download {release.OwnerRepo} {release.Tag} from GitHub and install scs-telemetry.dll into:\n\n" +
-                (games.Count > 0 ? string.Join("\n", games) : "(no ATS/ETS2 install found - the DLL will only be downloaded)") +
-                "\n\nExisting plugin files are backed up first. Close the game before continuing.",
-                "Install Telemetry Plugin", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
-            return;
+        BtnPlugin.IsEnabled = false;
+        BtnPlugin.Content = "Searching drives...";
+        var games = (await Task.Run(() => _pluginInstaller.FindGames(_aiSettings.GameFolders))).ToList();
+        BtnPlugin.IsEnabled = true;
+        BtnPlugin.Content = "Install Telemetry Plugin";
+
+        // Found nothing, or the player wants a different copy: let them pick the folder.
+        string found = games.Count > 0
+            ? string.Join("\n", games.Select(g => $"{g.Name}\n   {g.InstallFolder}   (found via {g.Source})"))
+            : "No ATS or ETS2 install was found on any drive.";
+        var choice = MessageBox.Show(this,
+            $"{found}\n\nYes = install {release.OwnerRepo} {release.Tag} into {(games.Count > 0 ? "these games" : "a folder you choose")}\n" +
+            "No = choose another game folder first\nCancel = do nothing\n\nExisting plugin files are backed up. Close the game first.",
+            "Install Telemetry Plugin", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (choice == MessageBoxResult.Cancel) return;
+        if (choice == MessageBoxResult.No || games.Count == 0)
+        {
+            if (PickGameFolder() is not { } picked) return;
+            if (!games.Any(g => string.Equals(g.InstallFolder, picked.InstallFolder, StringComparison.OrdinalIgnoreCase)))
+                games.Add(picked);
+        }
 
         BtnPlugin.IsEnabled = false;
         BtnPlugin.Content = "Downloading...";
@@ -265,10 +346,45 @@ public partial class MainWindow : Window
         {
             BtnPlugin.IsEnabled = true;
             BtnPlugin.Content = "Install Telemetry Plugin";
+            _ = Task.Run(RefreshGameStatus);
         }
     }
 
+    /// <summary>Lets the player point at the game folder on any drive; remembered for next time.</summary>
+    private GameInstall? PickGameFolder()
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Choose your American Truck Simulator (or ETS2) folder"
+        };
+        if (dlg.ShowDialog(this) != true) return null;
+        var game = _pluginInstaller.VerifyGameFolder(dlg.FolderName);
+        if (game is null)
+        {
+            MessageBox.Show(this,
+                $"{dlg.FolderName}\n\ndoesn't look like ATS or ETS2 (no bin\\win_x64\\amtrucks.exe or eurotrucks2.exe inside).\n" +
+                "In Steam: right-click the game > Manage > Browse local files to find the right folder.",
+                "Not a Game Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+        if (!_aiSettings.GameFolders.Contains(game.InstallFolder, StringComparer.OrdinalIgnoreCase))
+        {
+            _aiSettings.GameFolders.Add(game.InstallFolder);
+            try { _aiSettings.Save(); } catch { }
+        }
+        return game;
+    }
+
     private void BtnToggleOverlay_Click(object sender, RoutedEventArgs e) => ToggleOverlay();
+
+    private void BtnHudLock_Click(object sender, RoutedEventArgs e)
+    {
+        if (_overlay is not { IsVisible: true }) ToggleOverlay();
+        bool unlock = _overlay!.IsLocked;
+        _overlay.SetLocked(!unlock);
+        BtnHudLock.Content = unlock ? "Lock HUD (done)" : "Move/Resize HUD";
+        if (!unlock) SaveWindowBounds();
+    }
 
     // ---- Contacts & trips ----
 
@@ -308,8 +424,18 @@ public partial class MainWindow : Window
             _overlay.Hide();
             return;
         }
-        _overlay ??= new HudOverlayWindow { DataContext = _viewModel };
+        if (_overlay is null)
+        {
+            _overlay = new HudOverlayWindow { DataContext = _viewModel };
+            _overlay.ApplySavedBounds(_aiSettings.HudLeft, _aiSettings.HudTop, _aiSettings.HudWidth, _aiSettings.HudHeight);
+        }
         _overlay.Show();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        SaveWindowBounds();
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

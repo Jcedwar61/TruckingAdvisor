@@ -10,13 +10,15 @@ dotnet run --project src/TruckingAdvisor.UI            # add -- --demo for label
 
 On Linux/macOS, everything except running the WPF window works; build with `-p:EnableWindowsTargeting=true`.
 
-## Lightweight window (no SDK needed)
+## Windows installer
 
-`Launcher/TruckingAdvisorDesktopHost.cs` is a single-file WinForms simulator window that compiles with Windows' built-in C# 5 compiler. It does **not** read live telemetry or use AI. Keep it C# 5 compatible (no property initializers, `$"..."`, `?.`, `nameof`, or expression-bodied members):
+On Windows with the .NET 8 SDK and NSIS 3 (`winget install NSIS.NSIS`):
 
-```cmd
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:Assets\TruckingAdvisor.ico /out:TruckingAdvisor-Lite.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:%WINDIR%\Microsoft.NET\assembly\GAC_MSIL\System.Speech\v4.0_4.0.0.0__31bf3856ad364e35\System.Speech.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll Launcher\TruckingAdvisorDesktopHost.cs
+```powershell
+./installer/build-installer.ps1 -Version 2.3.0
 ```
+
+This writes `publish/bin/TruckingAdvisor.exe` (self-contained, single file) and `publish/TruckingAdvisor-Setup-2.3.0.exe`. CI builds the same installer and smoke-tests it (silent install, launch, uninstall) on every push.
 
 ## Ground rules
 

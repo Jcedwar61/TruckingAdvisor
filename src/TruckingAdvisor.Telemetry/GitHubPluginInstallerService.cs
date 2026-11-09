@@ -55,57 +55,15 @@ public sealed class GitHubPluginInstallerService
         return client;
     }
 
-    /// <summary>Steam library roots: registry Steam path, its libraryfolders.vdf entries, then common defaults.</summary>
-    public IReadOnlyList<string> DiscoverSteamLibraries()
-    {
-        var roots = new List<string>();
-        void Add(string? p)
-        {
-            if (string.IsNullOrWhiteSpace(p)) return;
-            p = p.Replace('/', '\\').TrimEnd('\\');
-            if (!roots.Contains(p, StringComparer.OrdinalIgnoreCase)) roots.Add(p);
-        }
+    private readonly GameLocator _locator;
 
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam");
-                Add(key?.GetValue("SteamPath") as string);
-            }
-            catch { /* registry unavailable; fall back to defaults */ }
-        }
-        Add(@"C:\Program Files (x86)\Steam");
-        Add(@"C:\Program Files\Steam");
+    public GitHubPluginInstallerService(GameLocator? locator = null) => _locator = locator ?? new GameLocator();
 
-        foreach (var root in roots.ToArray())
-        {
-            var vdf = Path.Combine(root, "steamapps", "libraryfolders.vdf");
-            if (!File.Exists(vdf)) continue;
-            try
-            {
-                foreach (Match m in Regex.Matches(File.ReadAllText(vdf), "\"path\"\\s+\"([^\"]+)\""))
-                    Add(m.Groups[1].Value.Replace(@"\\", @"\"));
-            }
-            catch { /* unreadable vdf; skip */ }
-        }
-        return roots;
-    }
+    /// <summary>Verified ATS / ETS2 installs on any drive, plus folders the user picked. Creates nothing.</summary>
+    public IReadOnlyList<GameInstall> FindGames(IEnumerable<string>? extraFolders = null) => _locator.FindAll(extraFolders);
 
-    /// <summary>Existing <c>bin\win_x64</c> folders of installed ATS / ETS2. Creates nothing.</summary>
-    public IReadOnlyList<string> DiscoverGameBinFolders()
-    {
-        var found = new List<string>();
-        foreach (var lib in DiscoverSteamLibraries())
-        {
-            foreach (var game in new[] { "American Truck Simulator", "Euro Truck Simulator 2" })
-            {
-                var bin = Path.Combine(lib, "steamapps", "common", game, "bin", "win_x64");
-                if (Directory.Exists(bin)) found.Add(bin);
-            }
-        }
-        return found;
-    }
+    /// <summary>Checks a folder the user picked; null if it isn't ATS/ETS2.</summary>
+    public GameInstall? VerifyGameFolder(string folder) => _locator.Verify(folder);
 
     public async Task<DownloadedPlugin> DownloadAsync(string stagingDir, CancellationToken ct = default)
     {
@@ -156,12 +114,12 @@ public sealed class GitHubPluginInstallerService
     }
 
     /// <summary>Copies the staged DLL into each game. Returns one line per game, including failures.</summary>
-    public IReadOnlyList<string> InstallToGames(string stagedDll, IEnumerable<string> gameBinFolders)
+    public IReadOnlyList<string> InstallToGames(string stagedDll, IEnumerable<GameInstall> games)
     {
         var log = new List<string>();
-        foreach (var bin in gameBinFolders)
+        foreach (var game in games)
         {
-            var pluginsDir = Path.Combine(bin, "plugins");
+            var pluginsDir = game.PluginFolder;
             var dest = Path.Combine(pluginsDir, RenCloudPlugin.TargetDllName);
             try
             {
@@ -173,7 +131,7 @@ public sealed class GitHubPluginInstallerService
                     log.Add($"Backed up existing plugin -> {backup}");
                 }
                 File.Copy(stagedDll, dest, overwrite: true);
-                log.Add($"Installed -> {dest}");
+                log.Add($"Installed for {game.Name} -> {dest}");
             }
             catch (UnauthorizedAccessException)
             {
@@ -184,7 +142,7 @@ public sealed class GitHubPluginInstallerService
                 log.Add($"Could not write {dest}: {ex.Message} (close the game and try again)");
             }
         }
-        if (log.Count == 0) log.Add("No ATS or ETS2 install found. Copy the DLL into <game>\\bin\\win_x64\\plugins by hand.");
+        if (log.Count == 0) log.Add("No ATS or ETS2 install selected. Pick the game folder, or copy the DLL into <game>\\bin\\win_x64\\plugins by hand.");
         return log;
     }
 }

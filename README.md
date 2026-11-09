@@ -6,13 +6,15 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download) (for the full app).
-2. Run `Build_And_Install_From_Source.bat`. It builds the app, offers to install the telemetry plugin, and creates shortcuts.
-   - Without the .NET SDK it builds `TruckingAdvisor-Lite.exe`, a simulator-only window (no live telemetry, no AI).
-3. Start ATS, then TruckingAdvisor. The header shows **CONNECTED TO ATS** once data flows.
+1. Download **TruckingAdvisor-Setup-2.3.0.exe** (from the latest GitHub Actions run's artifacts or a release) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+   - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
+2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
+3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
 4. Optional: **AI & Radio Settings** → enable AI, paste your OpenAI key, turn on the microphone, set your CB handle.
 
-No game handy? Click **Try Demo Data**. Demo values are clearly bannered and never saved.
+No game handy? Use the **TruckingAdvisor (demo data)** Start-menu shortcut. Demo values are clearly bannered and never saved.
+
+The window can be resized and maximized (drag the divider between the dashboard and the radio), and it remembers its size and position. **Move/Resize HUD** unlocks the in-game overlay so you can drag and resize it; lock it again for click-through play.
 
 ## Features
 
@@ -65,7 +67,7 @@ Requires [RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin) *
 TruckingAdvisor.sln
 src/
   TruckingAdvisor.Shared        models, enums, interfaces
-  TruckingAdvisor.Telemetry     shared-memory layout, parser, reader, plugin installer
+  TruckingAdvisor.Telemetry     shared-memory layout, parser, reader, game finder (any drive), plugin installer
   TruckingAdvisor.Core          driving coach, scoring, trip tracker, career, fuel/maintenance advisor, audio priority
   TruckingAdvisor.AI            OpenAI client, CB radio, personalities, memory/relationships, context builder, usage limits
   TruckingAdvisor.Audio         Windows playback with CB filter, microphone, push-to-talk hook
@@ -73,9 +75,8 @@ src/
   TruckingAdvisor.Presentation  dashboard view-model (no WPF dependency, so it's testable)
   TruckingAdvisor.UI            WPF window, settings dialog, HUD overlay
 tests/TruckingAdvisor.Core.Tests
-Launcher/TruckingAdvisorDesktopHost.cs   lightweight simulator window (C# 5, no SDK needed)
-App/TruckingAdvisor_App.html             browser cockpit / simulator (cannot read the game)
-Plugins/                                  plugin manifest and download script
+installer/                                Windows installer (NSIS) and build script
+Plugins/plugin_manifest.json              pinned telemetry plugin release
 ```
 
 ## Not done yet

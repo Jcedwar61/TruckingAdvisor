@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="TruckingAdvisor — ATS Telemetry, Driving Coach &amp; AI CB Radio"
         Icon="Assets/TruckingAdvisor.ico"
-        Width="1380" Height="880" MinWidth="1000" MinHeight="700"
+        Width="1380" Height="880" MinWidth="900" MinHeight="600" ResizeMode="CanResize"
         Background="#0B0F17" Foreground="#F8FAFC"
         WindowStartupLocation="CenterScreen"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -21,7 +21,7 @@
             <Setter Property="Background" Value="#1E293B"/>
             <Setter Property="Foreground" Value="#F8FAFC"/>
             <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Margin" Value="0,2,8,2"/>
         </Style>
     </Window.Resources>
 
@@ -40,15 +40,17 @@
                     <StackPanel>
                         <TextBlock Text="TRUCKINGADVISOR" FontSize="20" FontWeight="Bold" Foreground="#F59E0B"/>
                         <TextBlock Text="{Binding ConnectionStatusText}" FontSize="12" Foreground="#10B981"/>
+                        <TextBlock Text="{Binding GameStatusText}" FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" MaxWidth="520"/>
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0">
                     <Button x:Name="BtnAiSettings" Content="AI &amp; Radio Settings" Click="BtnAiSettings_Click" Style="{StaticResource TopButton}"/>
                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click" Style="{StaticResource TopButton}"/>
                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click" Style="{StaticResource TopButton}"/>
                     <Button x:Name="BtnToggleOverlay" Content="HUD Overlay (F8)" Click="BtnToggleOverlay_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click" Style="{StaticResource TopButton}"/>
                     <Button x:Name="BtnRebindPtt" Content="Rebind PTT Key" Click="BtnRebindPtt_Click" Style="{StaticResource TopButton}"/>
-                </StackPanel>
+                </WrapPanel>
             </DockPanel>
         </Border>
 
@@ -78,12 +80,15 @@
         <TabItem Header="Dashboard &amp; Radio">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="1.25*"/>
+                <ColumnDefinition Width="2*" MinWidth="420"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="1.25*" MinWidth="300"/>
             </Grid.ColumnDefinitions>
+            <!-- Drag to give the dashboard or the radio more room. -->
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" ResizeBehavior="PreviousAndNext"/>
 
             <!-- Left: instruments, trip, coach -->
-            <ScrollViewer Grid.Column="0" Margin="0,0,12,0" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Column="0" Margin="0,0,4,0" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <UniformGrid Columns="4" Margin="0,0,0,10">
                         <Border Style="{StaticResource Card}" Margin="0,0,6,0">
@@ -156,7 +161,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock Text="RECENT COACHING EVENTS" Style="{StaticResource Label}" Margin="0,10,0,4"/>
-                            <ListBox ItemsSource="{Binding RecentIncidents}" Height="140" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                            <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RecentIncidents}" Height="140" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock TextWrapping="Wrap">
@@ -178,7 +183,7 @@
             </ScrollViewer>
 
             <!-- Right: CB radio -->
-            <Border Grid.Column="1" Style="{StaticResource Card}">
+            <Border Grid.Column="2" Style="{StaticResource Card}" Margin="4,0,0,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
                         <DockPanel>
@@ -199,10 +204,10 @@
                                 PreviewMouseLeftButtonDown="BtnHoldPtt_Down" PreviewMouseLeftButtonUp="BtnHoldPtt_Up"
                                 Background="#F59E0B" Foreground="#0B0F17" FontWeight="Bold" Padding="16,10"/>
                     </StackPanel>
-                    <ListBox ItemsSource="{Binding RadioTranscriptLog}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioTranscriptLog}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="440"/>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -284,7 +289,7 @@
                     <ColumnDefinition Width="1.4*"/>
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource Card}" Margin="0,0,10,0">
-                    <ListBox x:Name="LstContacts" ItemsSource="{Binding Contacts}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstContacts" ItemsSource="{Binding Contacts}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,4">
@@ -328,7 +333,7 @@
                     <Button Content="Export selected (JSON)" Click="BtnExportJson_Click" Style="{StaticResource TopButton}"/>
                     <Button Content="Copy selected report" Click="BtnCopyReport_Click" Style="{StaticResource TopButton}"/>
                 </StackPanel>
-                <ListBox x:Name="LstTrips" Grid.Row="1" ItemsSource="{Binding TripHistory}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstTrips" Grid.Row="1" ItemsSource="{Binding TripHistory}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Margin="0,3">

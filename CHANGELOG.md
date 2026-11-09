@@ -4,7 +4,13 @@
 
 Reviewed with GPT, Gemini and DeepSeek; their confirmed findings are fixed and covered by tests (91 total).
 
+### Removed
+- The HTML web cockpit, the WinForms "Lite" window and the PowerShell/batch installers. TruckingAdvisor is now one native Windows (WPF) app installed by the setup .exe.
+
 ### Added
+- Real Windows installer (`TruckingAdvisor-Setup-<version>.exe`, NSIS): per-user, no admin, Windows 10/11 x64 check, Start-menu/desktop shortcuts, Installed-apps entry, uninstaller that asks before deleting your data. The app inside is a single self-contained native .exe.
+- Finds ATS/ETS2 on any drive (Steam registry + library list, Windows installed programs, common folders on every fixed drive), lets you pick the folder by hand, and offers to install the plugin on first run.
+- Resizable main window that remembers its size/position, draggable dashboard/radio divider, wrapping header, and a HUD overlay you can unlock to move and resize.
 - Achievements (8) and company milestones (4) with progress, computed only from recorded trips.
 - Proactive dispatcher with a persistent name: load briefings, check-ins (Off/Rare/Normal/Frequent), approaching destination, low fuel vs. distance, rest, new damage, deadline risk, wrap-ups. One-time notices retry if the radio was busy.
 - Onboard co-driver personalities; personal driving insights; MPG per truck; deadline-risk advice; real-time session length.

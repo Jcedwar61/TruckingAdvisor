@@ -67,6 +67,21 @@ public sealed class AiSettings
     public float DispatcherVolume { get; set; } = 0.9f;
     public float AdvisorVolume { get; set; } = 0.95f;
 
+    // App state (not AI-specific, kept in the same settings file).
+    /// <summary>Game folders the player picked by hand when automatic search missed them.</summary>
+    public List<string> GameFolders { get; set; } = new();
+    /// <summary>The "plugin missing, install now?" question is asked once.</summary>
+    public bool PluginPromptShown { get; set; }
+    public double? WindowLeft { get; set; }
+    public double? WindowTop { get; set; }
+    public double? WindowWidth { get; set; }
+    public double? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
+    public double? HudLeft { get; set; }
+    public double? HudTop { get; set; }
+    public double? HudWidth { get; set; }
+    public double? HudHeight { get; set; }
+
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor", "ai-settings.json");
 

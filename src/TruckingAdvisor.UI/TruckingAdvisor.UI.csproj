@@ -7,6 +7,13 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>TruckingAdvisor</AssemblyName>
+    <Version>2.3.0</Version>
+    <Product>TruckingAdvisor</Product>
+    <Company>TruckingAdvisor contributors</Company>
+    <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>
+    <Copyright>Copyright (c) 2026 TruckingAdvisor contributors. MIT License.</Copyright>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
     <ApplicationIcon>Assets\TruckingAdvisor.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
