@@ -1,0 +1,204 @@
+<Window x:Class="TruckingAdvisor.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TruckingAdvisor — ATS Telemetry, Driving Coach &amp; AI CB Radio"
+        Icon="Assets/TruckingAdvisor.ico"
+        Width="1380" Height="880" MinWidth="1000" MinHeight="700"
+        Background="#0B0F17" Foreground="#F8FAFC"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#151C28"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14"/>
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style x:Key="TopButton" TargetType="Button">
+            <Setter Property="Background" Value="#1E293B"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,10">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Image Source="Assets/TruckingAdvisor.ico" Width="32" Height="32" Margin="0,0,10,0"/>
+                    <StackPanel>
+                        <TextBlock Text="TRUCKINGADVISOR" FontSize="20" FontWeight="Bold" Foreground="#F59E0B"/>
+                        <TextBlock Text="{Binding ConnectionStatusText}" FontSize="12" Foreground="#10B981"/>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnAiSettings" Content="AI &amp; Radio Settings" Click="BtnAiSettings_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnToggleOverlay" Content="HUD Overlay (F8)" Click="BtnToggleOverlay_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnRebindPtt" Content="Rebind PTT Key" Click="BtnRebindPtt_Click" Style="{StaticResource TopButton}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Demo banner: impossible to miss when values are not from the game -->
+        <Border Grid.Row="1" Background="#7C2D12" CornerRadius="6" Padding="10,6" Margin="0,0,0,10">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDemo}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1.25*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: instruments, trip, coach -->
+            <ScrollViewer Grid.Column="0" Margin="0,0,12,0" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <UniformGrid Columns="4" Margin="0,0,0,10">
+                        <Border Style="{StaticResource Card}" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="SPEED (MPH)" Style="{StaticResource Label}"/>
+                                <TextBlock Text="{Binding SpeedText}" FontSize="36" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#F8FAFC"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSpeeding}" Value="True">
+                                                    <Setter Property="Foreground" Value="#EF4444"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding SpeedLimitText}" Foreground="#F59E0B" FontSize="12"/>
+                                <TextBlock Text="{Binding CruiseText}" Foreground="#94A3B8" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="3,0,3,0">
+                            <StackPanel>
+                                <TextBlock Text="ENGINE" Style="{StaticResource Label}"/>
+                                <TextBlock Text="{Binding RpmText}" FontSize="26" FontWeight="Bold" Foreground="#10B981"/>
+                                <TextBlock Text="{Binding GearText}" Foreground="#94A3B8" FontSize="12"/>
+                                <TextBlock Text="{Binding EngineTempText}" Foreground="#94A3B8" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="3,0,3,0">
+                            <StackPanel>
+                                <TextBlock Text="FUEL" Style="{StaticResource Label}"/>
+                                <TextBlock Text="{Binding FuelText}" FontSize="26" FontWeight="Bold" Foreground="#F59E0B"/>
+                                <TextBlock Text="{Binding RangeText}" Foreground="#94A3B8" FontSize="12"/>
+                                <TextBlock Text="{Binding MpgText}" Foreground="#94A3B8" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="6,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="TRIP SCORE" Style="{StaticResource Label}"/>
+                                <TextBlock Text="{Binding ScoreText}" FontSize="26" FontWeight="Bold" Foreground="#10B981"/>
+                                <TextBlock Text="{Binding RatingText}" Foreground="#F59E0B" FontSize="12" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding AirText}" Foreground="#94A3B8" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="ACTIVE DELIVERY" Foreground="#F59E0B" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding CargoText}" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RouteText}" Foreground="#94A3B8" Margin="0,4,0,4"/>
+                            <ProgressBar Value="{Binding TripProgressPercent, Mode=OneWay}" Maximum="100" Height="8" Foreground="#10B981" Background="#0B0F17" BorderThickness="0"/>
+                            <TextBlock Text="{Binding RemainingText}" Foreground="#10B981" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding TripStateText}" Foreground="#94A3B8" FontSize="12"/>
+                            <TextBlock Foreground="#94A3B8" FontSize="12">
+                                <Run Text="Game time "/><Run Text="{Binding GameTimeText, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding RestText, Mode=OneWay}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="COACH, FUEL &amp; MAINTENANCE ADVISORIES" Foreground="#F59E0B" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding ActiveAdvisories}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="RECENT COACHING EVENTS" Style="{StaticResource Label}" Margin="0,10,0,4"/>
+                            <ListBox ItemsSource="{Binding RecentIncidents}" Height="140" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock TextWrapping="Wrap">
+                                            <Run Text="{Binding Severity, Mode=OneWay}" Foreground="#F59E0B"/><Run Text=": "/><Run Text="{Binding AdvisoryMessage, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="LAST DELIVERY REPORT" Foreground="#F59E0B" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <TextBox Text="{Binding LastReport, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0" MinHeight="60" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right: CB radio -->
+            <Border Grid.Column="1" Style="{StaticResource Card}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top">
+                        <DockPanel>
+                            <Button Content="Next Channel ( ] )" Click="BtnChannel_Click" DockPanel.Dock="Right" Style="{StaticResource TopButton}" Margin="0"/>
+                            <TextBlock Text="{Binding RadioChannelText}" Foreground="#F59E0B" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Text="{Binding RadioStateText}" Foreground="#10B981" Margin="0,6,0,0"/>
+                        <TextBlock Text="{Binding PartnerText}" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding AiStatusText}" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding RadioNotice}" Foreground="#F59E0B" TextWrapping="Wrap" Margin="0,2,0,6"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <DockPanel>
+                            <Button x:Name="BtnSend" Content="Send" Click="BtnSend_Click" DockPanel.Dock="Right" Style="{StaticResource TopButton}" Margin="6,0,0,0"/>
+                            <TextBox x:Name="TxtMessage" KeyDown="TxtMessage_KeyDown" Background="#0B0F17" Foreground="#F8FAFC" Padding="6" ToolTip="Type a CB message and press Enter (works without a microphone)"/>
+                        </DockPanel>
+                        <Button x:Name="BtnHoldPtt" Content="HOLD TO TALK (LEFT ALT)" Margin="0,8,0,0"
+                                PreviewMouseLeftButtonDown="BtnHoldPtt_Down" PreviewMouseLeftButtonUp="BtnHoldPtt_Up"
+                                Background="#F59E0B" Foreground="#0B0F17" FontWeight="Bold" Padding="16,10"/>
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding RadioTranscriptLog}" Background="#0B0F17" Foreground="#F8FAFC" BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="440"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

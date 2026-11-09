@@ -1,0 +1,12 @@
+<Application x:Class="TruckingAdvisor.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="BgCharcoalBrush" Color="#0B0F17"/>
+        <SolidColorBrush x:Key="CardSurfaceBrush" Color="#151C28"/>
+        <SolidColorBrush x:Key="AccentAmberBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="StatusGreenBrush" Color="#10B981"/>
+        <SolidColorBrush x:Key="CriticalRedBrush" Color="#EF4444"/>
+    </Application.Resources>
+</Application>

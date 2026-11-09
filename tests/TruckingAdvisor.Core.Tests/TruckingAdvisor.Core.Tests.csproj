@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageReference Include="xunit" Version="2.7.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.7" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Shared\TruckingAdvisor.Shared.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Core\TruckingAdvisor.Core.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.AI\TruckingAdvisor.AI.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Telemetry\TruckingAdvisor.Telemetry.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Data\TruckingAdvisor.Data.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
+  </ItemGroup>
+</Project>
