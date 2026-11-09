@@ -200,6 +200,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
         {
             _lastAdvice = now;
             _dispatcher?.Evaluate(snapshot, _trips.ActiveTrip);
+            OnSlowTick(snapshot);
             var advice = _advisor.GenerateAdvisories(snapshot, LastTripMpg(), LastServiceOdometer()).ToArray();
             if (!advice.SequenceEqual(_lastAdvisories))
             {
@@ -326,6 +327,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
 
     public void Dispose()
     {
+        SaveMapMemories();
         _cts.Cancel();
         _telemetry.TelemetryUpdated -= OnTelemetryUpdated;
         _analyzer.IncidentDetected -= OnIncidentDetected;

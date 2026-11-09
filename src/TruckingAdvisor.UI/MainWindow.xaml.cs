@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private readonly CBRadioService _cbRadio;
     private readonly GlobalPttKeyboardHook _keyboardHook = new();
     private readonly MicrophoneRecorder _mic = new();
+    private readonly WindowsSpeechToText _localStt = new();
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
     private readonly MainDashboardViewModel _viewModel;
     private HudOverlayWindow? _overlay;
@@ -56,8 +57,13 @@ public partial class MainWindow : Window
 
         _audio = new AudioPriorityManager(_sink);
         _audio.AudioStarted += (_, item) => { if (item.Channel == "advisor") _lastAdvisory = item.Text; };
-        _cbRadio = new CBRadioService(roster, _company, _audio, () => _telemetry.LatestSnapshot, _aiSettings,
-            llm: _openAi, stt: _openAi, tts: _openAi);
+        _cbRadio = new CBRadioService(roster, _company, _audio, () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot, _aiSettings,
+            llm: _openAi, stt: new FallbackSpeechToText(_openAi, _localStt), tts: _openAi)
+        {
+            RealtimeTransportFactory = () => new WebSocketRealtimeTransport(),
+            RealtimeApiKey = () => ApiKeyStore.Load(_aiSettings.Provider),
+            RealtimeUsage = _openAi.Usage
+        };
 
         _viewModel = new MainDashboardViewModel(
             _telemetry, new DrivingAnalyzer(), new FuelAndMaintenanceAdvisor(), new TripTracker(),
@@ -84,6 +90,7 @@ public partial class MainWindow : Window
         UpdatePttLabels();
 
         RestoreWindowBounds();
+        ApplyLayout();
         _ = Task.Run(RefreshGameStatus);
         _telemetry.Start();
     }
@@ -163,6 +170,7 @@ public partial class MainWindow : Window
             _ => _aiSettings.AdvisorOutputDevice
         };
         _mic.DeviceNumber = Math.Max(0, _aiSettings.MicrophoneDevice);
+        _localStt.Enabled = _aiSettings.OfflineSpeechRecognition;
         _audio.SetChannelVolume("cb", _aiSettings.RadioVolume);
         _audio.SetChannelVolume("dispatcher", _aiSettings.DispatcherVolume);
         _audio.SetChannelVolume("advisor", _aiSettings.AdvisorVolume);
@@ -411,6 +419,72 @@ public partial class MainWindow : Window
             Clipboard.SetText(TruckingAdvisorDatabase.ExportDeliveryReportText(t));
     }
 
+    // ---- Layout & theme ----
+
+    private void BtnLayout_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new LayoutWindow(_aiSettings) { Owner = this };
+        dlg.Applied += (_, _) => ApplyLayout();
+        dlg.ShowDialog();
+    }
+
+    /// <summary>Applies theme, dashboard widget order/visibility and HUD rows from settings.</summary>
+    private void ApplyLayout()
+    {
+        ThemeManager.Apply(_aiSettings.Theme, _aiSettings.Accent);
+
+        var widgets = new Dictionary<string, FrameworkElement>
+        {
+            ["Gauges"] = WGauges, ["Delivery"] = WDelivery, ["Advisories"] = WAdvisories, ["Trend"] = WTrend, ["Report"] = WReport
+        };
+        var order = _aiSettings.WidgetOrder.Where(widgets.ContainsKey)
+            .Concat(AiSettings.DefaultWidgetOrder.Where(id => !_aiSettings.WidgetOrder.Contains(id))).ToList();
+        DashboardStack.Children.Clear();
+        foreach (var id in order)
+        {
+            var w = widgets[id];
+            w.Visibility = _aiSettings.HiddenWidgets.Contains(id) ? Visibility.Collapsed : Visibility.Visible;
+            DashboardStack.Children.Add(w);
+        }
+
+        var gauges = new Dictionary<string, FrameworkElement> { ["Speed"] = GSpeed, ["Engine"] = GEngine, ["Fuel"] = GFuel, ["Score"] = GScore };
+        foreach (var (id, card) in gauges)
+            card.Visibility = _aiSettings.HiddenWidgets.Contains("Gauge:" + id) ? Visibility.Collapsed : Visibility.Visible;
+        WGauges.Columns = Math.Max(1, gauges.Values.Count(g => g.Visibility == Visibility.Visible));
+
+        _overlay?.SetRows(_aiSettings.HudRows, _aiSettings.HudOpacity);
+    }
+
+    // ---- PDF & image exports ----
+
+    private void BtnExportPdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstTrips.SelectedItem is DeliveryTripRecord t)
+            SaveBytes($"delivery-report-{t.StartedAt:yyyyMMdd-HHmm}.pdf", "PDF files|*.pdf", PdfReportWriter.DeliveryReport(t));
+        else MessageBox.Show(this, "Select a trip first.", "Export", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnExportAllPdf_Click(object sender, RoutedEventArgs e) =>
+        SaveBytes("trip-history.pdf", "PDF files|*.pdf",
+            PdfReportWriter.TripHistory(_viewModel.AllTrips, _company.DisplayHandle, _company.CompanyName));
+
+    /// <summary>Renders a report card for the selected trip to a PNG you can post on Discord etc.</summary>
+    private void BtnExportPng_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstTrips.SelectedItem is not DeliveryTripRecord t)
+        {
+            MessageBox.Show(this, "Select a trip first.", "Export", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        SaveBytes($"delivery-{t.StartedAt:yyyyMMdd-HHmm}.png", "PNG images|*.png", ReportCard.RenderPng(t, _company.DisplayHandle));
+    }
+
+    private void SaveBytes(string fileName, string filter, byte[] content)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { FileName = fileName, Filter = filter };
+        if (dlg.ShowDialog(this) == true) File.WriteAllBytes(dlg.FileName, content);
+    }
+
     private void SaveExport(string fileName, string filter, string content)
     {
         var dlg = new Microsoft.Win32.SaveFileDialog { FileName = fileName, Filter = filter };
@@ -428,6 +502,7 @@ public partial class MainWindow : Window
         {
             _overlay = new HudOverlayWindow { DataContext = _viewModel };
             _overlay.ApplySavedBounds(_aiSettings.HudLeft, _aiSettings.HudTop, _aiSettings.HudWidth, _aiSettings.HudHeight);
+            _overlay.SetRows(_aiSettings.HudRows, _aiSettings.HudOpacity);
         }
         _overlay.Show();
     }

@@ -7,7 +7,7 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>TruckingAdvisor</AssemblyName>
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
     <Product>TruckingAdvisor</Product>
     <Company>TruckingAdvisor contributors</Company>
     <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>

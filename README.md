@@ -6,7 +6,7 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-2.3.0.exe** (from the latest GitHub Actions run's artifacts or a release) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-2.4.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
@@ -31,7 +31,10 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | CB radio | Channels 19, 9, 17, 21, 25 and 30 (dispatch). Hold push-to-talk (Left Alt by default) or type. Five recurring truckers plus up to four generated ones; they remember you, mention each other (radio gossip), and relationships grow from Stranger to Old Friend based on conversation quality and coming back over days. Conversation modes (Brief, Natural, Chatty, Quiet, Immersive), background chatter levels, an hourly cap on unprompted calls, relaxed truck-stop talk when you're parked, AI-to-AI exchanges in one API call, CB audio filter with a clean-audio option. CB Contacts tab shows each trucker and what they remember; you can make them forget. |
 | Dispatcher | A named dispatcher (default "Sarah") who briefs you on new loads, checks in at your chosen frequency, and calls about approaching the destination, low fuel vs. distance, rest, new damage and deadline risk, then wraps up each delivery. Dispatch and CB truckers don't share what you told the other. |
 | Voice commands | Say "TruckingAdvisor, ..." to switch channels, call dispatch, ask fuel range or distance left, change radio volume, mute/unmute or repeat. Introduce yourself on the radio ("call me Highway Ghost") and the app offers to save your handle. |
-| HUD overlay | Small click-through, always-on-top panel (F8). Works over the game in borderless/windowed mode. |
+| HUD overlay | Small click-through, always-on-top panel (F8). Unlock it to drag and resize (text scales), choose which rows it shows (speed, limit, fuel, range, remaining, score, location, grade ahead, radio) and its opacity. Works over the game in borderless/windowed mode. |
+| Statistics & exports | Trend charts for driver score, MPG, coaching events per 100 miles and trip distance. Export a trip as PDF, a shareable PNG report card, JSON or text; all trips as CSV or PDF. |
+| Look & layout | Themes (Midnight, Charcoal, Slate Light) and accent colors; reorder or hide dashboard widgets and individual gauges (Layout & Theme). Resizable window with a draggable divider. |
+| Learned location & grades | The game doesn't report your city or the road ahead, so TruckingAdvisor learns them from your own driving: city positions from where your jobs start and end (shown as "in/near Denver, CO"), and steep downgrades you've driven, so it warns you when you're heading toward one again. Unknown places stay unknown. |
 
 ### About the radio
 
@@ -39,11 +42,12 @@ The truckers are simulated radio characters. ATS doesn't expose nearby traffic, 
 
 ## AI setup and cost
 
-Pipeline: speech-to-text → chat → text-to-speech, all through OpenAI. Model names are settings, so you can swap them without code changes:
+Two voice pipelines (AI & Radio Settings): **Modular** (speech-to-text → chat → text-to-speech; cheapest) or **Realtime** (one OpenAI speech-to-speech session; faster and more natural, costs more, falls back to Modular if it fails). App commands still work in both. Without OpenAI, Windows' built-in offline speech recognition turns your push-to-talk into text, so voice commands and offline radio replies work with no internet. Model names are settings:
 
 | Setting | Default |
 | :--- | :--- |
 | Chat | `gpt-5.4-mini` |
+| Realtime voice (optional) | `gpt-realtime-mini` |
 | Transcription | `gpt-4o-mini-transcribe` |
 | Voice | `gpt-4o-mini-tts` (or free Windows voices) |
 
@@ -79,10 +83,8 @@ installer/                                Windows installer (NSIS) and build scr
 Plugins/plugin_manifest.json              pinned telemetry plugin release
 ```
 
-## Not done yet
+## Limits
 
-- Trend charts, PDF and shareable-image exports (CSV, JSON and text work today).
-- Widget rearranging, theme picker, overlay resizing and per-row settings.
-- Map-based location (city/state) and grade warnings ahead; the game's telemetry doesn't provide them.
-- Real-time speech-to-speech (the current pipeline is modular; a realtime model could be added behind the same interfaces).
-- Local speech recognition fallback (transcription uses OpenAI).
+- Location and grade warnings only cover places and roads you've driven with TruckingAdvisor running; there is no game map data.
+- Offline speech recognition needs an English speech recognizer installed in Windows and is less accurate than OpenAI.
+- The installer isn't code-signed, so SmartScreen shows a warning the first time.

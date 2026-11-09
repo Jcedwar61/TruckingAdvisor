@@ -2,11 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
+    <!-- Default (Midnight + Amber) theme. ThemeManager replaces these at runtime. -->
     <Application.Resources>
-        <SolidColorBrush x:Key="BgCharcoalBrush" Color="#0B0F17"/>
-        <SolidColorBrush x:Key="CardSurfaceBrush" Color="#151C28"/>
-        <SolidColorBrush x:Key="AccentAmberBrush" Color="#F59E0B"/>
-        <SolidColorBrush x:Key="StatusGreenBrush" Color="#10B981"/>
-        <SolidColorBrush x:Key="CriticalRedBrush" Color="#EF4444"/>
+        <SolidColorBrush x:Key="BgBrush" Color="#0B0F17"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#151C28"/>
+        <SolidColorBrush x:Key="ButtonBrush" Color="#1E293B"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#94A3B8"/>
+        <SolidColorBrush x:Key="GoodBrush" Color="#10B981"/>
+        <SolidColorBrush x:Key="BadBrush" Color="#EF4444"/>
     </Application.Resources>
 </Application>

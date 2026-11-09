@@ -1,5 +1,18 @@
 # Changelog — TruckingAdvisor
 
+## [v2.4.0] — 2026-11-09
+
+### Added
+- GitHub Releases: pushing a version tag builds, tests and smoke-tests the installer, then publishes it with SHA256SUMS.txt.
+- Statistics tab with trend charts (score, MPG, coaching events per 100 mi, distance) and a score-trend dashboard widget.
+- Exports: delivery report and trip history as PDF, shareable PNG report card (plus CSV, JSON, text).
+- Layout & Theme: three themes, five accent colors, reorder/hide dashboard widgets and gauges, choose HUD rows and opacity.
+- Learned location: approximate "in/near City, ST" from cities learned on your own deliveries (no guessing; ambiguous city names get no state).
+- Grade warnings: steep downgrades you've driven are remembered and announced when you head toward them again.
+- Realtime speech-to-speech option (OpenAI Realtime API) behind the same radio interfaces, with commands still recognized and automatic fallback.
+- Offline speech recognition fallback using Windows' built-in recognizer.
+
+
 ## [v2.3.0] — 2026-11-09 — Spec completion
 
 Reviewed with GPT, Gemini and DeepSeek; their confirmed findings are fixed and covered by tests (91 total).

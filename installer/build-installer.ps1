@@ -1,6 +1,6 @@
 # Builds publish\bin\TruckingAdvisor.exe and publish\TruckingAdvisor-Setup-<version>.exe on Windows.
 # Needs the .NET 8 SDK and NSIS 3 (winget install NSIS.NSIS, or choco install nsis).
-param([string]$Version = "2.3.0")
+param([string]$Version = "2.4.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root

@@ -58,6 +58,16 @@ public sealed class CBRadioService : ICBRadioService
     public TimeSpan ParkedFor { get; set; }
     /// <summary>Random pause before an AI reply, so it doesn't answer instantly like a machine.</summary>
     public (int MinMs, int MaxMs) ReplyPause { get; set; } = (350, 1200);
+    /// <summary>Opens a realtime connection (WebSocket in the app, fake in tests). Null disables realtime voice.</summary>
+    public Func<IRealtimeTransport>? RealtimeTransportFactory { get; set; }
+    public Func<string?>? RealtimeApiKey { get; set; }
+    public AiUsageTracker? RealtimeUsage { get; set; }
+
+    private bool RealtimeReady =>
+        _settings.VoicePipeline == VoicePipeline.Realtime && _settings.GlobalAiEnabled && _settings.Provider == AiLlmProvider.OpenAI &&
+        RealtimeTransportFactory is not null && RealtimeUsage is not null && !RealtimeUsage.IsOverLimit(_settings) &&
+        !string.IsNullOrWhiteSpace(RealtimeApiKey?.Invoke());
+
     /// <summary>Clock used for rate limits (replaceable in tests).</summary>
     public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
 
@@ -113,11 +123,43 @@ public sealed class CBRadioService : ICBRadioService
         if (CurrentState != CBRadioState.PlayerTransmitting) return;
         TransitionTo(CBRadioState.ProcessingSpeech);
 
+        // Realtime speech-to-speech: the same session hears the player and answers in voice.
+        if (RealtimeReady && ActiveChannel != EmergencyChannel)
+        {
+            RealtimeVoiceSession? rt = null;
+            try
+            {
+                rt = await RealtimeVoiceSession.StartAsync(RealtimeTransportFactory!(), _settings, RealtimeUsage!, RealtimeApiKey!()!,
+                    "You are a voice on a CB radio. Wait for your character instructions.", "ash", cancellationToken);
+                string? heard = await rt.SendPlayerAudioAsync(wavAudio, cancellationToken);
+                if (heard is not null)
+                {
+                    if (heard.Length == 0)
+                    {
+                        Notice?.Invoke(this, "Didn't catch that - nothing was heard.");
+                        ReturnToIdle();
+                        return;
+                    }
+                    await RespondAsync(heard, cancellationToken, rt);
+                    return;
+                }
+                Notice?.Invoke(this, (rt.LastError ?? "Realtime voice unavailable.") + " Using the standard voice pipeline.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Notice?.Invoke(this, $"Realtime voice failed ({ex.Message}). Using the standard voice pipeline.");
+            }
+            finally
+            {
+                if (rt is not null) await rt.DisposeAsync();
+            }
+        }
+
         string? transcript = null;
         if (_stt?.IsAvailable == true)
             transcript = await _stt.TranscribeAsync(wavAudio, cancellationToken);
         else
-            Notice?.Invoke(this, "Voice transcription is off (enable AI and the microphone in AI settings). Type your message instead.");
+            Notice?.Invoke(this, "Voice transcription is unavailable: enable AI (OpenAI) or offline recognition in AI settings, or type your message.");
 
         if (string.IsNullOrWhiteSpace(transcript))
         {
@@ -140,7 +182,7 @@ public sealed class CBRadioService : ICBRadioService
         await RespondAsync(playerTranscript.Trim(), cancellationToken);
     }
 
-    private async Task RespondAsync(string playerText, CancellationToken ct)
+    private async Task RespondAsync(string playerText, CancellationToken ct, RealtimeVoiceSession? rt = null)
     {
         int version;
         lock (_stateLock) version = _txVersion;
@@ -171,11 +213,11 @@ public sealed class CBRadioService : ICBRadioService
 
             if (channel == DispatchChannel)
             {
-                string reply = await GenerateAsync(
-                    ContextBuilder.BuildDispatcherSystemPrompt(_company, snapshot, RecentTurns()), playerText, ct)
-                    ?? OfflineDispatchReply();
-                await PauseAsync(ct);
-                await SpeakAsync(DispatchSpeaker, "Dispatch", reply, DispatchVoice, AudioPriority.Normal, channel, ct);
+                string prompt = ContextBuilder.BuildDispatcherSystemPrompt(_company, snapshot, RecentTurns());
+                var (rtText, rtWav) = await RealtimeReplyAsync(rt, prompt, DispatchVoice, ct);
+                string reply = rtText ?? await GenerateAsync(prompt, playerText, ct) ?? OfflineDispatchReply();
+                if (rtWav is null) await PauseAsync(ct);
+                await SpeakAsync(DispatchSpeaker, "Dispatch", reply, DispatchVoice, AudioPriority.Normal, channel, ct, preparedWav: rtWav);
             }
             else if (channel == EmergencyChannel)
             {
@@ -186,16 +228,17 @@ public sealed class CBRadioService : ICBRadioService
             {
                 var partner = PickPartner(playerText);
                 ActivePartner = partner;
-                string reply = await GenerateAsync(
-                    TruckerPrompt(partner, snapshot, channel), playerText, ct, MaxTokensForMode())
+                string prompt = TruckerPrompt(partner, snapshot, channel);
+                var (rtText, rtWav) = await RealtimeReplyAsync(rt, prompt, partner.VoiceId, ct);
+                string reply = rtText ?? await GenerateAsync(prompt, playerText, ct, MaxTokensForMode())
                     ?? OfflineTruckerReply(partner, playerText);
 
                 string where = string.IsNullOrEmpty(snapshot.DestinationCity) || !snapshot.JobActive
                     ? string.Empty : $" while hauling toward {snapshot.DestinationCity}";
                 RelationshipManager.ApplyExchange(partner, playerText, reply, where, DateTimeOffset.UtcNow, MemoryLimit);
                 TruckerUpdated?.Invoke(this, partner);
-                await PauseAsync(ct);
-                await SpeakAsync(partner.FullName, partner.Handle, reply, partner.VoiceId, AudioPriority.Normal, channel, ct);
+                if (rtWav is null) await PauseAsync(ct);
+                await SpeakAsync(partner.FullName, partner.Handle, reply, partner.VoiceId, AudioPriority.Normal, channel, ct, preparedWav: rtWav);
             }
         }
         catch (OperationCanceledException) { }
@@ -416,11 +459,29 @@ public sealed class CBRadioService : ICBRadioService
         return result?.Text;
     }
 
-    private async Task SpeakAsync(string speaker, string handle, string text, string voiceId, AudioPriority priority, int channel, CancellationToken ct, int? chatterVersion = null)
+    /// <summary>Realtime voice reply in the given character, or (null, null) to fall back to the modular pipeline.</summary>
+    private async Task<(string? Text, byte[]? Wav)> RealtimeReplyAsync(RealtimeVoiceSession? rt, string instructions, string voice, CancellationToken ct)
+    {
+        if (rt is null) return (null, null);
+        try
+        {
+            await rt.UpdateInstructionsAsync(instructions, voice, ct);
+            var reply = await rt.ReplyAsync(MaxTokensForMode(), ct);
+            if (reply is { Text.Length: > 0 }) return (reply.Text, reply.WavAudio);
+            Notice?.Invoke(this, (rt.LastError ?? "Realtime reply was empty.") + " Using the standard voice pipeline.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Notice?.Invoke(this, $"Realtime voice failed ({ex.Message}). Using the standard voice pipeline.");
+        }
+        return (null, null);
+    }
+
+    private async Task SpeakAsync(string speaker, string handle, string text, string voiceId, AudioPriority priority, int channel, CancellationToken ct, int? chatterVersion = null, byte[]? preparedWav = null)
     {
         ct.ThrowIfCancellationRequested();
-        byte[]? wav = null;
-        if (_tts?.IsAvailable == true)
+        byte[]? wav = preparedWav;
+        if (wav is null && _tts?.IsAvailable == true)
             wav = await _tts.SynthesizeAsync(text, voiceId, ct);
         if (chatterVersion is { } v)
         {

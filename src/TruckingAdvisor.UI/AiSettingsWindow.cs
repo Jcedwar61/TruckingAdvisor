@@ -34,6 +34,9 @@ public sealed class AiSettingsWindow : Window
     private readonly CheckBox _clean = new() { Content = "Clean audio (no radio static or filter)" };
     private readonly ComboBox _micDevice = new(), _radioOut = new(), _advisorOut = new(), _dispatchOut = new();
     private readonly Slider _radioVol = Vol(), _dispatchVol = Vol(), _advisorVol = Vol();
+    private readonly ComboBox _pipeline = new();
+    private readonly TextBox _realtimeModel = new();
+    private readonly CheckBox _offlineStt = new() { Content = "Offline speech recognition (Windows) when OpenAI transcription isn't available" };
 
     public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company)
     {
@@ -89,8 +92,17 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Chat model", _chat));
         form.Children.Add(Row("Speech-to-text model", _stt));
         form.Children.Add(Row("Text-to-speech model", _tts));
+        _pipeline.ItemsSource = Enum.GetValues<VoicePipeline>();
+        form.Children.Add(Row("Voice pipeline", _pipeline));
+        form.Children.Add(Row("Realtime model", _realtimeModel));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Modular: transcribe, then chat, then voice (cheapest, works with any chat model). Realtime: one speech-to-speech session for faster, more natural replies; costs more. If realtime fails, the radio falls back to modular.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
         form.Children.Add(Row("Max reply tokens", _maxTokens));
         form.Children.Add(_mic);
+        form.Children.Add(_offlineStt);
         form.Children.Add(Indent(new TextBlock
         {
             Text = "When AI is on, OpenAI receives: your push-to-talk recording (for transcription), what was said on the radio, and a short summary of game data (speed, fuel, load, destination). Nothing is sent while you aren't talking or chatter is off.",
@@ -142,6 +154,9 @@ public sealed class AiSettingsWindow : Window
         _priceOut.Text = _s.ChatOutputPricePerMillionTokens.ToString(inv);
         _priceStt.Text = _s.SpeechToTextPricePerMinute.ToString(inv);
         _priceTts.Text = _s.TextToSpeechPricePerMillionChars.ToString(inv);
+        _pipeline.SelectedItem = _s.VoicePipeline;
+        _realtimeModel.Text = _s.RealtimeModel;
+        _offlineStt.IsChecked = _s.OfflineSpeechRecognition;
         _hq.Text = _company.Headquarters;
         _dispatcherName.Text = _company.DispatcherName;
         _mode.SelectedItem = _s.ConversationMode;
@@ -183,6 +198,9 @@ public sealed class AiSettingsWindow : Window
         var inv = CultureInfo.InvariantCulture;
         _company.PlayerHandle = _handle.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_companyName.Text)) _company.CompanyName = _companyName.Text.Trim();
+        if (_pipeline.SelectedItem is VoicePipeline vp) _s.VoicePipeline = vp;
+        _s.RealtimeModel = NonEmpty(_realtimeModel.Text, _s.RealtimeModel);
+        _s.OfflineSpeechRecognition = _offlineStt.IsChecked == true;
         _company.Headquarters = _hq.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_dispatcherName.Text)) _company.DispatcherName = _dispatcherName.Text.Trim();
         if (_mode.SelectedItem is ConversationTimingMode m) _s.ConversationMode = m;

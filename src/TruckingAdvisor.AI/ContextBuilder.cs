@@ -42,6 +42,9 @@ public static class ContextBuilder
                 speedLimitMph = Positive(t.SpeedLimitMph),
                 fuelPercent = t.HasFuelCapacity ? Math.Round(t.FuelPercent) : (double?)null,
                 estimatedRangeMiles = Positive(t.EstimatedRangeMiles),
+                // Learned from the player's own deliveries; approximate, not from the game.
+                approximateLocation = string.IsNullOrEmpty(t.CurrentCity) ? null
+                    : $"near {t.CurrentCity}{(string.IsNullOrEmpty(t.CurrentState) ? "" : ", " + t.CurrentState)} (approximate)",
                 gameTime = t.GameTimeMinutes > 0 ? t.FormattedGameTime : null,
                 nightDriving = t.GameTimeMinutes > 0 ? t.IsNightDriving : (bool?)null,
                 gradePercent = Math.Abs(t.CalculatedGradePercent) >= 2 ? Math.Round(t.CalculatedGradePercent, 1) : (double?)null,

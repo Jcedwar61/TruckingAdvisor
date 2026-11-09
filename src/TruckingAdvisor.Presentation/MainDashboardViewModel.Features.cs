@@ -3,6 +3,7 @@ using TruckingAdvisor.AI;
 using TruckingAdvisor.Core.Career;
 using TruckingAdvisor.Core.Coaching;
 using TruckingAdvisor.Core.Insights;
+using TruckingAdvisor.Core.Mapping;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Interfaces;
 using TruckingAdvisor.Shared.Models;
@@ -24,10 +25,103 @@ public sealed partial class MainDashboardViewModel
     private string _lastTruck = string.Empty;
     private string? _lastSpokenAdvice;
 
+    private static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor");
+    private static string LocationsPath => Path.Combine(DataDir, "learned-cities.json");
+    private static string GradesPath => Path.Combine(DataDir, "learned-grades.json");
+    private readonly LocationMemory _locations = LocationMemory.Load(LocationsPath);
+    private readonly GradeMemory _grades = GradeMemory.Load(GradesPath);
+    private DateTimeOffset _lastGradeWarning = DateTimeOffset.MinValue;
+    private string _locationText = "Location: learning from your deliveries";
+    private string _gradeAheadText = string.Empty;
+
+    /// <summary>Approximate location from cities learned on your own deliveries.</summary>
+    public string LocationText { get => _locationText; private set { if (_locationText != value) { _locationText = value; Raise(); } } }
+    /// <summary>Steep downgrade ahead that you've driven before (empty when none).</summary>
+    public string GradeAheadText { get => _gradeAheadText; private set { if (_gradeAheadText != value) { _gradeAheadText = value; Raise(); } } }
+    public int LearnedCityCount => _locations.Cities.Count;
+
+    /// <summary>The live snapshot plus the learned approximate city/state (for the AI's context).</summary>
+    public AtsTelemetrySnapshot EnrichedSnapshot
+    {
+        get
+        {
+            var s = _telemetry.LatestSnapshot;
+            var city = NearestCityName(s);
+            return city is null ? s : s with { CurrentCity = city, CurrentState = CityStates.StateFor(city) ?? string.Empty };
+        }
+    }
+
+    private string? NearestCityName(AtsTelemetrySnapshot s)
+    {
+        var d = _locations.Describe(s.WorldX, s.WorldZ);
+        if (d is null) return null;
+        string rest = d.StartsWith("in ") ? d[3..] : d.StartsWith("near ") ? d[5..] : d;
+        int comma = rest.LastIndexOf(", ", StringComparison.Ordinal);
+        return comma > 0 ? rest[..comma] : rest;
+    }
+
+    /// <summary>Called once a second from the telemetry thread.</summary>
+    private void OnSlowTick(AtsTelemetrySnapshot s)
+    {
+        if (!s.IsLive || s.IsPaused) return;
+        _grades.Record(s.WorldX, s.WorldZ, s.CalculatedGradePercent, s.HeadingDegrees, s.SpeedMph);
+
+        var where = _locations.Describe(s.WorldX, s.WorldZ);
+        string location = where is null
+            ? $"Location: unknown here ({_locations.Cities.Count} cities learned from your deliveries)"
+            : $"Location: {where} (approximate, learned)";
+
+        string ahead = string.Empty;
+        if (s.SpeedMph > 20 && _grades.Ahead(s.WorldX, s.WorldZ, s.HeadingDegrees) is { } g)
+        {
+            ahead = $"Steep downgrade ahead: about {Math.Abs(g.Grade):F0}% (you've driven it before)";
+            if (s.Timestamp - _lastGradeWarning > TimeSpan.FromMinutes(3))
+            {
+                _lastGradeWarning = s.Timestamp;
+                _audio.EnqueueAnnouncement($"Steep downgrade coming up, about {Math.Abs(g.Grade):F0} percent. Check your speed and get on the engine brake early.",
+                    AudioPriority.High, "advisor");
+            }
+        }
+        _postToUi(() => { LocationText = location; GradeAheadText = ahead; });
+    }
+
+    private void LearnTripCity(DeliveryTripRecord trip, AtsTelemetrySnapshot? s, bool atStart)
+    {
+        if (s is null || !s.IsLive || s.SpeedMph > 15) return; // only when stopped at the company
+        if (atStart && !trip.StartedMidDelivery) _locations.Learn(trip.Origin, s.WorldX, s.WorldZ);
+        if (!atStart && trip.State == DeliveryState.Completed) _locations.Learn(trip.Destination, s.WorldX, s.WorldZ);
+    }
+
+    private void SaveMapMemories()
+    {
+        _locations.Save(LocationsPath);
+        _grades.Save(GradesPath);
+    }
+
     public ObservableCollection<AchievementItem> Achievements { get; } = new();
     public ObservableCollection<string> Insights { get; } = new();
     public ObservableCollection<ContactView> Contacts { get; } = new();
     public ObservableCollection<string> TruckEconomyRows { get; } = new();
+
+    // Trend charts (oldest -> newest completed trips, last 30).
+    public IReadOnlyList<double> ScoreTrend { get; private set; } = Array.Empty<double>();
+    public IReadOnlyList<double> MpgTrend { get; private set; } = Array.Empty<double>();
+    public IReadOnlyList<double> IncidentTrend { get; private set; } = Array.Empty<double>();
+    public IReadOnlyList<double> MilesTrend { get; private set; } = Array.Empty<double>();
+
+    /// <summary>All recorded trips (thread-safe copy) for exports.</summary>
+    public IReadOnlyList<DeliveryTripRecord> AllTrips { get { lock (_tripsLock) return _allTrips.ToList(); } }
+
+    private void RefreshTrends()
+    {
+        var done = AllTrips.Where(t => t.State == DeliveryState.Completed).OrderBy(t => t.StartedAt).TakeLast(30).ToList();
+        ScoreTrend = done.Select(t => (double)t.ScoreBreakdown.FinalScore).ToList();
+        MpgTrend = done.Where(t => t.AverageMpg > 0).Select(t => (double)t.AverageMpg).ToList();
+        IncidentTrend = done.Where(t => t.DistanceMiles >= 10)
+            .Select(t => (t.SpeedingIncidents + t.HarshBrakingIncidents + t.AggressiveAccelerationIncidents) * 100.0 / t.DistanceMiles).ToList();
+        MilesTrend = done.Select(t => (double)t.DistanceMiles).ToList();
+        Raise(nameof(ScoreTrend)); Raise(nameof(MpgTrend)); Raise(nameof(IncidentTrend)); Raise(nameof(MilesTrend));
+    }
 
     public TimeSpan SessionDuration => DateTimeOffset.UtcNow - _sessionStart;
 
@@ -58,6 +152,7 @@ public sealed partial class MainDashboardViewModel
         {
             if (state == DeliveryState.JobStarted && _trips.ActiveTrip is { } t)
             {
+                LearnTripCity(t, _telemetry.LatestSnapshot, atStart: true);
                 _dispatcher?.OnTripStarted(t);
                 // One personal insight at the start of a load, low priority.
                 var insight = ComputeInsights().FirstOrDefault();
@@ -109,6 +204,8 @@ public sealed partial class MainDashboardViewModel
     private IReadOnlyList<AchievementItem> OnTripFinishedFeatures(DeliveryTripRecord trip)
     {
         lock (_tripsLock) _allTrips.Add(trip);
+        LearnTripCity(trip, _telemetry.LatestSnapshot, atStart: false);
+        SaveMapMemories();
         var unlocked = AchievementManager.Evaluate(Company, Career, trip, DateTimeOffset.UtcNow);
         _dispatcher?.OnTripFinished(trip);
         var insights = ComputeInsights();
@@ -134,6 +231,7 @@ public sealed partial class MainDashboardViewModel
             TruckEconomyRows.Add($"{truck}: {e.AverageMpg:F1} MPG over {e.Miles:N0} mi ({e.Trips} trips)");
         Raise(nameof(CareerSummary));
         Raise(nameof(CompanySummary));
+        RefreshTrends();
     }
 
     // ---- Contacts (spec §40E) ----

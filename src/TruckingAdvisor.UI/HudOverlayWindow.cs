@@ -17,6 +17,32 @@ namespace TruckingAdvisor.UI;
 public sealed class HudOverlayWindow : Window
 {
     private readonly Border _frame;
+    private readonly StackPanel _panel = new() { Margin = new Thickness(12) };
+
+    /// <summary>Rows the player picked (in order) and the background opacity.</summary>
+    public void SetRows(IEnumerable<string> rows, double opacity)
+    {
+        _panel.Children.Clear();
+        foreach (var row in rows)
+        {
+            var line = row switch
+            {
+                "Speed" => Line("SpeedText", 30, "#F8FAFC", " MPH"),
+                "Limit" => Line("SpeedLimitText", 13, "#F59E0B"),
+                "Fuel" => Line("FuelText", 13, "#F59E0B", " fuel"),
+                "Range" => Line("RangeText", 12, "#F59E0B"),
+                "Remaining" => Line("RemainingText", 12, "#10B981"),
+                "Score" => Line("ScoreText", 12, "#10B981", " trip score"),
+                "Location" => Line("LocationText", 12, "#94A3B8"),
+                "Grade" => Line("GradeAheadText", 12, "#EF4444"),
+                "Radio" => Line("RadioStateText", 12, "#94A3B8"),
+                _ => null
+            };
+            if (line is not null) _panel.Children.Add(line);
+        }
+        if (_frame is not null)
+            _frame.Background = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(opacity, 0.2, 1.0) * 255), 0x0B, 0x0F, 0x17));
+    }
     private IntPtr _hwnd;
 
     public bool IsLocked { get; private set; } = true;
@@ -37,12 +63,8 @@ public sealed class HudOverlayWindow : Window
         Left = SystemParameters.WorkArea.Right - Width - 20;
         Top = SystemParameters.WorkArea.Top + 20;
 
-        var panel = new StackPanel { Margin = new Thickness(12) };
-        panel.Children.Add(Line("SpeedText", 30, "#F8FAFC", " MPH"));
-        panel.Children.Add(Line("SpeedLimitText", 13, "#F59E0B"));
-        panel.Children.Add(Line("FuelText", 13, "#F59E0B", " fuel"));
-        panel.Children.Add(Line("RemainingText", 12, "#10B981"));
-        panel.Children.Add(Line("RadioStateText", 12, "#94A3B8"));
+        var panel = _panel;
+        SetRows(TruckingAdvisor.AI.AiSettings.DefaultHudRows, 0.85);
 
         _frame = new Border
         {

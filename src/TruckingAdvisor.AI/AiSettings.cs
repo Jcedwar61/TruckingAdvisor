@@ -53,6 +53,11 @@ public sealed class AiSettings
     public int MaxUnsolicitedPerHour { get; set; } = 12;
     public DispatchContactLevel DispatchContact { get; set; } = DispatchContactLevel.Normal;
     public bool MicrophoneEnabled { get; set; }
+    /// <summary>Use Windows' built-in offline recognizer when OpenAI transcription isn't available.</summary>
+    public bool OfflineSpeechRecognition { get; set; } = true;
+    /// <summary>Modular = transcribe -> chat -> voice. Realtime = one OpenAI realtime speech-to-speech session.</summary>
+    public VoicePipeline VoicePipeline { get; set; } = VoicePipeline.Modular;
+    public string RealtimeModel { get; set; } = "gpt-realtime-mini";
     /// <summary>Keep short memories of conversations so truckers remember you. Off = nothing is stored.</summary>
     public bool RememberConversations { get; set; } = true;
     public TruckingAdvisor.Shared.Enums.CoDriverPersonality CoDriver { get; set; } = TruckingAdvisor.Shared.Enums.CoDriverPersonality.Friendly;
@@ -82,6 +87,22 @@ public sealed class AiSettings
     public double? HudWidth { get; set; }
     public double? HudHeight { get; set; }
 
+    // Look & layout.
+    public string Theme { get; set; } = "Midnight";
+    public string Accent { get; set; } = "Amber";
+    /// <summary>Dashboard widgets in display order.</summary>
+    public List<string> WidgetOrder { get; set; } = new(DefaultWidgetOrder);
+    public List<string> HiddenWidgets { get; set; } = new();
+    /// <summary>HUD rows to show, in order.</summary>
+    public List<string> HudRows { get; set; } = new(DefaultHudRows);
+    public double HudOpacity { get; set; } = 0.85;
+
+    public static readonly string[] DefaultWidgetOrder = { "Gauges", "Delivery", "Advisories", "Trend", "Report" };
+    /// <summary>Individual gauge cards inside the Gauges widget (can be hidden too).</summary>
+    public static readonly string[] GaugeCards = { "Speed", "Engine", "Fuel", "Score" };
+    public static readonly string[] AllHudRows = { "Speed", "Limit", "Fuel", "Range", "Remaining", "Score", "Location", "Grade", "Radio" };
+    public static readonly string[] DefaultHudRows = { "Speed", "Limit", "Fuel", "Remaining", "Radio" };
+
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor", "ai-settings.json");
 
@@ -109,3 +130,5 @@ public enum RadioActivitySetting { Off, Quiet, Normal, Busy, VeryBusy }
 
 /// <summary>How often dispatch calls you on its own. Important notices (damage, deadline risk) still come through unless Off.</summary>
 public enum DispatchContactLevel { Off, Rare, Normal, Frequent }
+
+public enum VoicePipeline { Modular, Realtime }
