@@ -18,7 +18,9 @@ public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
 {
     private readonly IAudioSink _sink;
     private readonly object _sync = new();
-    private readonly List<(AudioItem Item, long Seq, TaskCompletionSource? Done)> _queue = new();
+    private readonly List<(AudioItem Item, long Seq, TaskCompletionSource? Done, DateTime QueuedAt)> _queue = new();
+    /// <summary>Items held back by a busy radio longer than this are dropped so nothing waits forever.</summary>
+    public TimeSpan MaxHoldTime { get; set; } = TimeSpan.FromSeconds(60);
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<string, float> _volumes = new(new Dictionary<string, float>
@@ -68,14 +70,15 @@ public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
 
         lock (_sync)
         {
-            if (_queue.Any(q => q.Item.WavAudio is null && q.Item.Text == item.Text)) { done?.TrySetResult(); return; } // duplicate
+            // Skip duplicate announcements, but never for a caller waiting on its own playback.
+            if (done is null && _queue.Any(q => q.Item.WavAudio is null && q.Item.Text == item.Text)) return;
             if (item.Priority == AudioPriority.Critical)
             {
                 // Stale chatter is pointless now.
                 foreach (var dropped in _queue.Where(q => q.Item.Priority < AudioPriority.High)) dropped.Done?.TrySetResult();
                 _queue.RemoveAll(q => q.Item.Priority < AudioPriority.High);
             }
-            _queue.Add((item, _seq++, done));
+            _queue.Add((item, _seq++, done, DateTime.UtcNow));
 
             var playing = _current;
             if (playing is not null && ShouldPreempt(item.Priority, playing.Priority))
@@ -108,6 +111,13 @@ public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
     {
         lock (_sync)
         {
+            var now = DateTime.UtcNow;
+            for (int i = _queue.Count - 1; i >= 0; i--)
+            {
+                if (now - _queue[i].QueuedAt <= MaxHoldTime) continue;
+                _queue[i].Done?.TrySetResult(); // too stale to be useful; release the waiter
+                _queue.RemoveAt(i);
+            }
             int best = -1;
             for (int i = 0; i < _queue.Count; i++)
             {
@@ -167,6 +177,7 @@ public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
         {
             foreach (var q in _queue) q.Done?.TrySetResult();
             _queue.Clear();
+            _currentDone?.TrySetResult(); // in case playback is stuck
         }
         _shutdown.Dispose();
         _signal.Dispose();

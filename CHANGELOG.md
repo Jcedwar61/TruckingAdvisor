@@ -2,7 +2,7 @@
 
 ## [v2.2.0] — 2026-11-09 — Review fixes
 
-Reviewed by Claude with independent second opinions from GPT and Gemini. Every item below was a confirmed defect in v2.1.
+Reviewed by Claude with independent second opinions from GPT, Gemini and DeepSeek. Every item below was a confirmed defect in v2.1.
 
 ### Fixed — would not build or run
 - Solution did not compile: invalid `"Local\SCSTelemetry"` escape, broken string quoting in the CSV export and radio log, missing DPAPI package, test project referencing a Windows-only project.
@@ -22,6 +22,12 @@ Reviewed by Claude with independent second opinions from GPT and Gemini. Every i
 - API key had a plaintext fallback (and the web cockpit saved it in browser storage). Keys are DPAPI-only; the web page keeps them in memory only.
 - AI-to-AI banter crashed with two truckers; it now uses one API call per exchange.
 - Truckers' memories and relationships now persist (SQLite) and grow from conversation quality and continuity.
+
+### Fixed — found in the second review round
+- The plugin flips the delivered/cancelled flags on each event, so every second delivery would have been logged as cancelled. Trips now compare against the flag value at trip start, wait 10 s for a late flag, re-baseline after a game restart, and close the old trip if a different job appears.
+- Compass heading was mirrored (the SDK measures it counter-clockwise).
+- Radio: a finishing reply or background chatter could reset a newer transmission; the radio went "idle" while a voice was still playing.
+- Audio: waiting callers could hang if the radio stayed busy, and duplicate lines reported "done" before playing.
 
 ### Fixed — audio, UI, installer
 - Audio "priority" didn't wait for playback or stop sound; a real playback queue now prevents overlap and lets critical alerts interrupt.

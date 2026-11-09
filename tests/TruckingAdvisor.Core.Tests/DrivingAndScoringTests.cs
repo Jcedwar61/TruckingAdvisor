@@ -179,8 +179,39 @@ public sealed class DrivingAndScoringTests
         finished = null;
         tracker.Update(Live(s => s with { JobActive = true, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(10) }));
         tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(11) }));
-        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(17) }));
+        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(22) }));
         Assert.Equal(DeliveryState.Cancelled, finished!.State); // no flag within the grace period
+    }
+
+    [Fact]
+    public void TripTracker_GameRestartResettingFlags_IsNotADelivery()
+    {
+        var tracker = new TripTracker();
+        DeliveryTripRecord? finished = null;
+        tracker.TripFinished += (_, x) => finished = x;
+        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true }));
+        tracker.Update(Live(s => s with { JobActive = true, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(1) }));
+        tracker.Update(new AtsTelemetrySnapshot { ConnectionState = ConnectionState.Disconnected });           // game closed
+        tracker.Update(Live(s => s with { JobActive = true, JobDeliveredFlag = false, Timestamp = T0.AddMinutes(5) })); // restarted: flags zeroed
+        Assert.Null(finished);
+        Assert.NotNull(tracker.ActiveTrip);
+        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddMinutes(6) }));  // real delivery
+        Assert.Equal(DeliveryState.Completed, finished!.State);
+    }
+
+    [Fact]
+    public void TripTracker_NewJobDuringGrace_ClosesOldTripFirst()
+    {
+        var tracker = new TripTracker();
+        var done = new List<DeliveryTripRecord>();
+        tracker.TripFinished += (_, x) => done.Add(x);
+        tracker.Update(Live(s => s with { JobActive = false }));
+        tracker.Update(Live(s => s with { JobActive = true, CargoName = "Lumber", DestinationCity = "Denver", Timestamp = T0.AddSeconds(1) }));
+        tracker.Update(Live(s => s with { JobActive = false, Timestamp = T0.AddSeconds(2) }));
+        tracker.Update(Live(s => s with { JobActive = true, CargoName = "Milk", DestinationCity = "Reno", Timestamp = T0.AddSeconds(3) }));
+        Assert.Single(done);
+        Assert.Equal("Lumber", done[0].Cargo);
+        Assert.Equal("Milk", tracker.ActiveTrip!.Cargo);
     }
 
     [Fact]

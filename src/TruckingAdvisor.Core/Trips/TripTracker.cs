@@ -26,7 +26,8 @@ public sealed class TripTracker
     private uint _deadline;
     private DateTimeOffset? _jobEndedAt;
     /// <summary>How long to wait for the delivered/cancelled flag after the job disappears.</summary>
-    public static readonly TimeSpan EndGracePeriod = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan EndGracePeriod = TimeSpan.FromSeconds(10);
+    private bool _rebaselineOnReconnect;
 
     public DeliveryTripRecord? ActiveTrip { get; private set; }
 
@@ -41,6 +42,7 @@ public sealed class TripTracker
         if (s.IsDemoData || !s.IsLive)
         {
             _last = null; // don't bridge distance across a disconnect
+            _rebaselineOnReconnect = ActiveTrip is not null;
             return;
         }
 
@@ -50,6 +52,26 @@ public sealed class TripTracker
         if (ActiveTrip is null)
         {
             if (s.JobActive) StartTrip(s, startedMidDelivery: firstSnapshot);
+            _last = s;
+            return;
+        }
+
+        if (_rebaselineOnReconnect)
+        {
+            // The game (and plugin) may have restarted, which resets the event flags to false.
+            // Take fresh baselines instead of mistaking the reset for a delivery.
+            _rebaselineOnReconnect = false;
+            _deliveredBaseline = s.JobDeliveredFlag;
+            _cancelledBaseline = s.JobCancelledFlag;
+            _jobEndedAt = null;
+            if (!s.JobActive) { _last = s; return; }
+        }
+
+        // The job vanished and a different one appeared without any event: close the old trip first.
+        if (_jobEndedAt is not null && s.JobActive && IsDifferentJob(ActiveTrip!, s))
+        {
+            Finish(s, DeliveryState.Cancelled);
+            StartTrip(s, startedMidDelivery: false);
             _last = s;
             return;
         }
@@ -116,6 +138,10 @@ public sealed class TripTracker
         StateChanged?.Invoke(this, DeliveryState.JobStarted);
         SetState(NextInProgressState(s));
     }
+
+    private static bool IsDifferentJob(DeliveryTripRecord t, AtsTelemetrySnapshot s) =>
+        (!string.IsNullOrEmpty(t.Cargo) && !string.IsNullOrEmpty(s.CargoName) && !string.Equals(t.Cargo, s.CargoName, StringComparison.Ordinal)) ||
+        (!string.IsNullOrEmpty(t.Destination) && !string.IsNullOrEmpty(s.DestinationCity) && !string.Equals(t.Destination, s.DestinationCity, StringComparison.Ordinal));
 
     private void Accumulate(AtsTelemetrySnapshot s)
     {

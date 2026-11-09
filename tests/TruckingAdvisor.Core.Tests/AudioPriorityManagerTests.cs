@@ -88,6 +88,22 @@ public sealed class AudioPriorityManagerTests
     }
 
     [Fact]
+    public async Task HeldItems_AreReleasedAfterMaxHoldTime_AndWaitersAreNotDeduped()
+    {
+        var sink = new FakeSink { Duration = TimeSpan.FromMilliseconds(50) };
+        using var mgr = new AudioPriorityManager(sink) { IsRadioChannelBusy = true, MaxHoldTime = TimeSpan.FromMilliseconds(300) };
+        await mgr.EnqueueAndWaitAsync(new AudioItem("stuck", AudioPriority.Normal)).WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Empty(sink.Started); // released without playing, instead of hanging forever
+
+        mgr.IsRadioChannelBusy = false;
+        mgr.MaxHoldTime = TimeSpan.FromMinutes(1);
+        var a = mgr.EnqueueAndWaitAsync(new AudioItem("same", AudioPriority.Normal));
+        var b = mgr.EnqueueAndWaitAsync(new AudioItem("same", AudioPriority.Normal));
+        await Task.WhenAll(a, b).WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(2, sink.Started.Count(x => x == "same")); // each waiter heard its own line
+    }
+
+    [Fact]
     public async Task StopAllStopsPlaybackAndClearsQueue()
     {
         var sink = new FakeSink { Duration = TimeSpan.FromSeconds(5) };
