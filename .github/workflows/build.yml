@@ -1,0 +1,74 @@
+name: TruckingAdvisor build & test
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write       # only used for release attestation on tags
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore, build and test
+        run: |
+          dotnet restore TruckingAdvisor.sln
+          dotnet build TruckingAdvisor.sln -c Release --no-restore
+          dotnet test TruckingAdvisor.sln -c Release --no-build --logger "console;verbosity=normal"
+
+      - name: Publish full app (self-contained, win-x64)
+        run: dotnet publish src/TruckingAdvisor.UI/TruckingAdvisor.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/bin
+
+      - name: Build lightweight window with the Windows C# 5 compiler (same as the installer)
+        shell: pwsh
+        run: |
+          $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          # System.Speech isn't next to csc.exe; it lives in the .NET 4 GAC.
+          $speech = Get-ChildItem (Join-Path $env:WINDIR "Microsoft.NET\assembly\GAC_MSIL\System.Speech") -Recurse -Filter System.Speech.dll | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $speech) { throw "System.Speech.dll not found" }
+          & $csc /nologo /target:winexe /win32icon:Assets\TruckingAdvisor.ico /out:publish\TruckingAdvisor-Lite.exe `
+            /r:System.Windows.Forms.dll /r:System.Drawing.dll "/r:$speech" `
+            /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll Launcher\TruckingAdvisorDesktopHost.cs
+          if ($LASTEXITCODE -ne 0) { throw "Lite build failed" }
+
+      - name: Check PowerShell scripts parse
+        shell: pwsh
+        run: |
+          foreach ($f in @("Install_TruckingAdvisor.ps1", "Plugins\Download-GitHubPlugins.ps1")) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors)
+            if ($errors) { $errors | ForEach-Object { Write-Error "${f}: $($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+          }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem publish -Recurse -File | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $([IO.Path]::GetRelativePath((Resolve-Path publish), $_.FullName))"
+          } | Set-Content publish/SHA256SUMS.txt -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TruckingAdvisor-win-x64
+          path: publish
+
+      - name: Attest build provenance (release tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'publish/bin/TruckingAdvisor.exe'

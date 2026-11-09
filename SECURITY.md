@@ -26,8 +26,8 @@ TruckingAdvisor is open source. Everything it does on your PC and on the network
 
 ## Releases
 
-GitHub Actions (`.github/workflows/truckingadvisor.yml`) builds, tests and publishes `TruckingAdvisor.exe` and `TruckingAdvisor-Lite.exe` with a `SHA256SUMS.txt`, and adds build-provenance attestation on `v*` tags. The executables are not code-signed, so Windows SmartScreen may warn on first run.
+GitHub Actions (`.github/workflows/build.yml`) builds, tests and publishes `TruckingAdvisor.exe` and `TruckingAdvisor-Lite.exe` with a `SHA256SUMS.txt`, and adds build-provenance attestation on `v*` tags. The executables are not code-signed, so Windows SmartScreen may warn on first run.
 
 ## Reporting a problem
 
-Open an issue at https://github.com/Jcedwar61/SimCoach/issues. Please don't post API keys or other secrets in issues.
+Open an issue at https://github.com/Jcedwar61/TruckingAdvisor/issues. Please don't post API keys or other secrets in issues.

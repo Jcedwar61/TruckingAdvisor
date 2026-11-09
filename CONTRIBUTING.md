@@ -3,7 +3,6 @@
 ## Full app (.NET 8)
 
 ```bash
-cd TruckingAdvisor
 dotnet build TruckingAdvisor.sln
 dotnet test TruckingAdvisor.sln
 dotnet run --project src/TruckingAdvisor.UI            # add -- --demo for labeled demo data
