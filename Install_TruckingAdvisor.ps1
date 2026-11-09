@@ -157,8 +157,12 @@ $btnInstall.Add_Click({
       if ((Test-Path $csc) -and (Test-Path $liteSource)) {
         Write-InstallLog "      .NET 8 SDK not found - building the lightweight simulator window instead."
         Write-InstallLog "      (It does not read live telemetry or use AI. Install the .NET 8 SDK and re-run setup for the full app.)"
+        # System.Speech isn't next to csc.exe; find it in the .NET 4 GAC.
+        $speech = Get-ChildItem -Path (Join-Path $env:WINDIR "Microsoft.NET\assembly\GAC_MSIL\System.Speech") -Recurse -Filter System.Speech.dll -ErrorAction SilentlyContinue |
+          Select-Object -First 1 -ExpandProperty FullName
+        if (-not $speech) { $speech = "System.Speech.dll" }
         $cscArgs = @("/nologo", "/target:winexe", "/out:$liteExe",
-                     "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll", "/r:System.Speech.dll",
+                     "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll", "/r:$speech",
                      "/r:System.IO.Compression.dll", "/r:System.IO.Compression.FileSystem.dll", $liteSource)
         if (Test-Path $iconPath) { $cscArgs = @("/win32icon:$iconPath") + $cscArgs }
         $out = & $csc @cscArgs 2>&1

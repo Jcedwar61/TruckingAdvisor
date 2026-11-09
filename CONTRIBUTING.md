@@ -16,7 +16,7 @@ On Linux/macOS, everything except running the WPF window works; build with `-p:E
 `Launcher/TruckingAdvisorDesktopHost.cs` is a single-file WinForms simulator window that compiles with Windows' built-in C# 5 compiler. It does **not** read live telemetry or use AI. Keep it C# 5 compatible (no property initializers, `$"..."`, `?.`, `nameof`, or expression-bodied members):
 
 ```cmd
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:Assets\TruckingAdvisor.ico /out:TruckingAdvisor-Lite.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Speech.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll Launcher\TruckingAdvisorDesktopHost.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:Assets\TruckingAdvisor.ico /out:TruckingAdvisor-Lite.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:%WINDIR%\Microsoft.NET\assembly\GAC_MSIL\System.Speech\v4.0_4.0.0.0__31bf3856ad364e35\System.Speech.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll Launcher\TruckingAdvisorDesktopHost.cs
 ```
 
 ## Ground rules
