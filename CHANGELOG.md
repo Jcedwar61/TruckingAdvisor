@@ -1,10 +1,15 @@
 # Changelog — TruckingAdvisor
 
+## [v2.8.1] — 2026-11-12
+
+### Changed
+- Channels are changed by scrolling with **Next / Previous CB channel** (bind them to keys or wheel / button-box buttons). The six one-button-per-channel entries were removed from the Controls list; any saved bindings for them are dropped.
+
 ## [v2.8.0] — 2026-11-12
 
 ### Added
 - **Bind every function to a key or a wheel / button-box button.** New **More > Controls & Key Bindings** window: click Add, press a key or a button (or D-pad direction) on any wheel, button box, joystick or gamepad, done. Several bindings per function; binding an input that's already used moves it and says so. Changes apply immediately.
-- Bindable functions: push-to-talk (hold), next / previous channel, a direct button for each channel (19, 9, 17, 21, 25, 30), dispatch check-in, Quiet 30 min, radio volume up / down, stop announcement, mute all, repeat advice, fuel report, distance & ETA report, HUD on/off, show channel picker.
+- Bindable functions: push-to-talk (hold), next / previous channel, dispatch check-in, Quiet 30 min, radio volume up / down, stop announcement, mute all, repeat advice, fuel report, distance & ETA report, HUD on/off, show channel picker.
 - Controllers are read through DirectInput in the background and non-exclusively, so they keep working while ATS has focus and the game still gets the same buttons. Plug-and-play: devices are picked up within a few seconds. Bindings are tied to the specific device, so button 1 on your wheel and button 1 on your button box are different.
 - Channel labels everywhere: the HUD picker is now a labeled list ("19  Highway traffic", "30  Company dispatch", ...) and the main window's channel buttons show the name under the number.
 
