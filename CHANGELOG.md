@@ -12,6 +12,7 @@ Calmer, not louder: everything new here is there when you look and quiet when yo
 - **Tidier header**: Quiet, HUD and Settings stay visible; Layout & Theme, Move/Resize HUD, Rebind PTT, plugin install and demo data moved into a **More** menu.
 
 ### Fixed
+- **Radio replies failed while hauling a load**: building the trucker's context crashed ("Rounding digits must be between 0 and 15") whenever cargo weight was known, so nobody answered. Found by the new screenshot run; covered by a test now.
 - Achievement cards could show the progress percentage instead of "UNLOCKED".
 
 ## [v2.5.0] — 2026-11-12

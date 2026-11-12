@@ -165,6 +165,21 @@ public sealed class SpecFeatureTests
     }
 
     [Fact]
+    public async Task RadioReply_WorksWithLiveCargoContext()
+    {
+        var audio = new Audio();
+        var snapshot = new AtsTelemetrySnapshot { ConnectionState = ConnectionState.Connected, JobActive = true, CargoWeightLbs = 40_250, SpeedMph = 62, SpeedLimitMph = 65 };
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile(), audio, () => snapshot,
+            new AiSettings()) { ReplyPause = (0, 0) };
+        string? notice = null;
+        radio.Notice += (_, n) => notice = n;
+        radio.BeginPushToTalk();
+        await radio.EndPushToTalkAsync("Big Red, you got your ears on?");
+        Assert.Null(notice);
+        Assert.NotEmpty(audio.Items);
+    }
+
+    [Fact]
     public async Task KnowledgeBoundary_TruckersNeverHearDispatchChannel()
     {
         var llm = new Llm();
