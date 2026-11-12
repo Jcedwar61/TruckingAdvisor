@@ -16,7 +16,7 @@ public class InputBindingTests
         Assert.Equal("cycleCbChannel", set.ActionFor(Key(0xDD)));
         Assert.Equal("previousCbChannel", set.ActionFor(Key(0xDB)));
         Assert.Equal("toggleOverlay", set.ActionFor(Key(0x77)));
-        Assert.Empty(set.For("channel19")); // direct channels start unbound
+        Assert.Null(InputActions.Find("channel19")); // channels are scrolled, not bound one by one
     }
 
     [Fact]
@@ -40,10 +40,10 @@ public class InputBindingTests
     public void SameButtonNumber_OnDifferentDevices_AreDifferentInputs()
     {
         var set = new InputBindingSet();
-        set.Bind("channel19", Wheel(0, "wheel-1"));
-        set.Bind("channel30", Wheel(0, "buttonbox-1"));
-        Assert.Equal("channel19", set.ActionFor(Wheel(0, "wheel-1")));
-        Assert.Equal("channel30", set.ActionFor(Wheel(0, "buttonbox-1")));
+        set.Bind("cycleCbChannel", Wheel(0, "wheel-1"));
+        set.Bind("previousCbChannel", Wheel(0, "buttonbox-1"));
+        Assert.Equal("cycleCbChannel", set.ActionFor(Wheel(0, "wheel-1")));
+        Assert.Equal("previousCbChannel", set.ActionFor(Wheel(0, "buttonbox-1")));
     }
 
     [Fact]
@@ -116,6 +116,22 @@ public class InputBindingTests
     }
 
     [Fact]
+    public void Load_DropsFunctionsThatNoLongerExist()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ta-controls-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "controls.json");
+            File.WriteAllText(path, "{\"Bindings\":{\"channel19\":[{\"Source\":\"Controller\",\"Code\":3,\"DeviceId\":\"wheel-1\"}]}}");
+            var set = InputBindingSet.Load(path);
+            Assert.Null(set.ActionFor(Wheel(3)));
+            Assert.Equal("cycleCbChannel", set.ActionFor(Key(0xDD)));
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
     public void Load_MigratesOldKeyboardOnlyFile()
     {
         string dir = Path.Combine(Path.GetTempPath(), "ta-controls-" + Guid.NewGuid().ToString("N"));
@@ -150,7 +166,5 @@ public class InputBindingTests
         Assert.Equal("Left Alt", Key(0xA4).Display);
         Assert.Equal("G29 Racing Wheel: Button 5", Wheel(4).Display);
         Assert.Equal("G29 Racing Wheel: D-pad Left", Wheel(InputBinding.PovBase + 3).Display);
-        Assert.Equal(30, InputActions.DirectChannel("channel30"));
-        Assert.Null(InputActions.DirectChannel("cycleCbChannel"));
     }
 }

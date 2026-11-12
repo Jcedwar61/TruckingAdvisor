@@ -58,12 +58,6 @@ public static class InputActions
         new(PushToTalk, "Push-to-talk (hold)", "CB radio", 0xA4, IsHold: true),       // Left Alt
         new("cycleCbChannel", "Next CB channel", "CB radio", 0xDD),                       // ]
         new("previousCbChannel", "Previous CB channel", "CB radio", 0xDB),                // [
-        new("channel19", "Channel 19 - Highway traffic", "CB radio"),
-        new("channel9", "Channel 9 - Emergency", "CB radio"),
-        new("channel17", "Channel 17 - Regional traffic", "CB radio"),
-        new("channel21", "Channel 21 - Casual conversation", "CB radio"),
-        new("channel25", "Channel 25 - Truck stop talk", "CB radio"),
-        new("channel30", "Channel 30 - Company dispatch", "CB radio"),
         new("quickDispatchCheck", "Check in with dispatch", "CB radio", 0x79),            // F10
         new("toggleQuiet", "Quiet 30 min on/off", "CB radio"),
         new("radioVolumeUp", "Radio volume up", "Audio"),
@@ -78,10 +72,6 @@ public static class InputActions
     };
 
     public static InputAction? Find(string id) => All.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Channel number for the direct "channelNN" actions, else null.</summary>
-    public static int? DirectChannel(string actionId) =>
-        actionId.StartsWith("channel", StringComparison.OrdinalIgnoreCase) && int.TryParse(actionId.AsSpan(7), out int ch) ? ch : null;
 }
 
 /// <summary>
@@ -148,7 +138,9 @@ public sealed class InputBindingSet
 
         bool fromSaved = set is not null;
         set ??= new InputBindingSet();
-        set.Bindings = new(set.Bindings ?? new(), StringComparer.OrdinalIgnoreCase);
+        // Keep only functions this version has (older files may list ones that were removed).
+        set.Bindings = new((set.Bindings ?? new()).Where(kv => InputActions.Find(kv.Key) is not null),
+            StringComparer.OrdinalIgnoreCase);
 
         if (!fromSaved && legacyKeyFile is not null && File.Exists(legacyKeyFile))
         {

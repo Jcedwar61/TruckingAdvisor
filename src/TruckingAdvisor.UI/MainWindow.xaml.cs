@@ -349,10 +349,6 @@ public partial class MainWindow : Window
             case "radioVolumeUp": _viewModel.RunCommand(VoiceCommandKind.VolumeUp); break;
             case "radioVolumeDown": _viewModel.RunCommand(VoiceCommandKind.VolumeDown); break;
             case "distanceReport": _viewModel.RunCommand(VoiceCommandKind.DistanceReport); break;
-            case var direct when InputActions.DirectChannel(direct) is { } channel:
-                _viewModel.SelectChannel(channel);
-                _channelBar?.Flash();
-                break;
             case "cycleCbChannel": _viewModel.CycleChannel(1); _channelBar?.Flash(); break;
             case "previousCbChannel": _viewModel.CycleChannel(-1); _channelBar?.Flash(); break;
             case "acknowledgeAlert": _audio.StopAll(); break;
