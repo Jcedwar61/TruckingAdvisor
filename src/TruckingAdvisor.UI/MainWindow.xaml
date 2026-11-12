@@ -21,8 +21,8 @@
             <Setter Property="Margin" Value="0,2,8,2"/>
         </Style>
         <Style x:Key="ChannelButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,0,6,6"/>
-            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="0,0,4,6"/>
+            <Setter Property="Padding" Value="2,5"/>
             <Setter Property="FontFamily" Value="Consolas"/>
         </Style>
         <Style x:Key="Lamp" TargetType="Ellipse">
@@ -304,7 +304,7 @@
                                 </StackPanel>
                             </DockPanel>
                         </Border>
-                        <WrapPanel Margin="0,8,0,0">
+                        <UniformGrid Rows="1" Margin="0,8,0,0">
                             <Button Tag="19" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 19: Highway traffic">
                                 <StackPanel>
                                     <TextBlock Text="19" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
@@ -341,7 +341,7 @@
                                     <TextBlock Text="Dispatch" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
                                 </StackPanel>
                             </Button>
-                        </WrapPanel>
+                        </UniformGrid>
                         <TextBlock Text="{Binding PartnerText}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0" FontSize="12"/>
                         <TextBlock Text="{Binding AiStatusText}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" FontSize="12"/>
                         <TextBlock Text="{Binding RadioNotice}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="0,2,0,6"/>

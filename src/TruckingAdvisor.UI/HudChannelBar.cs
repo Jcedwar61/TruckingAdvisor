@@ -28,7 +28,7 @@ public sealed class HudChannelBar : Window
 
     private readonly MainDashboardViewModel _vm;
     private readonly Border _frame;
-    private readonly UniformGrid _list = new() { Columns = 3, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
+    private readonly UniformGrid _list = new() { Columns = 1, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
     private readonly TextBlock _arrow = new() { Text = "▾", Foreground = Amber, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     private readonly Dictionary<int, Border> _buttons = new();
     private readonly DispatcherTimer _autoClose = new() { Interval = TimeSpan.FromSeconds(4) };
