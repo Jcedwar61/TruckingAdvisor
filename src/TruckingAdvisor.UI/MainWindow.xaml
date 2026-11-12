@@ -265,6 +265,8 @@
                                 PreviewMouseLeftButtonDown="BtnHoldPtt_Down" PreviewMouseLeftButtonUp="BtnHoldPtt_Up"
                                 Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource BgBrush}" FontWeight="Bold" Padding="16,10"/>
                     </StackPanel>
+<Grid>
+                        <TextBlock Text="{Binding TranscriptHint}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="16" LineHeight="20"/>
                     <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioTranscriptLog}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -272,6 +274,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </Grid>
                 </DockPanel>
             </Border>
                 </Grid>
@@ -283,29 +286,75 @@
                 <StackPanel>
                     <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                         <StackPanel>
-                            <TextBlock Text="VIRTUAL COMPANY" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding CompanySummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                            <TextBlock Text="Only trips recorded by TruckingAdvisor count. Income is the game's job income, not real money." Style="{StaticResource Label}" Margin="0,6,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,10">
-                        <StackPanel>
-                            <TextBlock Text="DRIVER CAREER" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding CareerSummary}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            <TextBlock Text="{Binding CompanyTitle}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                            <TextBlock Text="{Binding LevelTitle}" FontWeight="Bold" Margin="0,8,0,4"/>
+                            <ProgressBar Value="{Binding XpPercent, Mode=OneWay}" Maximum="100" Height="10" Foreground="{DynamicResource AccentBrush}"/>
+                            <TextBlock Text="{Binding XpText}" Style="{StaticResource Label}" Margin="0,4,0,10"/>
+                            <UniformGrid Columns="4">
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="DELIVERIES" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatDeliveries, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="MILES" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMiles, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="DAMAGE-FREE" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatDamageFree, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource GoodBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="AVG SCORE" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatAvgScore, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource GoodBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="LIFETIME MPG" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMpg, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="IN-GAME INCOME" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatIncome, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="CITIES DELIVERED TO" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatCities, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="DAMAGE-FREE STREAK" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatStreak, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </UniformGrid>
+                            <TextBlock Text="Only trips recorded by TruckingAdvisor count. Income is the game's job income, not real money." Style="{StaticResource Label}"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="INSIGHTS" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding InsightsHint}" Style="{StaticResource Label}" TextWrapping="Wrap"/>
                             <ItemsControl ItemsSource="{Binding Insights}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2"/></DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="FUEL ECONOMY BY TRUCK" Style="{StaticResource Label}" Margin="0,10,0,4"/>
-                            <ItemsControl ItemsSource="{Binding TruckEconomyRows}">
+                            <ItemsControl ItemsSource="{Binding TruckEconomyRows}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate><TextBlock Text="{Binding}" Margin="0,2"/></DataTemplate>
+                                    <DataTemplate><TextBlock Text="{Binding}" Margin="0,2" Foreground="{DynamicResource MutedBrush}"/></DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
@@ -314,25 +363,35 @@
                         <StackPanel>
                             <TextBlock Text="ACHIEVEMENTS &amp; COMPANY MILESTONES" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" Margin="0,0,0,6"/>
                             <ItemsControl ItemsSource="{Binding Achievements}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="0,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="32"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Icon}" FontSize="18"/>
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock FontWeight="SemiBold">
-                                                    <Run Text="{Binding Title, Mode=OneWay}"/><Run Text="  ("/><Run Text="{Binding Category, Mode=OneWay}"/><Run Text=")"/>
-                                                </TextBlock>
-                                                <TextBlock Text="{Binding Description}" Style="{StaticResource Label}" TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="{DynamicResource GoodBrush}">
-                                                <Run Text="{Binding ProgressPercent, Mode=OneWay}"/><Run Text="%"/>
-                                            </TextBlock>
-                                        </Grid>
+                                        <Border x:Name="Row" Background="{DynamicResource BgBrush}" CornerRadius="8" Padding="12,10" Margin="0,0,8,8" BorderThickness="1" BorderBrush="Transparent">
+                                            <DockPanel>
+                                                <TextBlock x:Name="Ico" DockPanel.Dock="Left" Text="{Binding Icon}" FontSize="26" Margin="0,0,12,0" VerticalAlignment="Center" Opacity="0.45"/>
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <TextBlock x:Name="Pct" DockPanel.Dock="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12">
+                                                            <Run Text="{Binding ProgressPercent, Mode=OneWay}"/><Run Text="%"/>
+                                                        </TextBlock>
+                                                        <TextBlock x:Name="Ttl" Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Description}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,2,0,6"/>
+                                                    <ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Height="5" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource ButtonBrush}"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsUnlocked}" Value="True">
+                                                <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                <Setter TargetName="Ico" Property="Opacity" Value="1"/>
+                                                <Setter TargetName="Ttl" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                                <Setter TargetName="Pct" Property="Text" Value="UNLOCKED"/>
+                                                <Setter TargetName="Pct" Property="Foreground" Value="{DynamicResource GoodBrush}"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -342,7 +401,7 @@
             </ScrollViewer>
         </TabItem>
 
-        <!-- CB contacts (spec 40E) -->
+        <!-- CB contacts: who you've met on the radio -->
         <TabItem Header="CB Contacts">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -350,34 +409,51 @@
                     <ColumnDefinition Width="1.4*"/>
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource Card}" Margin="0,0,10,0">
-                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstContacts" ItemsSource="{Binding Contacts}">
+                    <ListBox x:Name="LstContacts" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Contacts}" SelectedIndex="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,4">
-                                    <TextBlock Text="{Binding Handle}" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    <TextBlock Text="{Binding Handle}" FontWeight="Bold" FontSize="15" Foreground="{DynamicResource AccentBrush}"/>
                                     <TextBlock Style="{StaticResource Label}">
-                                        <Run Text="{Binding Relationship, Mode=OneWay}"/><Run Text=" • last contact "/><Run Text="{Binding LastContact, Mode=OneWay}"/><Run Text=" • "/><Run Text="{Binding Conversations, Mode=OneWay}"/><Run Text=" conversations"/>
+                                        <Run Text="{Binding Relationship, Mode=OneWay}"/><Run Text=" • last contact "/><Run Text="{Binding LastContact, Mode=OneWay}"/>
                                     </TextBlock>
+                                    <ProgressBar Value="{Binding RelationshipPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,5,0,0" Foreground="{DynamicResource GoodBrush}" Background="{DynamicResource BgBrush}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </Border>
                 <Border Grid.Column="1" Style="{StaticResource Card}" DataContext="{Binding SelectedItem, ElementName=LstContacts}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold"/>
-                        <TextBlock Style="{StaticResource Label}" Margin="0,2,0,8">
-                            <Run Text="{Binding Truck, Mode=OneWay}"/><Run Text=" • from "/><Run Text="{Binding HomeState, Mode=OneWay}"/>
+                        <TextBlock Text="{Binding Handle}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                        <TextBlock Text="{Binding Name}" FontSize="14"/>
+                        <TextBlock Style="{StaticResource Label}" Margin="0,4,0,0" FontSize="12">
+                            <Run Text="{Binding Truck, Mode=OneWay}"/><Run Text=" • from "/><Run Text="{Binding HomeState, Mode=OneWay}"/><Run Text=" • "/><Run Text="{Binding Experience, Mode=OneWay}"/><Run Text=" years on the road"/>
                         </TextBlock>
-                        <TextBlock Text="WHAT THEY REMEMBER" Style="{StaticResource Label}"/>
-                        <ItemsControl ItemsSource="{Binding Memories}" Margin="0,4,0,10">
+                        <TextBlock Text="{Binding Personality}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                        <TextBlock Text="LIKES TO TALK ABOUT" Style="{StaticResource Label}" Margin="0,12,0,2"/>
+                        <TextBlock Text="{Binding Topics}" TextWrapping="Wrap"/>
+                        <TextBlock Text="USUALLY RUNS" Style="{StaticResource Label}" Margin="0,12,0,2"/>
+                        <TextBlock Text="{Binding Region}" TextWrapping="Wrap"/>
+                        <TextBlock Style="{StaticResource Label}" Margin="0,14,0,4">
+                            <Run Text="RELATIONSHIP: "/><Run Text="{Binding Relationship, Mode=OneWay}"/><Run Text=" • "/><Run Text="{Binding Conversations, Mode=OneWay}"/><Run Text=" conversations"/>
+                        </TextBlock>
+                        <ProgressBar Value="{Binding RelationshipPercent, Mode=OneWay}" Maximum="100" Height="8"/>
+                        <TextBlock Text="WHAT THEY REMEMBER" Style="{StaticResource Label}" Margin="0,14,0,2"/>
+                        <TextBlock Text="{Binding NoMemoriesHint}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
+                        <ItemsControl ItemsSource="{Binding Memories}" Margin="0,2,0,12">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2"/></DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <Button Content="Forget our conversations" Click="BtnForgetContact_Click" HorizontalAlignment="Left" Style="{StaticResource TopButton}"/>
-                        <TextBlock Text="These are simulated radio characters, not real players or nearby trucks." Style="{StaticResource Label}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                        <WrapPanel>
+                            <Button Content="Call on channel 19" Click="BtnCallContact_Click" Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource BgBrush}" Margin="0,0,8,0"/>
+                            <Button Content="Forget our conversations" Click="BtnForgetContact_Click"/>
+                        </WrapPanel>
+                        <TextBlock Text="These are simulated radio characters, not real players or nearby trucks." Style="{StaticResource Label}" Margin="0,12,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </TabItem>

@@ -12,7 +12,11 @@ namespace TruckingAdvisor.Presentation;
 
 /// <summary>One CB contact for the Contacts page.</summary>
 public sealed record ContactView(string Id, string Handle, string Name, string Truck, string HomeState, string Relationship,
-    string LastContact, int Conversations, IReadOnlyList<string> Memories);
+    string LastContact, int Conversations, IReadOnlyList<string> Memories,
+    string Personality = "", string Topics = "", string Region = "", int Experience = 0, double RelationshipPercent = 0)
+{
+    public string NoMemoriesHint => Memories.Count == 0 ? $"You haven't talked with {Handle} yet. Give them a call." : "";
+}
 
 /// <summary>Achievements, insights, dispatcher, co-driver, voice commands and contacts.</summary>
 public sealed partial class MainDashboardViewModel
@@ -156,6 +160,33 @@ public sealed partial class MainDashboardViewModel
     /// <summary>Where the game was found and whether its telemetry plugin is installed.</summary>
     public string GameStatusText { get => _gameStatus; set { _gameStatus = value; Raise(); } }
 
+    // ---- Career tiles ----
+    public string StatDeliveries => Company.TotalDeliveries.ToString("N0");
+    public string StatMiles => Company.TotalMilesDriven.ToString("N0");
+    public string StatDamageFree => Company.TotalDeliveries > 0 ? $"{100.0 * Company.DamageFreeDeliveries / Company.TotalDeliveries:F0}%" : "--";
+    public string StatAvgScore => Company.TotalDeliveries > 0 ? Company.AverageDriverRating.ToString("F0") : "--";
+    public string StatMpg => Company.LifetimeAverageMpg > 0 ? Company.LifetimeAverageMpg.ToString("F1") : "--";
+    public string StatIncome => Company.RecordedRevenue.ToString("N0");
+    public string StatCities => Company.VisitedCities.Count.ToString();
+    public string StatStreak => $"{Career.CurrentDamageFreeStreak} (best {Career.BestDamageFreeStreak})";
+    public string CompanyTitle => string.IsNullOrWhiteSpace(Company.PlayerHandle)
+        ? Company.CompanyName : $"{Company.CompanyName}  •  {Company.PlayerHandle}";
+    public string LevelTitle => $"LEVEL {Career.Level}  •  {Career.RankTitle.ToUpperInvariant()}";
+    public string XpText => $"{Career.CurrentXp:N0} / {Career.NextLevelXp:N0} XP to level {Career.Level + 1}";
+    public double XpPercent => Career.NextLevelXp > 0 ? Math.Clamp(100.0 * Career.CurrentXp / Career.NextLevelXp, 0, 100) : 0;
+    public string InsightsHint => Insights.Count == 0 ? "Insights appear after a few recorded deliveries (fuel trends, clean-driving streaks, favorite routes)." : "";
+    public string TranscriptHint => RadioTranscriptLog.Count == 0
+        ? "Quiet on the channel.\n\nHold LEFT ALT (or the button below) and try:\n\"Breaker one-nine, anybody got a copy?\"\n\nNo mic? Type a message and press Enter." : "";
+
+    /// <summary>Hails a trucker by name on channel 19, as if the player called them.</summary>
+    public async Task CallContactAsync(string handle)
+    {
+        _radio.SwitchChannel(19);
+        RaiseAll();
+        _radio.BeginPushToTalk();
+        await _radio.EndPushToTalkAsync($"Breaker one-nine, {handle}, you got a copy?");
+    }
+
     public string CareerSummary =>
         $"Level {Career.Level} {Career.RankTitle} • {Career.CurrentXp:N0}/{Career.NextLevelXp:N0} XP • best score {Career.PersonalBestScore} • damage-free streak {Career.CurrentDamageFreeStreak} (best {Career.BestDamageFreeStreak})";
 
@@ -256,9 +287,8 @@ public sealed partial class MainDashboardViewModel
         TruckEconomyRows.Clear();
         foreach (var (truck, e) in Career.TruckEconomy.OrderByDescending(kv => kv.Value.Miles))
             TruckEconomyRows.Add($"{truck}: {e.AverageMpg:F1} MPG over {e.Miles:N0} mi ({e.Trips} trips)");
-        Raise(nameof(CareerSummary));
-        Raise(nameof(CompanySummary));
         RefreshTrends();
+        RaiseAll();
     }
 
     // ---- Contacts (spec §40E) ----
@@ -269,7 +299,9 @@ public sealed partial class MainDashboardViewModel
         foreach (var t in _radio.Roster.OrderByDescending(t => t.LastSpokenAt ?? DateTimeOffset.MinValue))
         {
             Contacts.Add(new ContactView(t.Id, t.Handle, t.FullName, t.Truck, t.HomeState, Spaced(t.Relationship.ToString()),
-                t.LastSpokenAt is { } last ? Ago(DateTimeOffset.UtcNow - last) : "Never", t.ConversationCount, t.SummarizedMemories.ToList()));
+                t.LastSpokenAt is { } last ? Ago(DateTimeOffset.UtcNow - last) : "Never", t.ConversationCount, t.SummarizedMemories.ToList(),
+                t.PersonalityTraits, string.Join(" • ", t.FavoriteTopics), t.CurrentFictionalRegion, t.YearsExperience,
+                Math.Clamp(t.RelationshipPoints / 160.0 * 100.0, 0, 100)));
         }
     }
 

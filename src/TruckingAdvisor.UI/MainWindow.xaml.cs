@@ -457,6 +457,13 @@ public partial class MainWindow : Window
 
     // ---- Contacts & trips ----
 
+    private async void BtnCallContact_Click(object sender, RoutedEventArgs e)
+    {
+        if (LstContacts.SelectedItem is not ContactView c) return;
+        Tabs.SelectedIndex = 0; // back to the radio
+        await _viewModel.CallContactAsync(c.Handle);
+    }
+
     private void BtnForgetContact_Click(object sender, RoutedEventArgs e)
     {
         if (LstContacts.SelectedItem is not ContactView c) return;

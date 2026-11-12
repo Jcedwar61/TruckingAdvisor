@@ -4,9 +4,13 @@ A Windows companion app for **American Truck Simulator** (and ETS2), grown out o
 
 Everything except the AI radio works offline with no account. If AI is off or unavailable, the radio falls back to short offline lines and nothing else is affected.
 
+![Dashboard and CB radio](https://raw.githubusercontent.com/Jcedwar61/TruckingAdvisor/ci-screenshots/dashboard.png)
+
+<sub>Screenshots are rendered automatically from the latest build using demo data. More: [career](https://raw.githubusercontent.com/Jcedwar61/TruckingAdvisor/ci-screenshots/career.png) · [CB contacts](https://raw.githubusercontent.com/Jcedwar61/TruckingAdvisor/ci-screenshots/contacts.png) · [statistics](https://raw.githubusercontent.com/Jcedwar61/TruckingAdvisor/ci-screenshots/statistics.png)</sub>
+
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-2.4.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-2.5.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.

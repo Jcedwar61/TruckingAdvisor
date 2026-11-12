@@ -117,7 +117,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     public string RangeText => _current.EstimatedRangeMiles > 0 ? $"RANGE {_current.EstimatedRangeMiles:F0} MI" : "RANGE --";
     public string MpgText => _current.HasFuelEconomy ? $"AVG {_current.AverageMpg:F1} MPG" : "AVG -- MPG";
     public string AirText => _current.AirPressurePsi > 0 ? $"AIR {_current.AirPressurePsi:F0} PSI" : "AIR --";
-    public string EngineTempText => _current.WaterTempFahrenheit > 0 && _current.IsLive ? $"WATER {_current.WaterTempFahrenheit:F0}°F" : "WATER --";
+    public string EngineTempText => _current.WaterTempFahrenheit > 0 && (_current.IsLive || _current.IsDemoData) ? $"WATER {_current.WaterTempFahrenheit:F0}°F" : "WATER --";
     public string CruiseText => _current.CruiseControlOn ? $"CRUISE {_current.CruiseControlSpeedMph:F0}" : "CRUISE OFF";
     public string GameTimeText => _current.GameTimeMinutes > 0 ? _current.FormattedGameTime : "--:--";
     public string RestText =>
@@ -297,6 +297,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
             RadioTranscriptLog.Insert(0, line);
             while (RadioTranscriptLog.Count > 200) RadioTranscriptLog.RemoveAt(RadioTranscriptLog.Count - 1);
             Raise(nameof(PartnerText));
+            Raise(nameof(TranscriptHint));
         });
     }
 

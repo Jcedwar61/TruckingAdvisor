@@ -106,8 +106,8 @@ public sealed class RadialGauge : FrameworkElement
             {
                 double a = AngleFor(v);
                 dc.DrawLine(tick, On(c, r - thick * 0.9, a), On(c, r - thick * 1.6, a));
-                var label = Text((v / LabelDivisor).ToString("0", CultureInfo.CurrentCulture), Math.Max(8, r * 0.12), MutedBrush);
-                var p = On(c, r - thick * 2.6, a);
+                var label = Text((v / LabelDivisor).ToString("0", CultureInfo.CurrentCulture), Math.Max(8, r * 0.105), MutedBrush);
+                var p = On(c, r - thick * 2.35, a);
                 dc.DrawText(label, new Point(p.X - label.Width / 2, p.Y - label.Height / 2));
             }
         }
@@ -124,7 +124,7 @@ public sealed class RadialGauge : FrameworkElement
 
         // Center readout.
         var value = Text(string.IsNullOrEmpty(ValueText) ? Value.ToString("0", CultureInfo.CurrentCulture) : ValueText,
-            r * 0.52, IsAlert ? AlertBrush : TextBrush, bold: true);
+            r * 0.40, IsAlert ? AlertBrush : TextBrush, bold: true);
         dc.DrawText(value, new Point(c.X - value.Width / 2, c.Y - value.Height * 0.62));
         var unit = Text(Unit, Math.Max(9, r * 0.14), MutedBrush);
         dc.DrawText(unit, new Point(c.X - unit.Width / 2, c.Y + value.Height * 0.30));

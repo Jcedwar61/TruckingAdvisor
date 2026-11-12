@@ -1,5 +1,21 @@
 # Changelog — TruckingAdvisor
 
+## [v2.5.0] — 2026-11-12
+
+### Added
+- Dial gauges for speed (with a speed-limit marker), RPM (with redline), fuel and trip score.
+- CB radio face: large LCD channel display, TX / RX / BUSY lamps, one-click channel presets, and a starter hint when the channel is quiet.
+- First-run welcome screen: set your CB handle, company name and co-driver style, with the key shortcuts.
+- Career tab redesign: level and XP bar, stat tiles, achievement cards with progress bars.
+- CB Contacts redesign: full trucker profiles (personality, topics, usual routes, relationship bar) and a "Call on channel 19" button.
+- App-wide dark styling for buttons, tabs, lists, text boxes and scrollbars; dialogs follow the theme.
+- `--screenshot <folder>` renders every tab to PNG; CI publishes them to the `ci-screenshots` branch for the README.
+
+### Fixed
+- Settings dialogs had dark text on a dark background for checkboxes.
+- Water temperature showed "--" in demo mode.
+
+
 ## [v2.4.0] — 2026-11-09
 
 ### Added
