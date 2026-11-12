@@ -31,6 +31,9 @@ public sealed partial class MainDashboardViewModel
     /// <summary>Number on the HUD's speed-limit sign ("--" when the game reports no limit).</summary>
     public string SpeedLimitNumber => HasData && _current.SpeedLimitMph > 0 ? $"{_current.SpeedLimitMph:F0}" : "--";
 
+    /// <summary>The CB channel the radio is tuned to.</summary>
+    public int ActiveChannel => _radio.ActiveChannel;
+
     // ---- Quiet period ----
 
     /// <summary>True while nobody will call you unprompted (safety warnings and your own calls still work).</summary>

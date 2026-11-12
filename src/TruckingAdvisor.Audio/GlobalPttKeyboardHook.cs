@@ -33,6 +33,7 @@ public sealed class GlobalPttKeyboardHook : IDisposable
         ["toggleOverlay"] = 0x77,      // F8
         ["repeatAdvisory"] = 0x78,     // F9
         ["cycleCbChannel"] = 0xDD,     // ]
+        ["previousCbChannel"] = 0xDB,  // [
         ["quickDispatchCheck"] = 0x79, // F10
         ["quickFuelReport"] = 0x76,    // F7
         ["acknowledgeAlert"] = 0xDC,   // \

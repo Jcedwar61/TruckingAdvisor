@@ -173,11 +173,19 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
 
     public static readonly int[] Channels = { 19, 9, 17, 21, 25, 30 };
 
-    public void CycleChannel()
+    /// <summary>Next (+1) or previous (-1) preset channel; from a non-preset channel, starts at 19.</summary>
+    public void CycleChannel(int direction = 1)
     {
-        int i = Array.IndexOf(Channels, _radio.ActiveChannel);
-        _radio.SwitchChannel(Channels[(i + 1) % Channels.Length]);
-        Raise(nameof(RadioChannelText));
+        _radio.SwitchChannel(NextChannel(_radio.ActiveChannel, direction));
+        RaiseAll();
+    }
+
+    public static int NextChannel(int current, int direction)
+    {
+        int i = Array.IndexOf(Channels, current);
+        if (i < 0) return Channels[0];
+        int n = Channels.Length;
+        return Channels[((i + Math.Sign(direction == 0 ? 1 : direction)) % n + n) % n];
     }
 
     // ---- Telemetry path (background thread) ----
