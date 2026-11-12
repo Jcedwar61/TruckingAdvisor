@@ -214,7 +214,7 @@ public sealed partial class MainDashboardViewModel
                 _dispatcher?.OnTripStarted(t);
                 // One personal insight at the start of a load, low priority.
                 var insight = ComputeInsights().FirstOrDefault();
-                if (insight is not null) _audio.EnqueueAnnouncement(insight, AudioPriority.Low, "advisor");
+                if (insight is not null && !_radio.IsQuietPeriod) _audio.EnqueueAnnouncement(insight, AudioPriority.Low, "advisor");
             }
         };
         _radio.CommandReceived += (_, c) => HandleVoiceCommand(c);

@@ -138,6 +138,48 @@ public sealed class SpecFeatureTests
     }
 
     [Fact]
+    public async Task QuietPeriod_SilencesChatterAndRoutineDispatch_ButNotImportantCallsOrPlayer()
+    {
+        var audio = new Audio();
+        var radio = Radio(audio, null, new AiSettings());
+        var now = T0;
+        radio.Clock = () => now;
+        radio.QuietUntil = T0.AddMinutes(30);
+
+        await radio.TriggerDynamicEncounterAsync(new AtsTelemetrySnapshot());
+        await radio.TriggerAiToAiBanterAsync(new AtsTelemetrySnapshot());
+        Assert.True(await radio.SendDispatchMessageAsync("Routine check-in.", important: false));
+        Assert.Empty(audio.Items);
+
+        Assert.True(await radio.SendDispatchMessageAsync("Your delivery window closes in 30 minutes.", important: true));
+        Assert.Single(audio.Items);
+        radio.BeginPushToTalk();
+        await radio.EndPushToTalkAsync("Big Red, you out there?");
+        Assert.True(audio.Items.Count >= 2); // the player still gets an answer
+
+        int before = audio.Items.Count;
+        now = T0.AddMinutes(31); // quiet period over
+        Assert.False(radio.IsQuietPeriod);
+        await radio.TriggerDynamicEncounterAsync(new AtsTelemetrySnapshot());
+        Assert.True(audio.Items.Count > before);
+    }
+
+    [Fact]
+    public async Task RadioReply_WorksWithLiveCargoContext()
+    {
+        var audio = new Audio();
+        var snapshot = new AtsTelemetrySnapshot { ConnectionState = ConnectionState.Connected, JobActive = true, CargoWeightLbs = 40_250, SpeedMph = 62, SpeedLimitMph = 65 };
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile(), audio, () => snapshot,
+            new AiSettings()) { ReplyPause = (0, 0) };
+        string? notice = null;
+        radio.Notice += (_, n) => notice = n;
+        radio.BeginPushToTalk();
+        await radio.EndPushToTalkAsync("Big Red, you got your ears on?");
+        Assert.Null(notice);
+        Assert.NotEmpty(audio.Items);
+    }
+
+    [Fact]
     public async Task KnowledgeBoundary_TruckersNeverHearDispatchChannel()
     {
         var llm = new Llm();

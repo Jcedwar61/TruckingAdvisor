@@ -23,7 +23,10 @@ public static class ContextBuilder
     private static string Lower(string s) => string.IsNullOrEmpty(s) ? "on the road" : char.ToLowerInvariant(s[0]) + s[1..];
 
     private static string? Text(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
-    private static double? Positive(float v, int digits = 0) => v > 0 ? Math.Round(v, digits) : null;
+    private static double? Positive(float v) => v > 0 ? Math.Round(v) : null;
+
+    /// <summary>Rounds to the nearest 1,000 (Math.Round can't take negative digits).</summary>
+    private static double? NearestThousand(float v) => v > 0 ? Math.Round(v / 1000.0) * 1000 : null;
 
     public static object BuildTelemetryContext(VirtualCompanyProfile company, AtsTelemetrySnapshot t)
     {
@@ -56,7 +59,7 @@ public static class ContextBuilder
                 origin = Text(t.OriginCity),
                 destination = Text(t.DestinationCity),
                 remainingMiles = Positive(t.NavigationDistanceRemainingMiles),
-                cargoWeightLbs = Positive(t.CargoWeightLbs, -3)
+                cargoWeightLbs = NearestThousand(t.CargoWeightLbs)
             }
         };
     }

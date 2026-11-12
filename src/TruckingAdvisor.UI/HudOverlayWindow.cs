@@ -23,13 +23,18 @@ public sealed class HudOverlayWindow : Window
     public void SetRows(IEnumerable<string> rows, double opacity)
     {
         _panel.Children.Clear();
-        foreach (var row in rows)
+        var list = rows.ToList();
+        bool combined = list.Contains("Speed") && list.Contains("Limit");
+        foreach (var row in list)
         {
-            var line = row switch
+            UIElement? line = row switch
             {
-                "Speed" => Line("SpeedText", 30, "#F8FAFC", " MPH"),
-                "Limit" => Line("SpeedLimitText", 13, "#F59E0B"),
-                "Fuel" => Line("FuelText", 13, "#F59E0B", " fuel"),
+                // Speed and the limit share one row: big number, US-style sign beside it.
+                "Speed" when combined => SpeedWithSign(),
+                "Limit" when combined => null,
+                "Speed" => SpeedLine(),
+                "Limit" => LimitSign(),
+                "Fuel" => FuelLine(),
                 "Range" => Line("RangeText", 12, "#F59E0B"),
                 "Remaining" => Line("RemainingText", 12, "#10B981"),
                 "Score" => Line("ScoreText", 12, "#10B981", " trip score"),
@@ -43,6 +48,78 @@ public sealed class HudOverlayWindow : Window
         if (_frame is not null)
             _frame.Background = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(opacity, 0.2, 1.0) * 255), 0x0B, 0x0F, 0x17));
     }
+
+    private static Brush B(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
+
+    /// <summary>Big speed; turns red while over the limit.</summary>
+    private static UIElement SpeedLine()
+    {
+        var speed = new TextBlock { FontSize = 40, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Bottom };
+        speed.SetBinding(TextBlock.TextProperty, new Binding("SpeedText"));
+        var style = new Style(typeof(TextBlock));
+        style.Setters.Add(new Setter(TextBlock.ForegroundProperty, B("#F8FAFC")));
+        var trigger = new DataTrigger { Binding = new Binding("IsSpeeding"), Value = true };
+        trigger.Setters.Add(new Setter(TextBlock.ForegroundProperty, B("#EF4444")));
+        style.Triggers.Add(trigger);
+        speed.Style = style;
+        var unit = new TextBlock { Text = " MPH", FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(speed);
+        row.Children.Add(unit);
+        return row;
+    }
+
+    /// <summary>White US speed-limit sign: SPEED / LIMIT / number.</summary>
+    private static UIElement LimitSign()
+    {
+        var number = new TextBlock { FontSize = 22, FontWeight = FontWeights.Bold, Foreground = Brushes.Black, HorizontalAlignment = HorizontalAlignment.Center };
+        number.SetBinding(TextBlock.TextProperty, new Binding("SpeedLimitNumber"));
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock { Text = "SPEED", FontSize = 8, FontWeight = FontWeights.Bold, Foreground = Brushes.Black, HorizontalAlignment = HorizontalAlignment.Center });
+        stack.Children.Add(new TextBlock { Text = "LIMIT", FontSize = 8, FontWeight = FontWeights.Bold, Foreground = Brushes.Black, HorizontalAlignment = HorizontalAlignment.Center });
+        stack.Children.Add(number);
+        return new Border
+        {
+            Background = Brushes.White,
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(6, 3, 6, 2),
+            Width = 52,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 2, 0, 4),
+            Child = stack
+        };
+    }
+
+    private static UIElement SpeedWithSign()
+    {
+        var grid = new DockPanel { LastChildFill = true };
+        var sign = LimitSign();
+        ((FrameworkElement)sign).VerticalAlignment = VerticalAlignment.Center;
+        DockPanel.SetDock(sign, Dock.Right);
+        grid.Children.Add(sign);
+        grid.Children.Add(SpeedLine());
+        return grid;
+    }
+
+    /// <summary>Fuel text with a thin bar underneath (amber; red under 15%).</summary>
+    private static UIElement FuelLine()
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 2, 0, 2) };
+        stack.Children.Add(Line("FuelText", 13, "#F59E0B", " fuel"));
+        var bar = new ProgressBar { Maximum = 100, Height = 5, Margin = new Thickness(0, 3, 0, 0), Background = B("#1E293B") };
+        bar.SetBinding(System.Windows.Controls.Primitives.RangeBase.ValueProperty, new Binding("FuelPercentValue") { Mode = BindingMode.OneWay });
+        var style = new Style(typeof(ProgressBar), Application.Current?.TryFindResource(typeof(ProgressBar)) as Style);
+        style.Setters.Add(new Setter(Control.ForegroundProperty, B("#F59E0B")));
+        var low = new DataTrigger { Binding = new Binding("IsFuelLow"), Value = true };
+        low.Setters.Add(new Setter(Control.ForegroundProperty, B("#EF4444")));
+        style.Triggers.Add(low);
+        bar.Style = style;
+        stack.Children.Add(bar);
+        return stack;
+    }
+
     private IntPtr _hwnd;
 
     public bool IsLocked { get; private set; } = true;

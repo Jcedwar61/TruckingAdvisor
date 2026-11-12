@@ -1,5 +1,20 @@
 # Changelog — TruckingAdvisor
 
+## [v2.6.0] — 2026-11-12
+
+Calmer, not louder: everything new here is there when you look and quiet when you don't.
+
+### Added
+- **Quiet 30 min** button: one click and nobody calls you unprompted — no chatter, no routine dispatch check-ins, no achievement or insight voice lines. Safety warnings, important dispatch notices and your own calls still work. Click again to end it early; it ends on its own after 30 minutes.
+- **Radio as chat bubbles**: your transmissions on the right, truckers on the left, dispatch highlighted, each with handle, channel and time. The newest message stays in view.
+- **Delivery banner**: when a job ends, a one-line summary (score, rating, miles, MPG, level-ups, achievements) appears at the top of the app and hides itself after 20 seconds. No popup, no extra voice.
+- **HUD**: big speed that turns red over the limit, a US-style white SPEED LIMIT sign beside it, and a fuel bar that turns red under 15%.
+- **Tidier header**: Quiet, HUD and Settings stay visible; Layout & Theme, Move/Resize HUD, Rebind PTT, plugin install and demo data moved into a **More** menu.
+
+### Fixed
+- **Radio replies failed while hauling a load**: building the trucker's context crashed ("Rounding digits must be between 0 and 15") whenever cargo weight was known, so nobody answered. Found by the new screenshot run; covered by a test now.
+- Achievement cards could show the progress percentage instead of "UNLOCKED".
+
 ## [v2.5.0] — 2026-11-12
 
 ### Added
