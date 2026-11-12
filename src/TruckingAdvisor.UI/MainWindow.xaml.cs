@@ -76,6 +76,11 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        // Keep the newest radio message in view, like a chat app.
+        _viewModel.RadioMessages.CollectionChanged += (_, _) =>
+        {
+            if (_viewModel.RadioMessages.Count > 0) RadioList.ScrollIntoView(_viewModel.RadioMessages[^1]);
+        };
         _viewModel.AttachDispatcher(new DispatcherService(_aiSettings, (facts, important, ct) => _cbRadio.SendDispatchMessageAsync(facts, important, ct)));
         _viewModel.MuteRequested += (_, mute) => { _sink.Muted = mute; if (mute) _audio.StopAll(); };
         _viewModel.HandleChangeProposed += (_, handle) =>
@@ -123,33 +128,47 @@ public partial class MainWindow : Window
         {
             Directory.CreateDirectory(dir);
             await Task.Delay(4000); // let telemetry/demo data fill the gauges
+            // One typed call so the radio shows chat bubbles (offline replies; never blocks the capture).
+            _cbRadio.BeginPushToTalk();
+            await Task.WhenAny(_cbRadio.EndPushToTalkAsync("Breaker one-nine, Big Red, you got your ears on?"), Task.Delay(5000));
             var root = (FrameworkElement)Content;
             string[] names = { "dashboard", "career", "contacts", "statistics", "trips" };
             for (int i = 0; i < Tabs.Items.Count && i < names.Length; i++)
             {
                 Tabs.SelectedIndex = i;
                 await Task.Delay(400);
-                root.UpdateLayout();
-                var visual = new System.Windows.Media.DrawingVisual();
-                using (var dc = visual.RenderOpen())
-                {
-                    var size = new Size(root.ActualWidth, root.ActualHeight);
-                    dc.DrawRectangle(Background, null, new Rect(size));
-                    dc.DrawRectangle(new System.Windows.Media.VisualBrush(root), null, new Rect(size));
-                }
-                var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)root.ActualWidth, (int)root.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
-                bmp.Render(visual);
-                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
-                using var fs = File.Create(Path.Combine(dir, names[i] + ".png"));
-                enc.Save(fs);
+                SaveElementPng(root, Background, Path.Combine(dir, names[i] + ".png"));
             }
+            Tabs.SelectedIndex = 0;
+            ToggleOverlay();
+            await Task.Delay(800);
+            if (_overlay?.Content is FrameworkElement hud)
+                SaveElementPng(hud, System.Windows.Media.Brushes.DimGray, Path.Combine(dir, "hud.png"));
+            _overlay?.Hide();
         }
         catch (Exception ex)
         {
             try { File.WriteAllText(Path.Combine(dir, "error.txt"), ex.ToString()); } catch { }
         }
         Close();
+    }
+
+    private static void SaveElementPng(FrameworkElement element, System.Windows.Media.Brush background, string path)
+    {
+        element.UpdateLayout();
+        var size = new Size(Math.Max(1, element.ActualWidth), Math.Max(1, element.ActualHeight));
+        var visual = new System.Windows.Media.DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle(background, null, new Rect(size));
+            dc.DrawRectangle(new System.Windows.Media.VisualBrush(element), null, new Rect(size));
+        }
+        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        bmp.Render(visual);
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+        using var fs = File.Create(path);
+        enc.Save(fs);
     }
 
     // ---- Window size & game detection ----
@@ -322,7 +341,15 @@ public partial class MainWindow : Window
     {
         _listeningForPttBind = true;
         BtnRebindPtt.Content = "Press a key (Esc cancels)...";
+        BtnHoldPtt.Content = "PRESS A KEY FOR PUSH-TO-TALK (ESC CANCELS)";
     }
+
+    private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
+
+    private void BtnDismissBanner_Click(object sender, RoutedEventArgs e) => _viewModel.DismissBanner();
+
+    /// <summary>Any choice in the "More" menu closes the menu.</summary>
+    private void MorePopup_Click(object sender, RoutedEventArgs e) => BtnMore.IsChecked = false;
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {

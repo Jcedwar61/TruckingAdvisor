@@ -55,19 +55,53 @@
                     </StackPanel>
                 </StackPanel>
                 <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <Button x:Name="BtnAiSettings" Content="AI &amp; Radio Settings" Click="BtnAiSettings_Click" Style="{StaticResource TopButton}"/>
-                    <Button x:Name="BtnLayout" Content="Layout &amp; Theme" Click="BtnLayout_Click" Style="{StaticResource TopButton}"/>
-                    <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click" Style="{StaticResource TopButton}"/>
-                    <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnQuiet" Content="{Binding QuietButtonText}" Click="BtnQuiet_Click" Style="{StaticResource TopButton}"
+                            ToolTip="Nobody calls you unprompted for 30 minutes: no chatter, no routine dispatch check-ins, no achievement voice lines. Safety warnings and your own calls still work."/>
                     <Button x:Name="BtnToggleOverlay" Content="HUD Overlay (F8)" Click="BtnToggleOverlay_Click" Style="{StaticResource TopButton}"/>
-                    <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click" Style="{StaticResource TopButton}"/>
-                    <Button x:Name="BtnRebindPtt" Content="Rebind PTT Key" Click="BtnRebindPtt_Click" Style="{StaticResource TopButton}"/>
+                    <Button x:Name="BtnAiSettings" Content="Settings" Click="BtnAiSettings_Click" Style="{StaticResource TopButton}" ToolTip="AI, radio, voices and devices"/>
+                    <Grid>
+                        <ToggleButton x:Name="BtnMore" Content="More ▾" Padding="12,6" Margin="0,2,0,2"
+                                      Background="{DynamicResource ButtonBrush}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Cursor="Hand">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <Popup x:Name="MorePopup" PlacementTarget="{Binding ElementName=BtnMore}" Placement="Bottom" StaysOpen="False"
+                               AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=BtnMore, Mode=TwoWay}"
+                               ButtonBase.Click="MorePopup_Click">
+                            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource ButtonBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="8" Margin="0,4,0,0" MinWidth="220">
+                                <StackPanel>
+                                    <StackPanel.Resources>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <Setter Property="Margin" Value="0,2"/>
+                                        </Style>
+                                    </StackPanel.Resources>
+                                    <Button x:Name="BtnLayout" Content="Layout &amp; Theme" Click="BtnLayout_Click"/>
+                                    <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click"/>
+                                    <Button x:Name="BtnRebindPtt" Content="Rebind PTT Key" Click="BtnRebindPtt_Click"/>
+                                    <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
+                                    <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
                 </WrapPanel>
             </DockPanel>
         </Border>
 
+        <StackPanel Grid.Row="1">
         <!-- Demo banner: impossible to miss when values are not from the game -->
-        <Border Grid.Row="1" Background="#7C2D12" CornerRadius="6" Padding="10,6" Margin="0,0,0,10">
+        <Border Background="#7C2D12" CornerRadius="6" Padding="10,6" Margin="0,0,0,10">
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -80,6 +114,33 @@
             </Border.Style>
             <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
         </Border>
+
+        <!-- Delivery banner: shows once when a job ends, hides itself after 20 seconds (or click x) -->
+        <Border x:Name="DeliveryBanner" CornerRadius="8" Padding="14,8" Margin="0,0,0,10" Background="{DynamicResource CardBrush}"
+                BorderThickness="4,0,0,0">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource MutedBrush}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBannerVisible}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding BannerIsGood}" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource GoodBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="✕" Padding="8,2" VerticalAlignment="Center" Click="BtnDismissBanner_Click" ToolTip="Dismiss"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding BannerTitle}" FontWeight="Bold" FontSize="14" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding BannerDetail}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        </StackPanel>
 
         <TabControl x:Name="Tabs" Grid.Row="2">
         <TabItem Header="Dashboard &amp; Radio">
@@ -267,10 +328,43 @@
                     </StackPanel>
 <Grid>
                         <TextBlock Text="{Binding TranscriptHint}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="16" LineHeight="20"/>
-                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioTranscriptLog}">
+                    <ListBox x:Name="RadioList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioMessages}"
+                             HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter Margin="0,3"/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                                <Border x:Name="Bubble" CornerRadius="10,10,10,2" Padding="10,6" MaxWidth="520"
+                                        HorizontalAlignment="Left" Background="{DynamicResource ButtonBrush}">
+                                    <StackPanel>
+                                        <TextBlock x:Name="Who" Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,2"/>
+                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" LineHeight="18"/>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                        <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter TargetName="Bubble" Property="CornerRadius" Value="10,10,2,10"/>
+                                        <Setter TargetName="Bubble" Property="Background" Value="{DynamicResource CardBrush}"/>
+                                        <Setter TargetName="Bubble" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                        <Setter TargetName="Bubble" Property="BorderThickness" Value="1"/>
+                                        <Setter TargetName="Who" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsDispatch}" Value="True">
+                                        <Setter TargetName="Who" Property="Foreground" Value="{DynamicResource GoodBrush}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -373,9 +467,8 @@
                                                 <TextBlock x:Name="Ico" DockPanel.Dock="Left" Text="{Binding Icon}" FontSize="26" Margin="0,0,12,0" VerticalAlignment="Center" Opacity="0.45"/>
                                                 <StackPanel>
                                                     <DockPanel>
-                                                        <TextBlock x:Name="Pct" DockPanel.Dock="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12">
-                                                            <Run Text="{Binding ProgressPercent, Mode=OneWay}"/><Run Text="%"/>
-                                                        </TextBlock>
+                                                        <TextBlock x:Name="Pct" DockPanel.Dock="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                                                   Text="{Binding ProgressPercent, Mode=OneWay, StringFormat={}{0:0}%}"/>
                                                         <TextBlock x:Name="Ttl" Text="{Binding Title}" FontWeight="SemiBold"/>
                                                     </DockPanel>
                                                     <TextBlock Text="{Binding Description}" Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,2,0,6"/>

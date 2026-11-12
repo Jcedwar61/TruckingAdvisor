@@ -99,6 +99,16 @@ public sealed class CBRadioService : ICBRadioService
         ActiveChannel = channelNumber;
     }
 
+    /// <summary>Stops unprompted chatter that is still being prepared (used when a quiet period starts).</summary>
+    public void CancelChatter()
+    {
+        lock (_stateLock)
+        {
+            _chatterCts.Cancel();
+            _chatterCts = new CancellationTokenSource();
+        }
+    }
+
     public void BeginPushToTalk()
     {
         lock (_stateLock)
@@ -377,6 +387,7 @@ public sealed class CBRadioService : ICBRadioService
         var ct = linked.Token;
         try
         {
+            if (!important && IsQuietPeriod) return true; // the driver asked for quiet: drop routine calls
             if (!important && !TryConsumeUnsolicited()) return true; // over the hourly cap: drop quietly
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return false;
             string line = await GenerateAsync(
@@ -413,9 +424,18 @@ public sealed class CBRadioService : ICBRadioService
         _ => _settings.MaxResponseTokens
     };
 
-    /// <summary>Quiet mode and activity "Off" mean truckers only talk when you call them.</summary>
+    /// <summary>
+    /// "Quiet for a while": until this time nobody calls you unprompted (no chatter, no routine dispatch
+    /// check-ins). Your own calls, replies to you and important dispatch notices still work. Null = off.
+    /// </summary>
+    public DateTimeOffset? QuietUntil { get; set; }
+
+    /// <summary>True while a temporary quiet period is running.</summary>
+    public bool IsQuietPeriod => QuietUntil is { } until && Clock() < until;
+
+    /// <summary>Quiet mode, activity "Off" and a quiet period mean truckers only talk when you call them.</summary>
     private bool ChatterAllowed() =>
-        _settings.ConversationMode != ConversationTimingMode.Quiet && _settings.RadioActivity != RadioActivitySetting.Off;
+        _settings.ConversationMode != ConversationTimingMode.Quiet && _settings.RadioActivity != RadioActivitySetting.Off && !IsQuietPeriod;
 
     /// <summary>Hourly cap on calls nobody asked for. Returns false when the cap is reached.</summary>
     private bool TryConsumeUnsolicited()

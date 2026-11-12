@@ -279,10 +279,13 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
                 $"Delivery complete. Score {trip.ScoreBreakdown.FinalScore}, {trip.ScoreBreakdown.RatingLabel}.{(levels > 0 ? $" You reached career level {Career.Level}." : "")}",
                 AudioPriority.Normal);
         }
-        foreach (var a in unlocked)
-            _audio.EnqueueAnnouncement($"Achievement unlocked: {a.Title}.", AudioPriority.Low, "notifications");
+        if (!_radio.IsQuietPeriod)
+            foreach (var a in unlocked)
+                _audio.EnqueueAnnouncement($"Achievement unlocked: {a.Title}.", AudioPriority.Low, "notifications");
+        var titles = unlocked.Select(a => a.Title).ToList();
         _postToUi(() =>
         {
+            ShowDeliveryBanner(trip, levels, titles);
             LastReport = report;
             TripHistory.Insert(0, trip);
             RaiseAll();
@@ -295,6 +298,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
         _postToUi(() =>
         {
             RadioTranscriptLog.Insert(0, line);
+            AddRadioMessage(e);
             while (RadioTranscriptLog.Count > 200) RadioTranscriptLog.RemoveAt(RadioTranscriptLog.Count - 1);
             Raise(nameof(PartnerText));
             Raise(nameof(TranscriptHint));
