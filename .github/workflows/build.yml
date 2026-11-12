@@ -123,3 +123,26 @@ jobs:
           [ -n "$notes" ] || notes="TruckingAdvisor ${tag}"
           printf '%s\n\n%s\n' "$notes" "Install: download TruckingAdvisor-Setup-${tag#v}.exe and run it (64-bit Windows 10/11, no admin needed). SmartScreen may warn because it isn't code-signed: More info > Run anyway. Verify with SHA256SUMS.txt." > notes.md
           gh release create "$tag" dist/* --title "TruckingAdvisor ${tag}" --notes-file notes.md --target "$GITHUB_SHA"
+
+  # Publishes the rendered UI screenshots to the ci-screenshots branch (used by the README).
+  screenshots:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: screenshots
+          path: shots
+      - name: Push to ci-screenshots
+        run: |
+          cd shots
+          git init -q -b ci-screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "UI screenshots rendered by CI from commit ${GITHUB_SHA} (${GITHUB_REF_NAME}), demo data." > README.md
+          git add -A
+          git commit -q -m "Screenshots for ${GITHUB_SHA}"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots
