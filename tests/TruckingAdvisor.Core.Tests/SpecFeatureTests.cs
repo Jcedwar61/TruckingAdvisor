@@ -179,6 +179,15 @@ public sealed class SpecFeatureTests
         Assert.NotEmpty(audio.Items);
     }
 
+    [Theory]
+    [InlineData(19, 1, 9)]
+    [InlineData(30, 1, 19)]   // wraps forward
+    [InlineData(19, -1, 30)]  // wraps backward
+    [InlineData(17, -1, 9)]
+    [InlineData(4, 1, 19)]    // from a non-preset channel, start at 19
+    public void ChannelCycling_GoesBothWaysAndWraps(int from, int direction, int expected) =>
+        Assert.Equal(expected, TruckingAdvisor.Presentation.MainDashboardViewModel.NextChannel(from, direction));
+
     [Fact]
     public async Task KnowledgeBoundary_TruckersNeverHearDispatchChannel()
     {

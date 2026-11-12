@@ -1,5 +1,12 @@
 # Changelog — TruckingAdvisor
 
+## [v2.7.0] — 2026-11-12
+
+### Added
+- **CB channel picker on the HUD.** A slim bar under the overlay shows the current channel (e.g. "CB 19 · HIGHWAY TRAFFIC"). Click it to open the channel list (19 Highway, 9 Emergency, 17 Regional, 21 Casual, 25 Truck stop, 30 Dispatch) and click one to switch. It follows the HUD when you move or resize it, flips above the HUD near the bottom of the screen, and never takes keyboard focus from the game.
+- **`[` steps back a channel** (`]` still steps forward). Either key briefly opens the picker on the HUD with the new channel highlighted, then it closes on its own after 4 seconds. Both keys can be rebound in `keybindings.json`.
+- Layout & Theme has a checkbox to hide the picker if you don't want it.
+
 ## [v2.6.0] — 2026-11-12
 
 Calmer, not louder: everything new here is there when you look and quiet when you don't.

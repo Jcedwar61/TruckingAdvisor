@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
     private readonly MainDashboardViewModel _viewModel;
     private HudOverlayWindow? _overlay;
+    private HudChannelBar? _channelBar;
     private string? _lastAdvisory;
     private bool _listeningForPttBind;
     /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
@@ -144,6 +145,14 @@ public partial class MainWindow : Window
             await Task.Delay(800);
             if (_overlay?.Content is FrameworkElement hud)
                 SaveElementPng(hud, System.Windows.Media.Brushes.DimGray, Path.Combine(dir, "hud.png"));
+            if (_channelBar is not null)
+            {
+                _channelBar.Flash();
+                await Task.Delay(600);
+                if (_channelBar.Content is FrameworkElement bar)
+                    SaveElementPng(bar, System.Windows.Media.Brushes.DimGray, Path.Combine(dir, "hud-channels.png"));
+            }
+            _channelBar?.Hide();
             _overlay?.Hide();
         }
         catch (Exception ex)
@@ -310,7 +319,8 @@ public partial class MainWindow : Window
         switch (actionId)
         {
             case "toggleOverlay": ToggleOverlay(); break;
-            case "cycleCbChannel": _viewModel.CycleChannel(); break;
+            case "cycleCbChannel": _viewModel.CycleChannel(1); _channelBar?.Flash(); break;
+            case "previousCbChannel": _viewModel.CycleChannel(-1); _channelBar?.Flash(); break;
             case "acknowledgeAlert": _audio.StopAll(); break;
             case "emergencyMute": _sink.Muted = !_sink.Muted; if (_sink.Muted) _audio.StopAll(); break;
             case "repeatAdvisory":
@@ -548,6 +558,7 @@ public partial class MainWindow : Window
         WGauges.Columns = Math.Max(1, gauges.Values.Count(g => g.Visibility == Visibility.Visible));
 
         _overlay?.SetRows(_aiSettings.HudRows, _aiSettings.HudOpacity);
+        SyncChannelBar();
     }
 
     // ---- PDF & image exports ----
@@ -591,6 +602,7 @@ public partial class MainWindow : Window
         if (_overlay is { IsVisible: true })
         {
             _overlay.Hide();
+            SyncChannelBar();
             return;
         }
         if (_overlay is null)
@@ -600,6 +612,24 @@ public partial class MainWindow : Window
             _overlay.SetRows(_aiSettings.HudRows, _aiSettings.HudOpacity);
         }
         _overlay.Show();
+        SyncChannelBar();
+    }
+
+    /// <summary>The channel picker shows under the HUD whenever the HUD is shown (if enabled in Layout).</summary>
+    private void SyncChannelBar()
+    {
+        bool want = _aiSettings.HudChannelPicker && _overlay is { IsVisible: true };
+        if (!want)
+        {
+            _channelBar?.Hide();
+            return;
+        }
+        if (_channelBar is null)
+        {
+            _channelBar = new HudChannelBar(_viewModel);
+            _channelBar.AttachTo(_overlay!);
+        }
+        _channelBar.Show();
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -615,6 +645,7 @@ public partial class MainWindow : Window
         _viewModel.Dispose();
         _telemetry.Dispose();
         _audio.Dispose();
+        _channelBar?.Close();
         _overlay?.Close();
         base.OnClosed(e);
     }

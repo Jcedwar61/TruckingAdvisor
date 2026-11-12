@@ -97,6 +97,8 @@ public sealed class AiSettings
     /// <summary>HUD rows to show, in order.</summary>
     public List<string> HudRows { get; set; } = new(DefaultHudRows);
     public double HudOpacity { get; set; } = 0.85;
+    /// <summary>Clickable CB channel picker attached under the HUD.</summary>
+    public bool HudChannelPicker { get; set; } = true;
 
     public static readonly string[] DefaultWidgetOrder = { "Gauges", "Delivery", "Advisories", "Trend", "Report" };
     /// <summary>Individual gauge cards inside the Gauges widget (can be hidden too).</summary>

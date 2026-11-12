@@ -25,6 +25,7 @@ public sealed class LayoutWindow : Window
     private readonly Slider _hudOpacity = new() { Minimum = 0.3, Maximum = 1.0, SmallChange = 0.05 };
     private readonly ListBox _widgetList = new() { Height = 150 };
     private readonly ListBox _hudList = new() { Height = 210 };
+    private readonly CheckBox _channelPicker = new() { Margin = new Thickness(0, 6, 0, 0) };
 
     /// <summary>Raised on Apply so the main window can update live.</summary>
     public event EventHandler? Applied;
@@ -74,6 +75,9 @@ public sealed class LayoutWindow : Window
         _hudList.ItemTemplate = CheckTemplate();
         form.Children.Add(WithMoveButtons(_hudList, _hud));
         form.Children.Add(Row("HUD opacity", _hudOpacity));
+        _channelPicker.IsChecked = _s.HudChannelPicker;
+        _channelPicker.Content = "CB channel picker under the HUD (click it, or press [ and ] in game)";
+        form.Children.Add(_channelPicker);
         form.Children.Add(new TextBlock
         {
             Text = "Use \"Move/Resize HUD\" on the main window to drag and resize the overlay.",
@@ -100,6 +104,7 @@ public sealed class LayoutWindow : Window
             .Concat(_gauges.Where(g => !g.Visible).Select(g => "Gauge:" + g.Id)).ToList();
         _s.HudRows = _hud.Where(h => h.Visible).Select(h => h.Id).ToList();
         _s.HudOpacity = _hudOpacity.Value;
+        _s.HudChannelPicker = _channelPicker.IsChecked == true;
         try { _s.Save(); } catch { }
         Applied?.Invoke(this, EventArgs.Empty);
     }
@@ -111,6 +116,7 @@ public sealed class LayoutWindow : Window
         _s.HiddenWidgets = new();
         _s.HudRows = new(AiSettings.DefaultHudRows);
         _s.HudOpacity = 0.85;
+        _s.HudChannelPicker = true;
         try { _s.Save(); } catch { }
         Applied?.Invoke(this, EventArgs.Empty);
         DialogResult = true;
