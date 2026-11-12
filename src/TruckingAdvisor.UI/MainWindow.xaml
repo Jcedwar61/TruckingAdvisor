@@ -18,11 +18,19 @@
             <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
             <Setter Property="FontSize" Value="11"/>
         </Style>
-        <Style x:Key="TopButton" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource ButtonBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="Padding" Value="12,6"/>
+        <Style x:Key="TopButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Margin" Value="0,2,8,2"/>
+        </Style>
+        <Style x:Key="ChannelButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+        <Style x:Key="Lamp" TargetType="Ellipse">
+            <Setter Property="Width" Value="12"/>
+            <Setter Property="Height" Value="12"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Fill" Value="{DynamicResource ButtonBrush}"/>
         </Style>
     </Window.Resources>
 
@@ -73,14 +81,7 @@
             <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
         </Border>
 
-        <TabControl Grid.Row="2" Background="{DynamicResource BgBrush}" BorderThickness="0" Padding="0,8,0,0">
-            <TabControl.Resources>
-                <Style TargetType="TabItem">
-                    <Setter Property="Foreground" Value="{DynamicResource BgBrush}"/>
-                    <Setter Property="Padding" Value="14,6"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
-                </Style>
-            </TabControl.Resources>
+        <TabControl x:Name="Tabs" Grid.Row="2">
         <TabItem Header="Dashboard &amp; Radio">
         <Grid>
             <Grid.ColumnDefinitions>
@@ -97,45 +98,45 @@
                     <UniformGrid x:Name="WGauges" Columns="4" Margin="0,0,0,10">
                         <Border x:Name="GSpeed" Style="{StaticResource Card}" Margin="0,0,6,0">
                             <StackPanel>
-                                <TextBlock Text="SPEED (MPH)" Style="{StaticResource Label}"/>
-                                <TextBlock Text="{Binding SpeedText}" FontSize="36" FontWeight="Bold">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsSpeeding}" Value="True">
-                                                    <Setter Property="Foreground" Value="{DynamicResource BadBrush}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Text="{Binding SpeedLimitText}" Foreground="{DynamicResource AccentBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding CruiseText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                <c:RadialGauge Title="SPEED" Unit="MPH" Maximum="100" MajorStep="20"
+                                               Value="{Binding SpeedValue, Mode=OneWay}" Marker="{Binding SpeedLimitValue, Mode=OneWay}"
+                                               ValueText="{Binding SpeedText, Mode=OneWay}" IsAlert="{Binding IsSpeeding, Mode=OneWay}"
+                                               ValueBrush="{DynamicResource AccentBrush}" AlertBrush="{DynamicResource BadBrush}"
+                                               TrackBrush="{DynamicResource ButtonBrush}" TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="{Binding SpeedLimitText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding CruiseText}" Foreground="{DynamicResource MutedBrush}" FontSize="12" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <Border x:Name="GEngine" Style="{StaticResource Card}" Margin="3,0,3,0">
                             <StackPanel>
-                                <TextBlock Text="ENGINE" Style="{StaticResource Label}"/>
-                                <TextBlock Text="{Binding RpmText}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource GoodBrush}"/>
-                                <TextBlock Text="{Binding GearText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding EngineTempText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                <c:RadialGauge Title="ENGINE" Unit="RPM x100" Maximum="{Binding RpmMax, Mode=OneWay}" MajorStep="500" LabelDivisor="100"
+                                               Value="{Binding RpmValue, Mode=OneWay}" RedFrom="{Binding RpmRedFrom, Mode=OneWay}"
+                                               ValueText="{Binding RpmDialText, Mode=OneWay}"
+                                               ValueBrush="{DynamicResource GoodBrush}" AlertBrush="{DynamicResource BadBrush}"
+                                               TrackBrush="{DynamicResource ButtonBrush}" TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="{Binding GearText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding EngineTempText}" Foreground="{DynamicResource MutedBrush}" FontSize="12" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <Border x:Name="GFuel" Style="{StaticResource Card}" Margin="3,0,3,0">
                             <StackPanel>
-                                <TextBlock Text="FUEL" Style="{StaticResource Label}"/>
-                                <TextBlock Text="{Binding FuelText}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
-                                <TextBlock Text="{Binding RangeText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding MpgText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                <c:RadialGauge Title="FUEL" Unit="PERCENT" Maximum="100" MajorStep="25"
+                                               Value="{Binding FuelPercentValue, Mode=OneWay}" ValueText="{Binding FuelText, Mode=OneWay}"
+                                               IsAlert="{Binding IsFuelLow, Mode=OneWay}"
+                                               ValueBrush="{DynamicResource AccentBrush}" AlertBrush="{DynamicResource BadBrush}"
+                                               TrackBrush="{DynamicResource ButtonBrush}" TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="{Binding RangeText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding MpgText}" Foreground="{DynamicResource MutedBrush}" FontSize="12" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <Border x:Name="GScore" Style="{StaticResource Card}" Margin="6,0,0,0">
                             <StackPanel>
-                                <TextBlock Text="TRIP SCORE" Style="{StaticResource Label}"/>
-                                <TextBlock Text="{Binding ScoreText}" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource GoodBrush}"/>
-                                <TextBlock Text="{Binding RatingText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" TextWrapping="Wrap"/>
-                                <TextBlock Text="{Binding AirText}" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                                <c:RadialGauge Title="TRIP SCORE" Unit="OUT OF 100" Maximum="100" MajorStep="25"
+                                               Value="{Binding ScoreValue, Mode=OneWay}" ValueText="{Binding ScoreDialText, Mode=OneWay}"
+                                               ValueBrush="{DynamicResource GoodBrush}" AlertBrush="{DynamicResource BadBrush}"
+                                               TrackBrush="{DynamicResource ButtonBrush}" TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="{Binding RatingText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                <TextBlock Text="{Binding AirText}" Foreground="{DynamicResource MutedBrush}" FontSize="12" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                     </UniformGrid>
@@ -165,7 +166,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock Text="RECENT COACHING EVENTS" Style="{StaticResource Label}" Margin="0,10,0,4"/>
-                            <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RecentIncidents}" Height="140" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0">
+                            <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RecentIncidents}" Height="140">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock TextWrapping="Wrap">
@@ -180,7 +181,7 @@
                     <Border x:Name="WReport" Style="{StaticResource Card}" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="LAST DELIVERY REPORT" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" Margin="0,0,0,6"/>
-                            <TextBox Text="{Binding LastReport, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0" MinHeight="60" TextWrapping="Wrap"/>
+                            <TextBox Text="{Binding LastReport, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" MinHeight="60" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                 <Border x:Name="WTrend" Style="{StaticResource Card}" Margin="0,0,0,10">
@@ -194,25 +195,77 @@
             <Border Grid.Column="2" Style="{StaticResource Card}" Margin="4,0,0,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
-                        <DockPanel>
-                            <Button Content="Next Channel ( ] )" Click="BtnChannel_Click" DockPanel.Dock="Right" Style="{StaticResource TopButton}" Margin="0"/>
-                            <TextBlock Text="{Binding RadioChannelText}" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
-                        </DockPanel>
-                        <TextBlock Text="{Binding RadioStateText}" Foreground="{DynamicResource GoodBrush}" Margin="0,6,0,0"/>
-                        <TextBlock Text="{Binding PartnerText}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding AiStatusText}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
+                        <!-- Radio face: LCD with channel, lamps and state -->
+                        <Border Background="#05080D" CornerRadius="8" Padding="14,10" BorderBrush="{DynamicResource ButtonBrush}" BorderThickness="1">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding ChannelNumberText}" FontFamily="Consolas" FontSize="54" FontWeight="Bold"
+                                           Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ChannelNameText}" FontFamily="Consolas" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
+                                        <Ellipse>
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse" BasedOn="{StaticResource Lamp}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsTransmitting}" Value="True">
+                                                            <Setter Property="Fill" Value="{DynamicResource BadBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="TX" FontFamily="Consolas" Foreground="#94A3B8" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                        <Ellipse>
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse" BasedOn="{StaticResource Lamp}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsReceiving}" Value="True">
+                                                            <Setter Property="Fill" Value="{DynamicResource GoodBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="RX" FontFamily="Consolas" Foreground="#94A3B8" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                        <Ellipse>
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse" BasedOn="{StaticResource Lamp}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRadioBusy}" Value="True">
+                                                            <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="BUSY" FontFamily="Consolas" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding RadioStateText}" FontFamily="Consolas" FontSize="12" Foreground="#10B981" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="19" Tag="19" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Highway traffic"/>
+                            <Button Content="9" Tag="9" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Emergency"/>
+                            <Button Content="17" Tag="17" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Regional traffic"/>
+                            <Button Content="21" Tag="21" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Casual conversation"/>
+                            <Button Content="25" Tag="25" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Truck stop talk"/>
+                            <Button Content="30 DISPATCH" Tag="30" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Company dispatch"/>
+                        </WrapPanel>
+                        <TextBlock Text="{Binding PartnerText}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0" FontSize="12"/>
+                        <TextBlock Text="{Binding AiStatusText}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" FontSize="12"/>
                         <TextBlock Text="{Binding RadioNotice}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="0,2,0,6"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                         <DockPanel>
                             <Button x:Name="BtnSend" Content="Send" Click="BtnSend_Click" DockPanel.Dock="Right" Style="{StaticResource TopButton}" Margin="6,0,0,0"/>
-                            <TextBox x:Name="TxtMessage" KeyDown="TxtMessage_KeyDown" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" Padding="6" ToolTip="Type a CB message and press Enter (works without a microphone)"/>
+                            <TextBox x:Name="TxtMessage" KeyDown="TxtMessage_KeyDown" ToolTip="Type a CB message and press Enter (works without a microphone)"/>
                         </DockPanel>
                         <Button x:Name="BtnHoldPtt" Content="HOLD TO TALK (LEFT ALT)" Margin="0,8,0,0"
                                 PreviewMouseLeftButtonDown="BtnHoldPtt_Down" PreviewMouseLeftButtonUp="BtnHoldPtt_Up"
                                 Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource BgBrush}" FontWeight="Bold" Padding="16,10"/>
                     </StackPanel>
-                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioTranscriptLog}" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0">
+                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding RadioTranscriptLog}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
@@ -297,7 +350,7 @@
                     <ColumnDefinition Width="1.4*"/>
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource Card}" Margin="0,0,10,0">
-                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstContacts" ItemsSource="{Binding Contacts}" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0">
+                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstContacts" ItemsSource="{Binding Contacts}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,4">
@@ -364,7 +417,7 @@
                     <Button Content="All trips (PDF)" Click="BtnExportAllPdf_Click" Style="{StaticResource TopButton}"/>
                     <Button Content="Share image (PNG)" Click="BtnExportPng_Click" Style="{StaticResource TopButton}"/>
                 </WrapPanel>
-                <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstTrips" Grid.Row="1" ItemsSource="{Binding TripHistory}" Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0">
+                <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstTrips" Grid.Row="1" ItemsSource="{Binding TripHistory}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Margin="0,3">

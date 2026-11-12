@@ -77,6 +77,7 @@ public sealed class AiSettings
     public List<string> GameFolders { get; set; } = new();
     /// <summary>The "plugin missing, install now?" question is asked once.</summary>
     public bool PluginPromptShown { get; set; }
+    public bool WelcomeShown { get; set; }
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
     public double? WindowWidth { get; set; }

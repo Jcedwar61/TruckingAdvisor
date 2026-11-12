@@ -87,7 +87,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
         _radio.TransmissionReceived += OnTransmissionReceived;
         _radio.TruckerUpdated += (_, t) => SafeDb(db => db.SaveTrucker(t));
         _radio.Notice += (_, msg) => _postToUi(() => RadioNotice = msg);
-        _radio.StateChanged += (_, _) => _postToUi(() => Raise(nameof(RadioStateText)));
+        _radio.StateChanged += (_, _) => _postToUi(RaiseAll);
         InitFeatures();
     }
 

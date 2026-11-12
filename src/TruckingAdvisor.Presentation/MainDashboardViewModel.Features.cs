@@ -125,6 +125,33 @@ public sealed partial class MainDashboardViewModel
 
     public TimeSpan SessionDuration => DateTimeOffset.UtcNow - _sessionStart;
 
+    // ---- Numbers for the dials ----
+    private bool HasData => _current.IsLive || _current.IsDemoData;
+    public double SpeedValue => HasData ? _current.SpeedMph : 0;
+    public double SpeedLimitValue => HasData ? _current.SpeedLimitMph : 0;
+    /// <summary>Dial top end: rounded up from the engine's max RPM (2500 until known).</summary>
+    public double RpmMax => _current.MaxEngineRpm > 0 ? Math.Ceiling(_current.MaxEngineRpm / 500.0) * 500 : 2500;
+    public double RpmValue => HasData ? _current.EngineRpm : 0;
+    public double RpmRedFrom => _current.MaxEngineRpm > 0 ? _current.MaxEngineRpm * 0.92 : 0;
+    public string RpmDialText => _current.EngineRpm > 0 ? $"{_current.EngineRpm:F0}" : "--";
+    public double FuelPercentValue => _current.HasFuelCapacity ? _current.FuelPercent : 0;
+    public bool IsFuelLow => _current.HasFuelCapacity && _current.FuelPercent <= 15;
+    public double ScoreValue => _trips.ActiveTrip?.ScoreBreakdown.FinalScore ?? 0;
+    public string ScoreDialText => _trips.ActiveTrip is { } t ? t.ScoreBreakdown.FinalScore.ToString() : "--";
+
+    // ---- CB radio face ----
+    public string ChannelNumberText => _radio.ActiveChannel.ToString("00");
+    public string ChannelNameText => ChannelName(_radio.ActiveChannel);
+    public bool IsTransmitting => _radio.CurrentState == CBRadioState.PlayerTransmitting;
+    public bool IsReceiving => _radio.CurrentState is CBRadioState.PlayingAiResponse or CBRadioState.PlayingTransmission or CBRadioState.IncomingTransmission;
+    public bool IsRadioBusy => _radio.CurrentState is CBRadioState.ProcessingSpeech or CBRadioState.GeneratingResponse;
+
+    public void SelectChannel(int channel)
+    {
+        _radio.SwitchChannel(channel);
+        RaiseAll();
+    }
+
     private string _gameStatus = "Looking for American Truck Simulator...";
     /// <summary>Where the game was found and whether its telemetry plugin is installed.</summary>
     public string GameStatusText { get => _gameStatus; set { _gameStatus = value; Raise(); } }

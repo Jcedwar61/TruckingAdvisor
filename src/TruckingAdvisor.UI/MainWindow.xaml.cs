@@ -39,13 +39,18 @@ public partial class MainWindow : Window
     private HudOverlayWindow? _overlay;
     private string? _lastAdvisory;
     private bool _listeningForPttBind;
+    /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
+    private readonly string? _screenshotDir;
 
     public MainWindow()
     {
         InitializeComponent();
         Directory.CreateDirectory(AppDataDir);
 
-        bool demo = Environment.GetCommandLineArgs().Contains("--demo", StringComparer.OrdinalIgnoreCase);
+        var args = Environment.GetCommandLineArgs();
+        bool demo = args.Contains("--demo", StringComparer.OrdinalIgnoreCase);
+        int shot = Array.FindIndex(args, a => a.Equals("--screenshot", StringComparison.OrdinalIgnoreCase));
+        if (shot >= 0 && shot + 1 < args.Length) _screenshotDir = args[shot + 1];
         _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo);
 
         _aiSettings = AiSettings.Load();
@@ -91,8 +96,60 @@ public partial class MainWindow : Window
 
         RestoreWindowBounds();
         ApplyLayout();
-        _ = Task.Run(RefreshGameStatus);
         _telemetry.Start();
+        if (_screenshotDir is not null)
+        {
+            Loaded += async (_, _) => await CaptureScreenshotsAsync(_screenshotDir);
+            return;
+        }
+        _ = Task.Run(RefreshGameStatus);
+        Loaded += (_, _) => ShowWelcomeIfFirstRun();
+    }
+
+    private void ShowWelcomeIfFirstRun()
+    {
+        if (_aiSettings.WelcomeShown) return;
+        _aiSettings.WelcomeShown = true;
+        var dlg = new WelcomeWindow(_aiSettings, _company) { Owner = this };
+        dlg.ShowDialog();
+        try { _aiSettings.Save(); _db.SaveCompany(_company); } catch { }
+        if (dlg.OpenAiSettings) BtnAiSettings_Click(this, new RoutedEventArgs());
+    }
+
+    /// <summary>Renders each tab to a PNG (dashboard.png, career.png, ...) and closes the app.</summary>
+    private async Task CaptureScreenshotsAsync(string dir)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            await Task.Delay(4000); // let telemetry/demo data fill the gauges
+            var root = (FrameworkElement)Content;
+            string[] names = { "dashboard", "career", "contacts", "statistics", "trips" };
+            for (int i = 0; i < Tabs.Items.Count && i < names.Length; i++)
+            {
+                Tabs.SelectedIndex = i;
+                await Task.Delay(400);
+                root.UpdateLayout();
+                var visual = new System.Windows.Media.DrawingVisual();
+                using (var dc = visual.RenderOpen())
+                {
+                    var size = new Size(root.ActualWidth, root.ActualHeight);
+                    dc.DrawRectangle(Background, null, new Rect(size));
+                    dc.DrawRectangle(new System.Windows.Media.VisualBrush(root), null, new Rect(size));
+                }
+                var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)root.ActualWidth, (int)root.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bmp.Render(visual);
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                using var fs = File.Create(Path.Combine(dir, names[i] + ".png"));
+                enc.Save(fs);
+            }
+        }
+        catch (Exception ex)
+        {
+            try { File.WriteAllText(Path.Combine(dir, "error.txt"), ex.ToString()); } catch { }
+        }
+        Close();
     }
 
     // ---- Window size & game detection ----
@@ -222,6 +279,10 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter) await SendTypedAsync();
     }
     private void BtnChannel_Click(object sender, RoutedEventArgs e) => _viewModel.CycleChannel();
+    private void BtnChannelPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int ch)) _viewModel.SelectChannel(ch);
+    }
 
     // ---- Hotkeys ----
 

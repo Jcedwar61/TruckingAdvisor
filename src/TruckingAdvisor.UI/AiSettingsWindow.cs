@@ -47,8 +47,8 @@ public sealed class AiSettingsWindow : Window
         Width = 620;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x15, 0x1C, 0x28));
-        Foreground = Brushes.White;
+        SetResourceReference(BackgroundProperty, "CardBrush");
+        SetResourceReference(ForegroundProperty, "TextBrush");
 
         var form = new StackPanel { Margin = new Thickness(16) };
         form.Children.Add(Header("Driver"));
