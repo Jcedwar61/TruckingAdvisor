@@ -31,6 +31,9 @@ public sealed partial class MainDashboardViewModel
     /// <summary>Number on the HUD's speed-limit sign ("--" when the game reports no limit).</summary>
     public string SpeedLimitNumber => HasData && _current.SpeedLimitMph > 0 ? $"{_current.SpeedLimitMph:F0}" : "--";
 
+    /// <summary>Runs a voice-command function from a bound key or button (volume, distance report, ...).</summary>
+    public void RunCommand(TruckingAdvisor.AI.VoiceCommandKind kind) => HandleVoiceCommand(new TruckingAdvisor.AI.VoiceCommand(kind));
+
     /// <summary>The CB channel the radio is tuned to.</summary>
     public int ActiveChannel => _radio.ActiveChannel;
 

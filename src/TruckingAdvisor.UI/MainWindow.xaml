@@ -6,8 +6,7 @@
         Icon="Assets/TruckingAdvisor.ico"
         Width="1380" Height="880" MinWidth="900" MinHeight="600" ResizeMode="CanResize"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
-        WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
@@ -22,8 +21,8 @@
             <Setter Property="Margin" Value="0,2,8,2"/>
         </Style>
         <Style x:Key="ChannelButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,0,6,6"/>
-            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="0,0,4,6"/>
+            <Setter Property="Padding" Value="2,5"/>
             <Setter Property="FontFamily" Value="Consolas"/>
         </Style>
         <Style x:Key="Lamp" TargetType="Ellipse">
@@ -88,7 +87,7 @@
                                     </StackPanel.Resources>
                                     <Button x:Name="BtnLayout" Content="Layout &amp; Theme" Click="BtnLayout_Click"/>
                                     <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click"/>
-                                    <Button x:Name="BtnRebindPtt" Content="Rebind PTT Key" Click="BtnRebindPtt_Click"/>
+                                    <Button x:Name="BtnControls" Content="Controls &amp; Key Bindings" Click="BtnControls_Click"/>
                                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
                                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
                                 </StackPanel>
@@ -305,14 +304,44 @@
                                 </StackPanel>
                             </DockPanel>
                         </Border>
-                        <WrapPanel Margin="0,8,0,0">
-                            <Button Content="19" Tag="19" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Highway traffic"/>
-                            <Button Content="9" Tag="9" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Emergency"/>
-                            <Button Content="17" Tag="17" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Regional traffic"/>
-                            <Button Content="21" Tag="21" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Casual conversation"/>
-                            <Button Content="25" Tag="25" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Truck stop talk"/>
-                            <Button Content="30 DISPATCH" Tag="30" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Company dispatch"/>
-                        </WrapPanel>
+                        <UniformGrid Rows="1" Margin="0,8,0,0">
+                            <Button Tag="19" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 19: Highway traffic">
+                                <StackPanel>
+                                    <TextBlock Text="19" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Highway" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Tag="9" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 9: Emergency">
+                                <StackPanel>
+                                    <TextBlock Text="9" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Emergency" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Tag="17" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 17: Regional traffic">
+                                <StackPanel>
+                                    <TextBlock Text="17" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Regional" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Tag="21" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 21: Casual conversation">
+                                <StackPanel>
+                                    <TextBlock Text="21" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Casual" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Tag="25" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 25: Truck stop talk">
+                                <StackPanel>
+                                    <TextBlock Text="25" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Truck stop" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Tag="30" Click="BtnChannelPreset_Click" Style="{StaticResource ChannelButton}" ToolTip="Channel 30: Company dispatch">
+                                <StackPanel>
+                                    <TextBlock Text="30" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Dispatch" FontFamily="Segoe UI" FontSize="10" FontWeight="Normal" HorizontalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                        </UniformGrid>
                         <TextBlock Text="{Binding PartnerText}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0" FontSize="12"/>
                         <TextBlock Text="{Binding AiStatusText}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0" FontSize="12"/>
                         <TextBlock Text="{Binding RadioNotice}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="0,2,0,6"/>

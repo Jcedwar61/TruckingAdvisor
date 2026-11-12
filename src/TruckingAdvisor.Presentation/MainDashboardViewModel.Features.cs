@@ -176,7 +176,7 @@ public sealed partial class MainDashboardViewModel
     public double XpPercent => Career.NextLevelXp > 0 ? Math.Clamp(100.0 * Career.CurrentXp / Career.NextLevelXp, 0, 100) : 0;
     public string InsightsHint => Insights.Count == 0 ? "Insights appear after a few recorded deliveries (fuel trends, clean-driving streaks, favorite routes)." : "";
     public string TranscriptHint => RadioTranscriptLog.Count == 0
-        ? "Quiet on the channel.\n\nHold LEFT ALT (or the button below) and try:\n\"Breaker one-nine, anybody got a copy?\"\n\nNo mic? Type a message and press Enter." : "";
+        ? "Quiet on the channel.\n\nHold push-to-talk (Left Alt by default, or the button below) and try:\n\"Breaker one-nine, anybody got a copy?\"\n\nNo mic? Type a message and press Enter." : "";
 
     /// <summary>Hails a trucker by name on channel 19, as if the player called them.</summary>
     public async Task CallContactAsync(string handle)
