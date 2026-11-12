@@ -22,7 +22,8 @@ public sealed class HudChannelBar : Window
     private const double DesignWidth = 300;
     private static readonly (int Channel, string Label)[] Presets =
     {
-        (19, "Highway"), (9, "Emergency"), (17, "Regional"), (21, "Casual"), (25, "Truck stop"), (30, "Dispatch")
+        (19, "Highway traffic"), (9, "Emergency"), (17, "Regional traffic"),
+        (21, "Casual conversation"), (25, "Truck stop talk"), (30, "Company dispatch")
     };
 
     private readonly MainDashboardViewModel _vm;
@@ -97,14 +98,14 @@ public sealed class HudChannelBar : Window
 
     private Border MakeChip(int channel, string label)
     {
-        var text = new TextBlock { TextAlignment = TextAlignment.Center };
-        text.Inlines.Add(new System.Windows.Documents.Run(channel.ToString()) { FontFamily = new FontFamily("Consolas"), FontWeight = FontWeights.Bold, FontSize = 15 });
-        text.Inlines.Add(new System.Windows.Documents.LineBreak());
-        text.Inlines.Add(new System.Windows.Documents.Run(label) { FontSize = 9 });
+        // One labeled row per channel: "19   Highway traffic".
+        var text = new TextBlock();
+        text.Inlines.Add(new System.Windows.Documents.Run(channel.ToString().PadLeft(2)) { FontFamily = new FontFamily("Consolas"), FontWeight = FontWeights.Bold, FontSize = 15 });
+        text.Inlines.Add(new System.Windows.Documents.Run("   " + label) { FontSize = 12 });
         var chip = new Border
         {
-            Margin = new Thickness(2),
-            Padding = new Thickness(2, 3, 2, 3),
+            Margin = new Thickness(0, 1, 0, 1),
+            Padding = new Thickness(8, 3, 8, 3),
             CornerRadius = new CornerRadius(5),
             Background = Chip,
             BorderThickness = new Thickness(1),

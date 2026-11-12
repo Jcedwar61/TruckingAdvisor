@@ -4,6 +4,8 @@ using System.Windows;
 using System.Windows.Input;
 using TruckingAdvisor.AI;
 using TruckingAdvisor.Audio;
+using TruckingAdvisor.Shared.Input;
+using InputBinding = TruckingAdvisor.Shared.Input.InputBinding;
 using TruckingAdvisor.Core.Advisors;
 using TruckingAdvisor.Core.Audio;
 using TruckingAdvisor.Core.Coaching;
@@ -21,7 +23,8 @@ public partial class MainWindow : Window
 {
     private static readonly string AppDataDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor");
-    private static string KeybindingsPath => Path.Combine(AppDataDir, "keybindings.json");
+    private static string KeybindingsPath => Path.Combine(AppDataDir, "keybindings.json"); // older versions (keys only)
+    private static string ControlsPath => Path.Combine(AppDataDir, "controls.json");
 
     private readonly AtsMemoryMappedTelemetryProvider _telemetry;
     private readonly AiSettings _aiSettings;
@@ -31,7 +34,10 @@ public partial class MainWindow : Window
     private readonly WindowsAudioSink _sink = new();
     private readonly AudioPriorityManager _audio;
     private readonly CBRadioService _cbRadio;
-    private readonly GlobalPttKeyboardHook _keyboardHook = new();
+    private readonly GlobalKeyboardHook _keyboardHook = new();
+    private readonly InputBindingSet _bindings;
+    private readonly InputRouter _input;
+    private GameControllerInput? _controllers;
     private readonly MicrophoneRecorder _mic = new();
     private readonly WindowsSpeechToText _localStt = new();
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
@@ -39,7 +45,6 @@ public partial class MainWindow : Window
     private HudOverlayWindow? _overlay;
     private HudChannelBar? _channelBar;
     private string? _lastAdvisory;
-    private bool _listeningForPttBind;
     /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
     private readonly string? _screenshotDir;
 
@@ -92,12 +97,24 @@ public partial class MainWindow : Window
         };
         ApplyAudioSettings();
 
-        // Hook callbacks must return fast (Windows drops slow low-level hooks), so never block here.
-        _keyboardHook.LoadBindings(KeybindingsPath);
-        _keyboardHook.PttPressed += (_, _) => Dispatcher.BeginInvoke(StartTransmit);
-        _keyboardHook.PttReleased += (_, _) => Dispatcher.BeginInvoke(new Action(async () => await EndTransmitAsync()));
-        _keyboardHook.ActionTriggered += (_, actionId) => Dispatcher.BeginInvoke(() => HandleAction(actionId));
+        // Every function can be bound to keys and to wheel / button-box buttons (More > Controls).
+        // All input goes through one router on the UI thread. Hook callbacks must return fast
+        // (Windows drops slow low-level hooks), so they only queue the event.
+        _bindings = InputBindingSet.Load(ControlsPath, KeybindingsPath);
+        _input = new InputRouter(_bindings);
+        _input.ActionPressed += (_, action) =>
+        {
+            if (action == InputActions.PushToTalk) StartTransmit();
+            else HandleAction(action);
+        };
+        _input.ActionReleased += async (_, action) =>
+        {
+            if (action == InputActions.PushToTalk) await EndTransmitAsync();
+        };
+        _keyboardHook.KeyDown += vk => Dispatcher.BeginInvoke(() => _input.Press(new InputBinding(InputSource.Keyboard, vk)));
+        _keyboardHook.KeyUp += vk => Dispatcher.BeginInvoke(() => _input.Release(new InputBinding(InputSource.Keyboard, vk)));
         _keyboardHook.Install();
+        SourceInitialized += (_, _) => StartControllers();
         UpdatePttLabels();
 
         RestoreWindowBounds();
@@ -154,6 +171,11 @@ public partial class MainWindow : Window
             }
             _channelBar?.Hide();
             _overlay?.Hide();
+            var controls = new ControlsWindow(_bindings, _input, () => new[] { "(example) Wheel" }, () => { }) { Owner = this, ShowActivated = false };
+            controls.Show();
+            await Task.Delay(600);
+            if (controls.Content is FrameworkElement cw) SaveElementPng(cw, controls.Background, Path.Combine(dir, "controls.png"));
+            controls.Close();
         }
         catch (Exception ex)
         {
@@ -319,6 +341,18 @@ public partial class MainWindow : Window
         switch (actionId)
         {
             case "toggleOverlay": ToggleOverlay(); break;
+            case "showChannelPicker":
+                if (_overlay is not { IsVisible: true }) ToggleOverlay();
+                _channelBar?.Flash();
+                break;
+            case "toggleQuiet": _viewModel.ToggleQuiet(); break;
+            case "radioVolumeUp": _viewModel.RunCommand(VoiceCommandKind.VolumeUp); break;
+            case "radioVolumeDown": _viewModel.RunCommand(VoiceCommandKind.VolumeDown); break;
+            case "distanceReport": _viewModel.RunCommand(VoiceCommandKind.DistanceReport); break;
+            case var direct when InputActions.DirectChannel(direct) is { } channel:
+                _viewModel.SelectChannel(channel);
+                _channelBar?.Flash();
+                break;
             case "cycleCbChannel": _viewModel.CycleChannel(1); _channelBar?.Flash(); break;
             case "previousCbChannel": _viewModel.CycleChannel(-1); _channelBar?.Flash(); break;
             case "acknowledgeAlert": _audio.StopAll(); break;
@@ -347,11 +381,37 @@ public partial class MainWindow : Window
 
     // ---- Buttons ----
 
-    private void BtnRebindPtt_Click(object sender, RoutedEventArgs e)
+    private void BtnControls_Click(object sender, RoutedEventArgs e)
     {
-        _listeningForPttBind = true;
-        BtnRebindPtt.Content = "Press a key (Esc cancels)...";
-        BtnHoldPtt.Content = "PRESS A KEY FOR PUSH-TO-TALK (ESC CANCELS)";
+        var dlg = new ControlsWindow(_bindings, _input, () => _controllers?.DeviceNames ?? Array.Empty<string>(), SaveBindings) { Owner = this };
+        dlg.ShowDialog();
+        _input.CancelCapture();
+        UpdatePttLabels();
+    }
+
+    private void SaveBindings()
+    {
+        try { _bindings.Save(ControlsPath); }
+        catch (Exception ex) { ShowNotice($"Could not save controls: {ex.Message}"); }
+        UpdatePttLabels();
+    }
+
+    /// <summary>Wheels, button boxes, joysticks and gamepads (DirectInput, background, non-exclusive).</summary>
+    private void StartControllers()
+    {
+        if (_screenshotDir is not null) return;
+        try
+        {
+            _controllers = new GameControllerInput(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            _controllers.ButtonDown += b => Dispatcher.BeginInvoke(() => _input.Press(b));
+            _controllers.ButtonUp += b => Dispatcher.BeginInvoke(() => _input.Release(b));
+            _controllers.Error += msg => Dispatcher.BeginInvoke(() => ShowNotice(msg));
+            _controllers.Start();
+        }
+        catch (Exception ex)
+        {
+            ShowNotice($"Wheel/button-box input is unavailable: {ex.Message}");
+        }
     }
 
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
@@ -361,25 +421,12 @@ public partial class MainWindow : Window
     /// <summary>Any choice in the "More" menu closes the menu.</summary>
     private void MorePopup_Click(object sender, RoutedEventArgs e) => BtnMore.IsChecked = false;
 
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (!_listeningForPttBind) return;
-        e.Handled = true;
-        _listeningForPttBind = false;
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key != Key.Escape)
-        {
-            _keyboardHook.BindKey("pushToTalk", KeyInterop.VirtualKeyFromKey(key));
-            try { _keyboardHook.SaveBindings(KeybindingsPath); } catch { /* non-fatal */ }
-        }
-        UpdatePttLabels();
-    }
-
+    /// <summary>The talk button shows what push-to-talk is bound to.</summary>
     private void UpdatePttLabels()
     {
-        var key = KeyInterop.KeyFromVirtualKey(_keyboardHook.PttVirtualKeyCode);
-        BtnHoldPtt.Content = $"HOLD TO TALK ({key.ToString().ToUpperInvariant()})";
-        BtnRebindPtt.Content = $"PTT Key: {key}";
+        var ptt = _bindings.For(InputActions.PushToTalk);
+        string bound = ptt.Count == 0 ? "NOT BOUND - SEE MORE > CONTROLS" : string.Join(" / ", ptt.Take(2).Select(b => b.Display.ToUpperInvariant()));
+        BtnHoldPtt.Content = $"HOLD TO TALK ({bound})";
     }
 
     private void BtnAiSettings_Click(object sender, RoutedEventArgs e)
@@ -641,6 +688,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _keyboardHook.Dispose();
+        _controllers?.Dispose();
         _mic.Dispose();
         _viewModel.Dispose();
         _telemetry.Dispose();
