@@ -36,6 +36,8 @@ public sealed class AiSettingsWindow : Window
     private readonly Slider _radioVol = Vol(), _dispatchVol = Vol(), _advisorVol = Vol();
     private readonly ComboBox _pipeline = new();
     private readonly TextBox _realtimeModel = new();
+    private readonly CheckBox _autoUpdate = new() { Content = "Check for updates automatically and download them in the background" };
+    private readonly CheckBox _updateOnExit = new() { Content = "Install a downloaded update when I close the app" };
     private readonly CheckBox _offlineStt = new() { Content = "Offline speech recognition (Windows) when OpenAI transcription isn't available" };
 
     public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company)
@@ -126,6 +128,15 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Voice $ / 1M characters", _priceTts));
         form.Children.Add(Indent(_usage));
 
+        form.Children.Add(Header("Updates"));
+        form.Children.Add(_autoUpdate);
+        form.Children.Add(_updateOnExit);
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Updates come from the project's GitHub releases and are checked against their published SHA-256 checksum before installing. Your trips, truckers and settings are kept.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         buttons.Children.Add(Button("Save", (_, _) => SaveAndClose()));
         buttons.Children.Add(Button("Cancel", (_, _) => { DialogResult = false; }));
@@ -157,6 +168,8 @@ public sealed class AiSettingsWindow : Window
         _pipeline.SelectedItem = _s.VoicePipeline;
         _realtimeModel.Text = _s.RealtimeModel;
         _offlineStt.IsChecked = _s.OfflineSpeechRecognition;
+        _autoUpdate.IsChecked = _s.AutoUpdate;
+        _updateOnExit.IsChecked = _s.InstallUpdatesOnExit;
         _hq.Text = _company.Headquarters;
         _dispatcherName.Text = _company.DispatcherName;
         _mode.SelectedItem = _s.ConversationMode;
@@ -201,6 +214,8 @@ public sealed class AiSettingsWindow : Window
         if (_pipeline.SelectedItem is VoicePipeline vp) _s.VoicePipeline = vp;
         _s.RealtimeModel = NonEmpty(_realtimeModel.Text, _s.RealtimeModel);
         _s.OfflineSpeechRecognition = _offlineStt.IsChecked == true;
+        _s.AutoUpdate = _autoUpdate.IsChecked == true;
+        _s.InstallUpdatesOnExit = _updateOnExit.IsChecked == true;
         _company.Headquarters = _hq.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_dispatcherName.Text)) _company.DispatcherName = _dispatcherName.Text.Trim();
         if (_mode.SelectedItem is ConversationTimingMode m) _s.ConversationMode = m;

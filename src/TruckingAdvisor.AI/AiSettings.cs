@@ -97,6 +97,14 @@ public sealed class AiSettings
     /// <summary>HUD rows to show, in order.</summary>
     public List<string> HudRows { get; set; } = new(DefaultHudRows);
     public double HudOpacity { get; set; } = 0.85;
+    // Updates.
+    /// <summary>Check GitHub for new versions in the background and download them (never installs mid-drive).</summary>
+    public bool AutoUpdate { get; set; } = true;
+    /// <summary>Install a downloaded update when the app closes.</summary>
+    public bool InstallUpdatesOnExit { get; set; } = true;
+    /// <summary>A version the player chose to skip (no banner for it).</summary>
+    public string SkippedUpdateVersion { get; set; } = "";
+
     /// <summary>Clickable CB channel picker attached under the HUD.</summary>
     public bool HudChannelPicker { get; set; } = true;
 

@@ -1,5 +1,14 @@
 # Changelog — TruckingAdvisor
 
+## [v2.9.0] — 2026-11-13
+
+### Added
+- **Automatic updates.** About 20 seconds after start (and every 12 hours) the app checks this project's GitHub releases. A new version is downloaded in the background and checked against the release's published SHA-256 checksum; anything that doesn't match is deleted and never run.
+- When an update is ready, a banner appears in the app (never spoken, never a popup): **Restart & update**, **What's new**, **Later** or **Skip this version**. If you just keep driving, it installs by itself when you close the app.
+- The installer has a silent update mode: it waits for the app to close, installs over it, keeps your desktop-shortcut choice, and reopens the app when you chose Restart & update. Trips, truckers, settings and your API key are untouched.
+- **More > Check for Updates** checks right away. **Settings > Updates** turns automatic checks or install-on-close off.
+- CI now tests the update path on Windows: installer waits for the running app, installs, relaunches it, and leaves the desktop shortcut alone.
+
 ## [v2.8.1] — 2026-11-12
 
 ### Changed

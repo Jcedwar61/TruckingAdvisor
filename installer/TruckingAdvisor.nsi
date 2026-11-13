@@ -13,10 +13,11 @@
 !include "x64.nsh"
 !include "WinVer.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
 
 !define APP "TruckingAdvisor"
 !ifndef VERSION
-  !define VERSION "2.8.1"
+  !define VERSION "2.9.0"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\publish\bin"
@@ -59,7 +60,25 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 TruckingAdvisor contributor
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 
+; Set by the app's updater: "/S /UPDATE" (install when the app closes) or "/S /UPDATE /RELAUNCH".
+Var IsUpdate
+Var Relaunch
+
 Function .onInit
+  StrCpy $IsUpdate 0
+  StrCpy $Relaunch 0
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  ${IfNot} ${Errors}
+    StrCpy $IsUpdate 1
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $R0 "/RELAUNCH" $R1
+  ${IfNot} ${Errors}
+    StrCpy $Relaunch 1
+  ${EndIf}
+
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "${APP} needs 64-bit Windows 10 or 11."
     Abort
@@ -69,6 +88,31 @@ Function .onInit
     Abort
   ${EndIf}
   SetRegView 64
+
+  ; Updating: wait (up to 60 s) for the running app to close so its files can be replaced.
+  ; The app holds this mutex while it runs.
+  ${If} $IsUpdate == 1
+    StrCpy $R2 0
+    ${Do}
+      System::Call 'kernel32::OpenMutexW(i 0x00100000, i 0, w "Local\TruckingAdvisor.Running") p .R3'
+      ${If} $R3 == 0
+        ${ExitDo}
+      ${EndIf}
+      System::Call 'kernel32::CloseHandle(p R3)'
+      IntOp $R2 $R2 + 1
+      ${If} $R2 >= 120
+        ${ExitDo}
+      ${EndIf}
+      Sleep 500
+    ${Loop}
+    Sleep 1000 ; let Windows finish releasing the old exe
+  ${EndIf}
+FunctionEnd
+
+Function .onInstSuccess
+  ${If} $Relaunch == 1
+    Exec '"$INSTDIR\${APP}.exe"'
+  ${EndIf}
 FunctionEnd
 
 Section "${APP} (required)" SecMain
@@ -104,6 +148,11 @@ Section "${APP} (required)" SecMain
 SectionEnd
 
 Section "Desktop shortcut" SecDesktop
+  ; An update keeps the player's choice: only refresh a shortcut that already exists.
+  ${If} $IsUpdate == 1
+  ${AndIfNot} ${FileExists} "$DESKTOP\${APP}.lnk"
+    Return
+  ${EndIf}
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\${APP}.exe" "" "$INSTDIR\TruckingAdvisor.ico"
 SectionEnd
 
