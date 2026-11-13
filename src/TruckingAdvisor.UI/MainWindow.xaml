@@ -90,6 +90,7 @@
                                     <Button x:Name="BtnControls" Content="Controls &amp; Key Bindings" Click="BtnControls_Click"/>
                                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
                                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
+                                    <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Click="BtnCheckUpdates_Click"/>
                                 </StackPanel>
                             </Border>
                         </Popup>
@@ -112,6 +113,34 @@
                 </Style>
             </Border.Style>
             <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
+        </Border>
+
+        <!-- Update banner: only when a new version is downloaded and verified. Never spoken, never interrupts. -->
+        <Border CornerRadius="8" Padding="14,8" Margin="0,0,0,10" Background="{DynamicResource CardBrush}"
+                BorderThickness="4,0,0,0" BorderBrush="{DynamicResource AccentBrush}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsUpdateVisible}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <Button Content="Restart &amp; update" Click="BtnUpdateNow_Click" Margin="6,2,0,2"
+                            Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource BgBrush}"/>
+                    <Button Content="What's new" Click="BtnUpdateNotes_Click" Margin="6,2,0,2"/>
+                    <Button Content="Later" Click="BtnUpdateLater_Click" Margin="6,2,0,2"/>
+                    <Button Content="Skip this version" Click="BtnUpdateSkip_Click" Margin="6,2,0,2"/>
+                </WrapPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding UpdateTitle}" FontWeight="Bold" FontSize="14" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding UpdateDetail}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!-- Delivery banner: shows once when a job ends, hides itself after 20 seconds (or click x) -->

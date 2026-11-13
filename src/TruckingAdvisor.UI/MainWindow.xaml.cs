@@ -127,6 +127,7 @@ public partial class MainWindow : Window
         }
         _ = Task.Run(RefreshGameStatus);
         Loaded += (_, _) => ShowWelcomeIfFirstRun();
+        StartUpdateChecks();
     }
 
     private void ShowWelcomeIfFirstRun()
@@ -683,6 +684,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        InstallUpdateOnExit();
         _keyboardHook.Dispose();
         _controllers?.Dispose();
         _mic.Dispose();

@@ -23,7 +23,7 @@ jobs:
       id-token: write       # only used for release attestation on tags
       attestations: write
     env:
-      VERSION: 2.8.1
+      VERSION: 2.9.0
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +60,23 @@ jobs:
           $p = Start-Process "$dir\TruckingAdvisor.exe" -ArgumentList "--demo" -PassThru
           Start-Sleep -Seconds 15
           if ($p.HasExited) { throw "TruckingAdvisor.exe exited during startup (code $($p.ExitCode))" }
+
+          # Auto-update path: the installer in update mode must wait for the running app, install,
+          # relaunch it, and not re-add a desktop shortcut the player removed.
+          $desktopLnk = Join-Path ([Environment]::GetFolderPath("Desktop")) "TruckingAdvisor.lnk"
+          Remove-Item $desktopLnk -ErrorAction SilentlyContinue
+          $u = Start-Process "publish\TruckingAdvisor-Setup-$env:VERSION.exe" -ArgumentList "/S", "/UPDATE", "/RELAUNCH", "/D=$dir" -PassThru
+          Start-Sleep -Seconds 6
+          if ($u.HasExited) { throw "Update installer did not wait for the running app" }
           Stop-Process -Id $p.Id -Force
+          if (-not $u.WaitForExit(90000)) { Stop-Process -Id $u.Id -Force; throw "Update installer did not finish after the app closed" }
+          if ($u.ExitCode -ne 0) { throw "Update installer failed (code $($u.ExitCode))" }
+          Start-Sleep -Seconds 5
+          $relaunched = Get-Process TruckingAdvisor -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$dir\TruckingAdvisor.exe" }
+          if (-not $relaunched) { throw "Update did not relaunch the app" }
+          $relaunched | Stop-Process -Force
+          if (Test-Path $desktopLnk) { throw "Update re-created a desktop shortcut the player had removed" }
+          Start-Sleep -Seconds 2
 
           # Render every tab to PNG so the UI can be reviewed without a Windows PC.
           $shots = Join-Path $PWD "publish\screenshots"
@@ -107,7 +123,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: 2.8.1
+      VERSION: 2.9.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
