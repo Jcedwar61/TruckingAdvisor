@@ -31,10 +31,23 @@ public sealed partial class MainDashboardViewModel
     private string? _lastSpokenAdvice;
 
     private static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor");
-    private static string LocationsPath => Path.Combine(DataDir, "learned-cities.json");
-    private static string GradesPath => Path.Combine(DataDir, "learned-grades.json");
-    private readonly LocationMemory _locations = LocationMemory.Load(LocationsPath);
-    private readonly GradeMemory _grades = GradeMemory.Load(GradesPath);
+    private readonly object _worldLock = new();
+    private readonly Dictionary<uint, GameWorld> _worlds = new();
+    /// <summary>The current game's learned cities, grades and roads (ATS and ETS2 kept apart).</summary>
+    private GameWorld World
+    {
+        get
+        {
+            uint id = _telemetry.LatestSnapshot.GameId == 1 ? 1u : 2u;
+            lock (_worldLock)
+            {
+                if (!_worlds.TryGetValue(id, out var w)) _worlds[id] = w = GameWorld.Load(DataDir, id);
+                return w;
+            }
+        }
+    }
+    private LocationMemory _locations => World.Cities;
+    private GradeMemory _grades => World.Grades;
     private DateTimeOffset _lastGradeWarning = DateTimeOffset.MinValue;
     private string _locationText = "Location: learning from your deliveries";
     private string _gradeAheadText = string.Empty;
@@ -99,8 +112,10 @@ public sealed partial class MainDashboardViewModel
 
     private void SaveMapMemories()
     {
-        _locations.Save(LocationsPath);
-        _grades.Save(GradesPath);
+        List<GameWorld> worlds;
+        lock (_worldLock) worlds = _worlds.Values.ToList();
+        foreach (var w in worlds)
+            try { w.Save(); } catch (Exception ex) { TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Saving map data failed", ex); }
     }
 
     public ObservableCollection<AchievementItem> Achievements { get; } = new();

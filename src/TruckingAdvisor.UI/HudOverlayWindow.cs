@@ -41,6 +41,7 @@ public sealed class HudOverlayWindow : Window
                 "Location" => Line("LocationText", 12, "#94A3B8"),
                 "Grade" => Line("GradeAheadText", 12, "#EF4444"),
                 "Radio" => Line("RadioStateText", 12, "#94A3B8"),
+                "Map" => MiniMap(),
                 _ => null
             };
             if (line is not null) _panel.Children.Add(line);
@@ -102,6 +103,24 @@ public sealed class HudOverlayWindow : Window
         grid.Children.Add(sign);
         grid.Children.Add(SpeedLine());
         return grid;
+    }
+
+    /// <summary>Mini-map that follows the truck (roads you've driven, cities, destination).</summary>
+    private static UIElement MiniMap()
+    {
+        var map = new TruckingAdvisor.UI.Controls.MapView
+        {
+            Compact = true,
+            Height = 150,
+            Margin = new Thickness(0, 6, 0, 2),
+            RoadBrush = B("#64748B"),
+            AccentBrush = B("#F59E0B"),
+            TextBrush = B("#F8FAFC"),
+            GoodBrush = B("#10B981"),
+            IsHitTestVisible = false
+        };
+        map.SetBinding(TruckingAdvisor.UI.Controls.MapView.SnapshotProperty, new Binding("Map"));
+        return new Border { CornerRadius = new CornerRadius(6), Background = B("#0F172A"), ClipToBounds = true, Child = map, Margin = new Thickness(0, 4, 0, 0) };
     }
 
     /// <summary>Fuel text with a thin bar underneath (amber; red under 15%).</summary>

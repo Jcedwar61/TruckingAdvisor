@@ -152,7 +152,7 @@ public partial class MainWindow : Window
             _cbRadio.BeginPushToTalk();
             await Task.WhenAny(_cbRadio.EndPushToTalkAsync("Breaker one-nine, Big Red, you got your ears on?"), Task.Delay(5000));
             var root = (FrameworkElement)Content;
-            string[] names = { "dashboard", "career", "contacts", "statistics", "trips" };
+            string[] names = { "dashboard", "career", "contacts", "statistics", "trips", "map" };
             for (int i = 0; i < Tabs.Items.Count && i < names.Length; i++)
             {
                 Tabs.SelectedIndex = i;
@@ -411,6 +411,11 @@ public partial class MainWindow : Window
             ShowNotice($"Wheel/button-box input is unavailable: {ex.Message}");
         }
     }
+
+    private void BtnMapZoomIn_Click(object sender, RoutedEventArgs e) => BigMap.ZoomBy(1.5);
+    private void BtnMapZoomOut_Click(object sender, RoutedEventArgs e) => BigMap.ZoomBy(1 / 1.5);
+    private void BtnMapFollow_Click(object sender, RoutedEventArgs e) => BigMap.FollowTruck();
+    private void BtnMapAll_Click(object sender, RoutedEventArgs e) => BigMap.ShowAll();
 
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
 

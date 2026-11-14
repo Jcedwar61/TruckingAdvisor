@@ -116,7 +116,7 @@ public sealed class AiSettings
     public static readonly string[] DefaultWidgetOrder = { "Gauges", "Delivery", "Advisories", "Trend", "Report" };
     /// <summary>Individual gauge cards inside the Gauges widget (can be hidden too).</summary>
     public static readonly string[] GaugeCards = { "Speed", "Engine", "Fuel", "Score" };
-    public static readonly string[] AllHudRows = { "Speed", "Limit", "Fuel", "Range", "Remaining", "Score", "Location", "Grade", "Radio" };
+    public static readonly string[] AllHudRows = { "Speed", "Limit", "Fuel", "Range", "Remaining", "Score", "Location", "Grade", "Radio", "Map" };
     public static readonly string[] DefaultHudRows = { "Speed", "Limit", "Fuel", "Remaining", "Radio" };
 
     public static string DefaultPath => Path.Combine(

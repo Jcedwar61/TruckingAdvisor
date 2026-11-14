@@ -657,6 +657,31 @@
                 </ListBox>
             </Grid>
         </TabItem>
+
+        <!-- Map: draws itself from the roads you drive (each game separately) -->
+        <TabItem Header="Map">
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="−" Click="BtnMapZoomOut_Click" Style="{StaticResource TopButton}" ToolTip="Zoom out"/>
+                            <Button Content="+" Click="BtnMapZoomIn_Click" Style="{StaticResource TopButton}" ToolTip="Zoom in"/>
+                            <Button Content="Follow truck" Click="BtnMapFollow_Click" Style="{StaticResource TopButton}"/>
+                            <Button Content="Show everything" Click="BtnMapAll_Click" Style="{StaticResource TopButton}"/>
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Map.Summary}" FontWeight="SemiBold"/>
+                            <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Built from your own driving: every road you drive is added, in any DLC region or map mod. Cities appear once you've picked up or delivered there. Nothing is taken from the game's files."/>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border Background="{DynamicResource BgBrush}" CornerRadius="6">
+                        <c:MapView x:Name="BigMap" Snapshot="{Binding Map}" RoadBrush="{DynamicResource MutedBrush}" AccentBrush="{DynamicResource AccentBrush}"
+                                   TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}" GoodBrush="{DynamicResource GoodBrush}"/>
+                    </Border>
+                </DockPanel>
+            </Border>
+        </TabItem>
         </TabControl>
     </Grid>
 </Window>

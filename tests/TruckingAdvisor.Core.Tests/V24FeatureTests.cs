@@ -409,3 +409,83 @@ public class GameEventTests
         Assert.Contains("%USERPROFILE%", s);
     }
 }
+
+public class RoadMemoryTests
+{
+    [Fact]
+    public void RecordsNewRoad_ButNotTheSameRoadTwice()
+    {
+        var m = new TruckingAdvisor.Core.Mapping.RoadMemory();
+        for (int i = 0; i <= 100; i++) m.Record(i * 35, 0, moving: true);   // 3.5 km east
+        int first = m.PointCount;
+        Assert.InRange(first, 95, 101);
+        m.Record(0, 0, moving: false);                                        // stop
+        for (int i = 0; i <= 100; i++) m.Record(i * 35, 2, moving: true);   // same road again
+        Assert.Equal(first, m.PointCount);
+        Assert.Equal(1, m.SegmentCount);
+    }
+
+    [Fact]
+    public void NewBranch_JoinsTheKnownRoad_AndJumpsStartNewLines()
+    {
+        var m = new TruckingAdvisor.Core.Mapping.RoadMemory();
+        for (int i = 0; i <= 20; i++) m.Record(i * 35, 0, true);
+        m.Record(0, 0, false);
+        for (int i = 0; i <= 10; i++) m.Record(700, i * 35, true);           // turn south from the end of the known road
+        var segs = m.Segments();
+        Assert.Equal(2, segs.Count);
+        Assert.Equal(700f, segs[1][0]);                                        // branch starts at the known road
+        Assert.InRange(segs[1][1], 0f, 80f);                                   // (within a grid cell or two of it)
+
+        m.Record(50_000, 50_000, true);                                        // ferry / teleport
+        for (int i = 1; i <= 5; i++) m.Record(50_000 + i * 35, 50_000, true);
+        var after = m.Segments();
+        Assert.Equal(3, after.Count);
+        Assert.Equal(50_000f, after[2][0]);                                    // no line drawn across the jump
+    }
+
+    [Fact]
+    public void SaveAndLoad_KeepsRoadsAndKnownCells()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ta-roads-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var m = new TruckingAdvisor.Core.Mapping.RoadMemory();
+            for (int i = 0; i <= 50; i++) m.Record(i * 35, -i * 10, true);
+            string path = Path.Combine(dir, "roads.bin");
+            m.Save(path);
+            var loaded = TruckingAdvisor.Core.Mapping.RoadMemory.Load(path);
+            Assert.Equal(m.PointCount, loaded.PointCount);
+            Assert.Equal(m.MaxX, loaded.MaxX);
+            for (int i = 0; i <= 50; i++) loaded.Record(i * 35, -i * 10, true);  // known after reload
+            Assert.Equal(m.PointCount, loaded.PointCount);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
+    public void EachGame_HasItsOwnWorld_AndOldFilesBecomeAts()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ta-world-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var legacy = new TruckingAdvisor.Core.Mapping.LocationMemory();
+            legacy.Learn("Denver", 1000, 2000);
+            legacy.Save(Path.Combine(dir, "learned-cities.json"));
+
+            var ats = TruckingAdvisor.Core.Mapping.GameWorld.Load(dir, 2);
+            var ets = TruckingAdvisor.Core.Mapping.GameWorld.Load(dir, 1);
+            Assert.True(ats.Cities.Cities.ContainsKey("Denver"));
+            Assert.Empty(ets.Cities.Cities);                      // no "near Denver" in Europe
+            Assert.Null(ets.Cities.Describe(1000, 2000));
+
+            ets.Cities.Learn("Berlin", 1000, 2000);
+            ets.Save(); ats.Save();
+            Assert.True(File.Exists(Path.Combine(dir, "learned-cities-ets2.json")));
+            Assert.True(TruckingAdvisor.Core.Mapping.GameWorld.Load(dir, 1).Cities.Cities.ContainsKey("Berlin"));
+            Assert.False(TruckingAdvisor.Core.Mapping.GameWorld.Load(dir, 2).Cities.Cities.ContainsKey("Berlin"));
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+}
