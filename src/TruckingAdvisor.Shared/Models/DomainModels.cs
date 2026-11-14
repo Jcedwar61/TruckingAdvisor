@@ -132,6 +132,19 @@ public sealed class TruckerPersonality
     public int ConversationCount { get; set; }
     public DateTimeOffset? LastSpokenAt { get; set; }
     public List<string> SummarizedMemories { get; set; } = new();
+
+    /// <summary>
+    /// Lock for this trucker's changing state (memories, relationship). The radio updates it on a
+    /// background thread while the contacts list and the database read it: always copy under this lock.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public object Sync { get; } = new();
+
+    /// <summary>A copy of the memories that's safe to use on any thread.</summary>
+    public List<string> MemoriesSnapshot()
+    {
+        lock (Sync) return SummarizedMemories.ToList();
+    }
 }
 
 public sealed class CBChannelDefinition

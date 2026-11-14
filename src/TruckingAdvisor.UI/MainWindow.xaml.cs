@@ -85,6 +85,13 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        // Contacts are refreshed in place when a trucker answers; keep the one you're looking at selected.
+        LstContacts.SelectionChanged += (_, _) => { if (LstContacts.SelectedItem is ContactView c) _selectedContactId = c.Id; };
+        _viewModel.Contacts.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            if (LstContacts.SelectedItem is null && _selectedContactId is not null)
+                LstContacts.SelectedItem = _viewModel.Contacts.FirstOrDefault(x => x.Id == _selectedContactId);
+        });
         _viewModel.IsReplay = replayFile is not null;
         // Keep the newest radio message in view, like a chat app.
         _viewModel.RadioMessages.CollectionChanged += (_, _) =>
@@ -490,6 +497,11 @@ public partial class MainWindow : Window
 
     private void BtnGuide_Click(object sender, RoutedEventArgs e) => GuideWindow.ShowGuide(this, _bindings);
 
+    /// <summary>Errors after the first are shown here instead of as more message boxes.</summary>
+    public void ShowErrorNotice(string message) => ShowNotice($"Something went wrong ({message}). Details are in the log: More > Copy Diagnostics.");
+
+    private string? _selectedContactId;
+
     private void BtnDismissSetup_Click(object sender, RoutedEventArgs e) => _viewModel.DismissSetupChecklist();
 
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
@@ -624,7 +636,12 @@ public partial class MainWindow : Window
     {
         if (LstContacts.SelectedItem is not ContactView c) return;
         Tabs.SelectedIndex = 0; // back to the radio
-        await _viewModel.CallContactAsync(c.Handle);
+        try { await _viewModel.CallContactAsync(c.Handle); }
+        catch (Exception ex)
+        {
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Error($"Calling {c.Handle} failed", ex);
+            ShowNotice($"Couldn't call {c.Handle}: {ex.Message}");
+        }
     }
 
     private void BtnForgetContact_Click(object sender, RoutedEventArgs e)

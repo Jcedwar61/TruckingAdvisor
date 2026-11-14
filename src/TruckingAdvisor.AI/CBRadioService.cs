@@ -465,9 +465,12 @@ public sealed class CBRadioService : ICBRadioService
         var now = DateTimeOffset.UtcNow;
         foreach (var (me, other) in new[] { (a, b), (b, a) })
         {
-            me.SummarizedMemories.Add($"{now:MMM d}: chatted on the radio with {other.Handle} (\"{gist.Replace('"', '\'')}\")");
-            if (me.SummarizedMemories.Count > _settings.MaxMemoriesPerTrucker)
-                me.SummarizedMemories.RemoveRange(0, me.SummarizedMemories.Count - _settings.MaxMemoriesPerTrucker);
+            lock (me.Sync)
+            {
+                me.SummarizedMemories.Add($"{now:MMM d}: chatted on the radio with {other.Handle} (\"{gist.Replace('"', '\'')}\")");
+                if (me.SummarizedMemories.Count > _settings.MaxMemoriesPerTrucker)
+                    me.SummarizedMemories.RemoveRange(0, me.SummarizedMemories.Count - _settings.MaxMemoriesPerTrucker);
+            }
             TruckerUpdated?.Invoke(this, me);
         }
     }

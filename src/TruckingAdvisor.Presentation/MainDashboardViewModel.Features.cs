@@ -17,6 +17,7 @@ public sealed record ContactView(string Id, string Handle, string Name, string T
     string Personality = "", string Topics = "", string Region = "", int Experience = 0, double RelationshipPercent = 0)
 {
     public string NoMemoriesHint => Memories.Count == 0 ? $"You haven't talked with {Handle} yet. Give them a call." : "";
+    internal DateTimeOffset SortKey { get; init; }
 }
 
 /// <summary>Achievements, insights, dispatcher, co-driver, voice commands and contacts.</summary>
@@ -227,9 +228,19 @@ public sealed partial class MainDashboardViewModel
     /// <summary>Hails a trucker by name on channel 19, as if the player called them.</summary>
     public async Task CallContactAsync(string handle)
     {
+        if (_radio.CurrentState is CBRadioState.PlayerTransmitting or CBRadioState.ProcessingSpeech or CBRadioState.GeneratingResponse)
+        {
+            ShowNotice($"The radio is busy with your last call. Try {handle} again in a moment.");
+            return;
+        }
         _radio.SwitchChannel(19);
         RaiseAll();
         _radio.BeginPushToTalk();
+        if (_radio.CurrentState != CBRadioState.PlayerTransmitting)
+        {
+            ShowNotice($"The channel is busy. Try {handle} again in a moment.");
+            return;
+        }
         await _radio.EndPushToTalkAsync($"Breaker one-nine, {handle}, you got a copy?");
     }
 
@@ -342,14 +353,33 @@ public sealed partial class MainDashboardViewModel
 
     public void RefreshContacts()
     {
-        Contacts.Clear();
-        foreach (var t in _radio.Roster.OrderByDescending(t => t.LastSpokenAt ?? DateTimeOffset.MinValue))
+        // Build the new list first (under each trucker's lock: the radio may be updating them), then swap it in,
+        // keeping the selected contact selected.
+        var views = new List<ContactView>();
+        foreach (var t in _radio.Roster)
         {
-            Contacts.Add(new ContactView(t.Id, t.Handle, t.FullName, t.Truck, t.HomeState, Spaced(t.Relationship.ToString()),
-                t.LastSpokenAt is { } last ? Ago(DateTimeOffset.UtcNow - last) : "Never", t.ConversationCount, t.SummarizedMemories.ToList(),
-                t.PersonalityTraits, string.Join(" • ", t.FavoriteTopics), t.CurrentFictionalRegion, t.YearsExperience,
-                Math.Clamp(t.RelationshipPoints / 160.0 * 100.0, 0, 100)));
+            lock (t.Sync)
+            {
+                views.Add(new ContactView(t.Id, t.Handle, t.FullName, t.Truck, t.HomeState, Spaced(t.Relationship.ToString()),
+                    t.LastSpokenAt is { } last ? Ago(DateTimeOffset.UtcNow - last) : "Never", t.ConversationCount, t.SummarizedMemories.ToList(),
+                    t.PersonalityTraits, string.Join(" • ", t.FavoriteTopics), t.CurrentFictionalRegion, t.YearsExperience,
+                    Math.Clamp(t.RelationshipPoints / 160.0 * 100.0, 0, 100)) { SortKey = t.LastSpokenAt ?? DateTimeOffset.MinValue });
+            }
         }
+        // Update in place: replacing rows the user is looking at (instead of clearing the list) keeps the selection stable.
+        var ordered = views.OrderByDescending(v => v.SortKey).ToList();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            int existing = -1;
+            for (int k = i; k < Contacts.Count; k++) if (Contacts[k].Id == ordered[i].Id) { existing = k; break; }
+            if (existing < 0) Contacts.Insert(i, ordered[i]);
+            else
+            {
+                if (existing != i) Contacts.Move(existing, i);
+                if (Contacts[i] != ordered[i]) Contacts[i] = ordered[i];
+            }
+        }
+        while (Contacts.Count > ordered.Count) Contacts.RemoveAt(Contacts.Count - 1);
     }
 
     /// <summary>Forgets what this trucker remembers about you (relationship level is kept).</summary>
@@ -357,7 +387,7 @@ public sealed partial class MainDashboardViewModel
     {
         var t = _radio.Roster.FirstOrDefault(x => x.Id == truckerId);
         if (t is null) return;
-        t.SummarizedMemories.Clear();
+        lock (t.Sync) t.SummarizedMemories.Clear();
         SafeDb(db => db.SaveTrucker(t));
         RefreshContacts();
     }
