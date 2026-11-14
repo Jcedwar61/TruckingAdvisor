@@ -31,3 +31,12 @@ come from Microsoft's online read-aloud service used by Microsoft Edge (not an o
 ## NLayer (MIT) — MP3 decoding
 
 [NLayer](https://github.com/naudio/NLayer), MIT License, decodes the neural voices' MP3 audio.
+
+
+## Whisper.net, whisper.cpp and Whisper models (MIT) — offline speech recognition
+
+[Whisper.net](https://github.com/sandrohanea/whisper.net) (MIT, Copyright (c) 2024 sandrohanea) wraps
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT, Copyright (c) 2023-2024 The ggml authors), which ships
+as `runtimes\win-x64\*.dll`. The English speech models (`ggml-small.en-q5_1.bin`, `ggml-base.en-q5_1.bin`) are
+OpenAI's Whisper weights (MIT) converted by the whisper.cpp project; they are downloaded on first use from
+huggingface.co/ggerganov/whisper.cpp and checked against pinned SHA-256 checksums.

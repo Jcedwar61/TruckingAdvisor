@@ -11,6 +11,7 @@ using TruckingAdvisor.Core.Advisors;
 using TruckingAdvisor.Core.Audio;
 using TruckingAdvisor.Core.Coaching;
 using TruckingAdvisor.Core.Trips;
+using TruckingAdvisor.Core.Speech;
 using TruckingAdvisor.Data;
 using TruckingAdvisor.Presentation;
 using TruckingAdvisor.Shared.Enums;
@@ -42,6 +43,9 @@ public partial class MainWindow : Window
     private GameControllerInput? _controllers;
     private readonly MicrophoneRecorder _mic = new();
     private readonly WindowsSpeechToText _localStt = new();
+    private readonly LocalWhisperSpeechToText _whisper = new(Path.Combine(AppDataDir, "models"));
+    private readonly SpeechRouter _speech;
+    private DateTime _lastDownloadNotice = DateTime.MinValue;
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
     private readonly MainDashboardViewModel _viewModel;
     private HudOverlayWindow? _overlay;
@@ -75,9 +79,21 @@ public partial class MainWindow : Window
         var roster = _db.MergeWithSaved(PersonalityCatalog.CreateDefaultRoster());
 
         _audio = new AudioPriorityManager(_sink);
+        // Speech recognition: cleaned clips, recognizers in the order the player chose, all told the names
+        // they're likely to hear (handles, dispatcher, cities, CB slang).
+        _speech = new SpeechRouter(SpeechOrder);
+        _whisper.PromptProvider = SpeechPrompt;
+        _openAi.SpeechPromptProvider = SpeechPrompt;
+        _whisper.StatusChanged += msg => Dispatcher.BeginInvoke(() => ShowNotice(msg));
+        _whisper.DownloadProgress += p => Dispatcher.BeginInvoke(() =>
+        {
+            if (DateTime.UtcNow - _lastDownloadNotice < TimeSpan.FromSeconds(2) && p < 1) return;
+            _lastDownloadNotice = DateTime.UtcNow;
+            ShowNotice($"Downloading the offline speech model: {p:P0} (one time only). Until it's ready, Windows recognition is used.");
+        });
         _audio.AudioStarted += (_, item) => { if (item.Channel == "advisor") _lastAdvisory = item.Text; };
         _cbRadio = new CBRadioService(roster, _company, _audio, () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot, _aiSettings,
-            llm: _openAi, stt: new FallbackSpeechToText(_openAi, _localStt), tts: _openAi)
+            llm: _openAi, stt: _speech, tts: _openAi)
         {
             RealtimeTransportFactory = () => new WebSocketRealtimeTransport(),
             RealtimeApiKey = () => ApiKeyStore.Load(_aiSettings.Provider),
@@ -230,6 +246,7 @@ public partial class MainWindow : Window
     private async Task VoiceSelfTestAsync(string dir)
     {
         var report = new System.Text.StringBuilder();
+        (float[] Samples, int Rate)? neural = null;
         try
         {
             Directory.CreateDirectory(dir);
@@ -245,11 +262,33 @@ public partial class MainWindow : Window
                     using (var w = new NAudio.Wave.WaveFileWriter(file, NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(rate, 1)))
                         w.WriteSamples(samples, 0, samples.Length);
                     report.AppendLine($"{engine}: {source}, {samples.Length / (double)rate:F1} s at {rate} Hz");
+                    if (engine == VoiceEngine.FreeNeural && source.Contains("neural")) neural = (samples, rate);
                 }
                 catch (Exception ex) { report.AppendLine($"{engine}: FAILED {ex.GetType().Name}: {ex.Message}"); }
             }
         }
         catch (Exception ex) { report.AppendLine($"FAILED {ex}"); }
+
+        // Recognition, end to end: the neural voice's line, cleaned like a mic clip, through local Whisper.
+        foreach (bool accurate in new[] { false, true })
+        {
+            try
+            {
+                _whisper.Accurate = accurate;
+                await _whisper.EnsureModelAsync();
+                string modelPath = Path.Combine(AppDataDir, "models", _whisper.Model.FileName);
+                report.AppendLine($"Model {_whisper.Model.FileName}: sha256 {(File.Exists(modelPath) ? await ModelDownloader.HashAsync(modelPath) : "missing")}");
+                if (neural is { } n)
+                {
+                    var (clean, info) = SpeechAudio.Prepare(n.Samples, n.Rate);
+                    await _whisper.WarmUpAsync(); // as in the app: loaded at startup, not on the first push-to-talk
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    string? heard = await _whisper.TranscribeSamplesAsync(clean, CancellationToken.None);
+                    report.AppendLine($"Whisper {_whisper.Model.Id}: \"{heard}\" in {sw.Elapsed.TotalSeconds:F1} s (gain {info.Gain:F1}, {Environment.ProcessorCount} CPUs)");
+                }
+            }
+            catch (Exception ex) { report.AppendLine($"Whisper {( accurate ? "small.en" : "base.en")}: FAILED {ex.GetType().Name}: {ex.Message}"); }
+        }
         try { File.WriteAllText(Path.Combine(dir, "voice-selftest.txt"), report.ToString()); } catch { }
         Close();
     }
@@ -354,7 +393,16 @@ public partial class MainWindow : Window
             _ => _aiSettings.AdvisorOutputDevice
         };
         _mic.DeviceNumber = Math.Max(0, _aiSettings.MicrophoneDevice);
-        _localStt.Enabled = _aiSettings.OfflineSpeechRecognition;
+        _localStt.Enabled = true; // last resort only
+        _whisper.Accurate = _aiSettings.WhisperAccurate;
+        _whisper.Enabled = (SpeechRecognition)_aiSettings.SpeechRecognitionMode != SpeechRecognition.WindowsBasic;
+        _mic.KeepReady = _aiSettings.KeepMicReady;
+        if (_aiSettings.MicrophoneEnabled && _screenshotDir is null && _voiceSelfTestDir is null)
+        {
+            try { _mic.EnsureReady(); } catch (Exception ex) { ShowNotice($"Microphone error: {ex.Message}"); }
+            if (_whisper.Enabled) _ = _whisper.ModelReady ? _whisper.WarmUpAsync() : _whisper.EnsureModelAsync();
+        }
+        else _mic.Close();
         _audio.SetChannelVolume("cb", _aiSettings.RadioVolume);
         _audio.SetChannelVolume("dispatcher", _aiSettings.DispatcherVolume);
         _audio.SetChannelVolume("advisor", _aiSettings.AdvisorVolume);
@@ -378,6 +426,10 @@ public partial class MainWindow : Window
         {
             byte[] wav = await _mic.StopAsync();
             await _cbRadio.EndPushToTalkWithAudioAsync(wav);
+            if (_speech.LastWasSilent)
+                ShowNotice(_speech.LastClip is { Peak: < 0.02f }
+                    ? "Didn't hear anything: your microphone is very quiet or muted. Check the mic in Settings > Test microphone."
+                    : "Didn't catch any words. Hold push-to-talk a moment before you start talking, then speak normally.");
         }
         else
         {
@@ -551,6 +603,49 @@ public partial class MainWindow : Window
     public void ShowErrorNotice(string message) => ShowNotice($"Something went wrong ({message}). Details are in the log: More > Copy Diagnostics.");
 
     private string? _selectedContactId;
+
+    /// <summary>Recognizers in the order the player chose; unavailable ones are skipped.</summary>
+    private IReadOnlyList<(string Name, ISpeechToText Engine)> SpeechOrder()
+    {
+        ISpeechToText openAi = _openAi;
+        var whisper = ("Whisper (this PC)", (ISpeechToText)_whisper);
+        var windows = ("Windows (basic)", (ISpeechToText)_localStt);
+        return (SpeechRecognition)_aiSettings.SpeechRecognitionMode switch
+        {
+            SpeechRecognition.OnThisPc => new[] { whisper, windows },
+            SpeechRecognition.WindowsBasic => new[] { windows },
+            _ => new[] { ("OpenAI", openAi), whisper, windows } // Auto and OpenAI: OpenAI when AI is on
+        };
+    }
+
+    /// <summary>Names the player is likely to say, so recognizers spell them right.</summary>
+    private string SpeechPrompt()
+    {
+        var s = _telemetry.LatestSnapshot;
+        var names = new List<string> { _company.DisplayHandle, _company.DispatcherName, _company.CompanyName, s.OriginCity, s.DestinationCity };
+        names.AddRange(_cbRadio.Roster.Select(t => t.Handle));
+        return SpeechText.BuildPrompt(names.Where(n => n != "driver"));
+    }
+
+    /// <summary>Settings > Test microphone: records a few seconds and shows what was heard.</summary>
+    private async Task<string> TestMicrophoneAsync(int seconds)
+    {
+        if (!_aiSettings.MicrophoneEnabled) return "Turn on \"Use my microphone\" first (and press Save if you just changed it).";
+        if (_mic.IsRecording) return "The radio is using the microphone right now. Try again in a moment.";
+        float peak = 0;
+        _mic.Start();
+        var until = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < until) { peak = Math.Max(peak, _mic.Level); await Task.Delay(50); }
+        var wav = await _mic.StopAsync();
+        string level = peak < 0.02f ? "very quiet or muted (check the mic and Windows input volume)"
+            : peak < 0.1f ? "quiet (it will be boosted)" : peak > 0.98f ? "too loud (clipping): lower the input volume" : "good";
+        string? text = await _speech.TranscribeAsync(wav, CancellationToken.None);
+        string heard = text is null
+            ? (_speech.LastWasSilent ? "No speech detected." : "Nothing recognized.")
+            : $"Heard: \"{text}\" (by {_speech.LastUsed})";
+        string model = _whisper.ModelReady ? "" : _whisper.Enabled ? "\nThe offline Whisper model is still downloading; Windows recognition was used meanwhile." : "";
+        return $"Mic level: {level}.\n{heard}{model}";
+    }
     private DateTime _lastPlaybackNotice = DateTime.MinValue;
 
     /// <summary>Settings > Test voices: a trucker, dispatch and the co-driver, each through the real audio path.</summary>
@@ -608,7 +703,7 @@ public partial class MainWindow : Window
 
     private void BtnAiSettings_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _company, TestVoicesAsync) { Owner = this };
+        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _company, TestVoicesAsync, TestMicrophoneAsync) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
             _db.SaveCompany(_company);
@@ -876,6 +971,7 @@ public partial class MainWindow : Window
         _keyboardHook.Dispose();
         _controllers?.Dispose();
         _mic.Dispose();
+        _whisper.Dispose();
         _viewModel.Dispose();
         _telemetry.Dispose();
         _audio.Dispose();

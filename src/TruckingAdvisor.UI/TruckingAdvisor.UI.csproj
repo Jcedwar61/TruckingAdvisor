@@ -7,7 +7,7 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>TruckingAdvisor</AssemblyName>
-    <Version>3.3.0</Version>
+    <Version>3.4.0</Version>
     <Product>TruckingAdvisor</Product>
     <Company>TruckingAdvisor contributors</Company>
     <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>
@@ -28,4 +28,15 @@
     <ProjectReference Include="..\TruckingAdvisor.AI\TruckingAdvisor.AI.csproj" />
     <ProjectReference Include="..\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
   </ItemGroup>
+  <!-- The offline speech engine (whisper.cpp) is loaded by path at runtime, so it must sit next to the exe
+       in runtimes\win-x64 instead of inside the single-file bundle. Other platforms' copies aren't shipped. -->
+  <Target Name="KeepWhisperNativeOutsideBundle" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/')) And !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/win-x64/'))" />
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/win-x64/'))"
+        ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 </Project>

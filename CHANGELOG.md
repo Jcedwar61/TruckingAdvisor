@@ -1,5 +1,16 @@
 # Changelog — TruckingAdvisor
 
+## [v3.4.0] — 2026-11-14
+
+### Speech recognition, rebuilt
+- **Whisper on your PC** (the offline recognizer SimCoach uses) replaces Windows dictation: free, private, no key, and far better with casual speech, accents and radio slang. The English model downloads once (Fast ~60 MB by default, or Accurate ~180 MB) and is checked against a pinned checksum.
+- **No more clipped first or last words.** While the mic is enabled it stays ready, holding only the last half second in memory (nothing is saved or sent). Push-to-talk includes that half second, and recording continues 0.3 s after release.
+- **Cleaner audio:** silence trimmed, quiet microphones boosted, DC offset removed; near-silent clips are never sent (no more phantom "Thank you." transcripts), and known recognizer hallucinations are dropped.
+- **Names get recognized:** every recognizer is told your handle, the truckers' handles, your dispatcher and company, your current cities and CB slang. OpenAI transcription is also locked to English.
+- **Settings > Speech recognition:** Automatic (OpenAI when AI is on, otherwise Whisper), Whisper only, OpenAI first, or Windows basic; offline model size; keep-mic-ready; and **Test microphone**, which shows your level and exactly what was heard and by which recognizer.
+- Clearer hints when nothing is heard ("your microphone is very quiet or muted" vs "hold push-to-talk a moment before you speak").
+- CI checks it end to end on Windows: a line spoken by the neural voice is transcribed by Whisper in the installed app and must come back right. Measured on a 4-core CI machine: the default Fast model understood "Breaker one-nine, this is Big Red, ten-four, copy you" correctly in 0.6 s; Accurate in about 7 s.
+
 ## [v3.3.0] — 2026-11-14
 
 ### Fixed
