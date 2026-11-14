@@ -118,7 +118,7 @@ public sealed class AiSettingsWindow : Window
             "Windows basic recognition (least accurate)"
         };
         form.Children.Add(Row("Recognize speech with", _speechMode));
-        _whisperModel.ItemsSource = new[] { "Accurate (~180 MB, about 3x slower; for fast PCs)", "Fast (~60 MB, quick replies; recommended)" };
+        _whisperModel.ItemsSource = new[] { "Accurate (~180 MB; several seconds per message, for very fast PCs)", "Fast (~60 MB, quick replies; recommended)" };
         form.Children.Add(Row("Offline model", _whisperModel));
         form.Children.Add(_keepMicReady);
         var micRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(150, 4, 0, 0) };

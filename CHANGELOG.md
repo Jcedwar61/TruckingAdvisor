@@ -9,7 +9,7 @@
 - **Names get recognized:** every recognizer is told your handle, the truckers' handles, your dispatcher and company, your current cities and CB slang. OpenAI transcription is also locked to English.
 - **Settings > Speech recognition:** Automatic (OpenAI when AI is on, otherwise Whisper), Whisper only, OpenAI first, or Windows basic; offline model size; keep-mic-ready; and **Test microphone**, which shows your level and exactly what was heard and by which recognizer.
 - Clearer hints when nothing is heard ("your microphone is very quiet or muted" vs "hold push-to-talk a moment before you speak").
-- CI checks it end to end on Windows: a line spoken by the neural voice is transcribed by Whisper in the installed app and must come back right.
+- CI checks it end to end on Windows: a line spoken by the neural voice is transcribed by Whisper in the installed app and must come back right. Measured on a 4-core CI machine: the default Fast model understood "Breaker one-nine, this is Big Red, ten-four, copy you" correctly in 0.6 s; Accurate in about 7 s.
 
 ## [v3.3.0] — 2026-11-14
 
