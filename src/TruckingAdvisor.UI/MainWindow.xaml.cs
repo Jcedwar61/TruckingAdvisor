@@ -119,6 +119,11 @@ public partial class MainWindow : Window
         _keyboardHook.KeyUp += vk => Dispatcher.BeginInvoke(() => _input.Release(new InputBinding(InputSource.Keyboard, vk)));
         _keyboardHook.Install();
         SourceInitialized += (_, _) => StartControllers();
+        // F1 opens the guide while this window is active (it isn't a global key, so the game keeps F1).
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.F1) { GuideWindow.ShowGuide(this, _bindings); e.Handled = true; }
+        };
         UpdatePttLabels();
 
         RestoreWindowBounds();
@@ -181,6 +186,11 @@ public partial class MainWindow : Window
             await Task.Delay(600);
             if (controls.Content is FrameworkElement cw) SaveElementPng(cw, controls.Background, Path.Combine(dir, "controls.png"));
             controls.Close();
+            GuideWindow.ShowGuide(this, _bindings, "CB radio");
+            await Task.Delay(600);
+            var guide = OwnedWindows.OfType<GuideWindow>().FirstOrDefault();
+            if (guide?.Content is FrameworkElement gw) SaveElementPng(gw, guide.Background, Path.Combine(dir, "guide.png"));
+            guide?.Close();
         }
         catch (Exception ex)
         {
@@ -477,6 +487,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowNotice($"Couldn't copy diagnostics: {ex.Message}"); }
     }
+
+    private void BtnGuide_Click(object sender, RoutedEventArgs e) => GuideWindow.ShowGuide(this, _bindings);
 
     private void BtnDismissSetup_Click(object sender, RoutedEventArgs e) => _viewModel.DismissSetupChecklist();
 

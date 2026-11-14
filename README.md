@@ -10,7 +10,7 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-3.1.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-3.2.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
@@ -40,6 +40,7 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | Money & events | Game pay and XP, fines (with the offence), tolls, ferry/train fares, cancellation penalties and refuels, from the telemetry plugin. Reports and the trip list show net income. |
 | Units | Auto (ATS imperial, ETS2 metric), Imperial or Metric, everywhere including speech. |
 | Diagnostics | Log file (scrubbed of personal details), **More > Copy Diagnostics**, **More > Record a Session** (raw telemetry for bug reports; replay with `--replay file`). |
+| Guide | **F1**, the **?** button or **More > User Guide**: searchable help for every feature, voice command and CB tip, with your own key and wheel bindings. |
 | Updates | Checks GitHub releases in the background, downloads new versions and verifies them against the published SHA-256 checksum, then offers **Restart & update** in a quiet banner (or installs when you close the app). **More > Check for Updates** checks now; **Settings > Updates** turns it off. |
 | Voice commands | Say "TruckingAdvisor, ..." to switch channels, call dispatch, ask fuel range or distance left, change radio volume, mute/unmute or repeat. Introduce yourself on the radio ("call me Highway Ghost") and the app offers to save your handle. |
 | HUD overlay | Small click-through, always-on-top panel (F8). Unlock it to drag and resize (text scales), choose which rows it shows (speed, limit, fuel, range, remaining, score, location, grade ahead, radio) and its opacity. A CB channel picker sits under it: click it to pick a channel, or press `[` / `]` in game to step through channels (the list pops open briefly so you can see where you landed). The picker takes clicks but never takes focus from the game. Works over the game in borderless/windowed mode. |

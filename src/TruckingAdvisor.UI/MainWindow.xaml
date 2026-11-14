@@ -60,6 +60,8 @@
                             ToolTip="Nobody calls you unprompted for 30 minutes: no chatter, no routine dispatch check-ins, no achievement voice lines. Safety warnings and your own calls still work."/>
                     <Button x:Name="BtnToggleOverlay" Content="HUD Overlay (F8)" Click="BtnToggleOverlay_Click" Style="{StaticResource TopButton}"/>
                     <Button x:Name="BtnAiSettings" Content="Settings" Click="BtnAiSettings_Click" Style="{StaticResource TopButton}" ToolTip="AI, radio, voices and devices"/>
+                    <Button x:Name="BtnGuide" Content="?" Click="BtnGuide_Click" Style="{StaticResource TopButton}" FontWeight="Bold" Padding="11,6"
+                            ToolTip="Guide: features, voice commands, controls, CB tips (F1)"/>
                     <Grid>
                         <ToggleButton x:Name="BtnMore" Content="More ▾" Padding="12,6" Margin="0,2,0,2"
                                       Background="{DynamicResource ButtonBrush}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" Cursor="Hand">
@@ -87,6 +89,7 @@
                                             <Setter Property="Margin" Value="0,2"/>
                                         </Style>
                                     </StackPanel.Resources>
+                                    <Button x:Name="BtnGuideMenu" Content="User Guide (F1)" Click="BtnGuide_Click"/>
                                     <Button x:Name="BtnLayout" Content="Layout &amp; Theme" Click="BtnLayout_Click"/>
                                     <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click"/>
                                     <Button x:Name="BtnControls" Content="Controls &amp; Key Bindings" Click="BtnControls_Click"/>
