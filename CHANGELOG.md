@@ -1,5 +1,21 @@
 # Changelog — TruckingAdvisor
 
+## [v3.3.0] — 2026-11-14
+
+### Fixed
+- **Calling a different CB contact caused a flood of pop-ups and a crash.** A trucker's memories were being updated by the radio while the contacts list copied them on the screen, which threw an error every time. Trucker state is now updated and read under a lock (reproduced and covered by a test), the contacts list updates in place and keeps your selection, and calling while the radio is busy just shows a short notice.
+- **Error pop-ups can no longer pile up.** At most one error message box at a time (and one a minute); further errors show as a notice and go to the log.
+- **Truckers replied in text but couldn't be heard.** Voice failures used to be silently swallowed. Now every voice problem is logged and shown, and if one voice source fails another takes over.
+
+### Added
+- **Free natural voices, like SimCoach.** Truckers, dispatch and your co-driver now speak with free Microsoft neural voices (the ones Microsoft Edge's Read Aloud uses), each with their own voice: Big Red is deep and unhurried, Highway Hank friendly, Rachel crisp, and newcomers get one of their own. No key or cost. Without internet, Windows voices take over automatically.
+- **Settings > Voices**: free neural voices (default), Windows voices (offline) or OpenAI voices (your key), and a **Test voices** button that plays a trucker, dispatch and the co-driver and tells you which voice spoke or what failed.
+- **No more model names.** Settings now has one **AI quality** choice (Economy, Balanced, Best). TruckingAdvisor has built-in lists of OpenAI models for chat, listening, voices and realtime mode, uses the best one your key can actually use (it asks OpenAI which models your account has), and if OpenAI rejects a model it moves to the next one and remembers.
+- CI now synthesizes real speech with the installed app on Windows (neural voice required, Windows voice checked).
+
+### Licensing
+- The neural-voice code is a C# port of parts of edge-tts and lives in its own LGPL-3.0 library (`TruckingAdvisor.EdgeTts`); the rest of the app stays MIT. Details in THIRD_PARTY_NOTICES.md.
+
 ## [v3.2.0] — 2026-11-14
 
 ### Added

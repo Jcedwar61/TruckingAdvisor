@@ -68,7 +68,12 @@ public sealed class TruckingAdvisorDatabase
 
     public void SaveTrucker(TruckerPersonality t) => Upsert(
         "INSERT OR REPLACE INTO Truckers(Id, Handle, Json) VALUES ($id, $h, $j)",
-        ("$id", t.Id), ("$h", t.Handle), ("$j", JsonSerializer.Serialize(t, Json)));
+        ("$id", t.Id), ("$h", t.Handle), ("$j", SerializeTrucker(t)));
+
+    private static string SerializeTrucker(TruckerPersonality t)
+    {
+        lock (t.Sync) return JsonSerializer.Serialize(t, Json); // the radio may be adding a memory right now
+    }
 
     public List<TruckerPersonality> LoadTruckers() => Query<TruckerPersonality>("SELECT Json FROM Truckers");
 

@@ -44,15 +44,18 @@ public static class RelationshipManager
     public static bool ApplyExchange(TruckerPersonality trucker, string playerText, string replyText, string where, DateTimeOffset now, int maxMemories)
     {
         var before = trucker.Relationship;
-        trucker.RelationshipPoints += ScoreExchange(playerText, now, trucker.LastSpokenAt);
-        trucker.Relationship = LevelFor(trucker.RelationshipPoints);
-        trucker.ConversationCount++;
-        trucker.LastSpokenAt = now;
+        lock (trucker.Sync)
+        {
+            trucker.RelationshipPoints += ScoreExchange(playerText, now, trucker.LastSpokenAt);
+            trucker.Relationship = LevelFor(trucker.RelationshipPoints);
+            trucker.ConversationCount++;
+            trucker.LastSpokenAt = now;
 
-        string memory = $"{now:MMM d}: player said \"{Trim(playerText, 90)}\"{where}; you replied \"{Trim(replyText, 70)}\"";
-        trucker.SummarizedMemories.Add(memory);
-        if (trucker.SummarizedMemories.Count > maxMemories)
-            trucker.SummarizedMemories.RemoveRange(0, trucker.SummarizedMemories.Count - maxMemories);
+            string memory = $"{now:MMM d}: player said \"{Trim(playerText, 90)}\"{where}; you replied \"{Trim(replyText, 70)}\"";
+            trucker.SummarizedMemories.Add(memory);
+            if (trucker.SummarizedMemories.Count > maxMemories)
+                trucker.SummarizedMemories.RemoveRange(0, trucker.SummarizedMemories.Count - maxMemories);
+        }
 
         return trucker.Relationship > before;
     }

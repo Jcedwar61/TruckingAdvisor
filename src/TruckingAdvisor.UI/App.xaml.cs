@@ -11,6 +11,8 @@ public partial class App : Application
     /// replacing files, so an update never fights a running copy.
     /// </summary>
     private static Mutex? _running;
+    private static bool _showingError;
+    private static DateTime _lastErrorBox = DateTime.MinValue;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -25,6 +27,15 @@ public partial class App : Application
         {
             TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Unhandled UI error", ex.Exception);
             ex.Handled = true;
+            // At most one message box at a time and one a minute. A box keeps the window running, so a
+            // repeating error would otherwise open box after box until the app runs out of stack.
+            if (_showingError || DateTime.UtcNow - _lastErrorBox < TimeSpan.FromMinutes(1))
+            {
+                (MainWindow as MainWindow)?.ShowErrorNotice(ex.Exception.Message);
+                return;
+            }
+            _showingError = true;
+            _lastErrorBox = DateTime.UtcNow;
             try
             {
                 MessageBox.Show($"Something went wrong: {ex.Exception.Message}\n\nTruckingAdvisor keeps running. Details were written to the log " +
@@ -32,6 +43,7 @@ public partial class App : Application
                     "TruckingAdvisor", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             catch { }
+            finally { _showingError = false; }
         };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
             TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Fatal error", ex.ExceptionObject as Exception);

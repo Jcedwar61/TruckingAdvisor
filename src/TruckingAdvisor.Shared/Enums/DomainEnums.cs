@@ -98,3 +98,14 @@ public enum DeliveryState
     Completed = 5,
     Cancelled = 6
 }
+
+/// <summary>Where spoken lines come from.</summary>
+public enum VoiceEngine
+{
+    /// <summary>Free Microsoft neural voices (needs internet); Windows voices if they can't be reached.</summary>
+    FreeNeural = 0,
+    /// <summary>Windows voices only (offline).</summary>
+    Windows = 1,
+    /// <summary>OpenAI voices with your key (costs money); free voices if they fail.</summary>
+    OpenAI = 2
+}

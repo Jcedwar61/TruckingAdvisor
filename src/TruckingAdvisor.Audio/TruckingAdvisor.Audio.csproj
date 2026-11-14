@@ -9,6 +9,8 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
     <PackageReference Include="Vortice.DirectInput" Version="3.8.3" />
+    <PackageReference Include="NLayer" Version="1.16.0" />
+    <ProjectReference Include="..\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj" />
     <ProjectReference Include="..\TruckingAdvisor.Shared\TruckingAdvisor.Shared.csproj" />
   </ItemGroup>
 </Project>

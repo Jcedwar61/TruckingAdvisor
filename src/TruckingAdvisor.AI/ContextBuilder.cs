@@ -93,7 +93,7 @@ public static class ContextBuilder
                 title = trucker.Relationship.ToString(),
                 conversationsSoFar = trucker.ConversationCount,
                 daysSinceLastTalk = trucker.LastSpokenAt is { } last ? Math.Round((DateTimeOffset.UtcNow - last).TotalDays, 1) : (double?)null,
-                memories = trucker.SummarizedMemories.TakeLast(6).ToArray()
+                memories = trucker.MemoriesSnapshot().TakeLast(6).ToArray()
             },
             // Knowledge boundary: truckers never hear the private dispatch channel.
             recentRadio = recentTurns.Where(r => r.Channel != CBRadioService.DispatchChannel).TakeLast(6).Select(r => $"{r.Handle}: {r.Text}").ToArray()

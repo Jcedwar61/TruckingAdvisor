@@ -223,7 +223,7 @@ public sealed class AiAndRadioTests
     public async Task OpenAiClient_SendsModelAndKey_AndRecordsUsage()
     {
         var handler = new FakeHandler();
-        var settings = new AiSettings { GlobalAiEnabled = true, ChatModel = "test-model", ChatInputPricePerMillionTokens = 1m, ChatOutputPricePerMillionTokens = 2m };
+        var settings = new AiSettings { GlobalAiEnabled = true, ChatModel = "typed-by-hand-ignored", ChatInputPricePerMillionTokens = 1m, ChatOutputPricePerMillionTokens = 2m };
         var usage = new AiUsageTracker();
         var client = new OpenAiClientService(settings, usage, () => "sk-test", handler);
 
@@ -233,8 +233,9 @@ public sealed class AiAndRadioTests
         Assert.Equal("https://api.openai.com/v1/chat/completions", handler.Last!.RequestUri!.ToString());
         Assert.Equal("Bearer sk-test", handler.Last.Headers.Authorization!.ToString());
         using var body = JsonDocument.Parse(handler.LastBody!);
-        Assert.Equal("test-model", body.RootElement.GetProperty("model").GetString());
-        Assert.Equal(100, body.RootElement.GetProperty("max_completion_tokens").GetInt32());
+        Assert.Equal("gpt-5-mini", body.RootElement.GetProperty("model").GetString());       // from the built-in list
+        Assert.Equal(600, body.RootElement.GetProperty("max_completion_tokens").GetInt32());   // room to think + reply
+        Assert.Equal("minimal", body.RootElement.GetProperty("reasoning_effort").GetString()); // snappy radio replies
         Assert.False(body.RootElement.TryGetProperty("temperature", out _)); // not sent unless set
         Assert.Equal(1, usage.Data.Today.Requests);
         Assert.Equal(0.00014m, usage.Data.Today.EstimatedCostUsd);

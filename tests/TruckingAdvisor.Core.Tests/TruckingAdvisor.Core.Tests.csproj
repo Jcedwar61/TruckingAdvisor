@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\TruckingAdvisor.Telemetry\TruckingAdvisor.Telemetry.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.Data\TruckingAdvisor.Data.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj" />
   </ItemGroup>
 </Project>

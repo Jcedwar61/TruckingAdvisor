@@ -121,6 +121,8 @@ public sealed class TruckerPersonality
     public string Background { get; set; } = string.Empty;
     public List<string> PreferredRoutes { get; set; } = new();
     public string VoiceId { get; set; } = "onyx";
+    /// <summary>Free Microsoft neural voice as "voice|rate|pitch", e.g. "en-US-ChristopherNeural|-6%|-6Hz". Empty = pick one.</summary>
+    public string NeuralVoice { get; set; } = string.Empty;
     public float PitchMultiplier { get; set; } = 1.0f;
     public float SpeechRate { get; set; } = 1.0f;
     public List<string> PreferredStates { get; set; } = new();
@@ -132,6 +134,19 @@ public sealed class TruckerPersonality
     public int ConversationCount { get; set; }
     public DateTimeOffset? LastSpokenAt { get; set; }
     public List<string> SummarizedMemories { get; set; } = new();
+
+    /// <summary>
+    /// Lock for this trucker's changing state (memories, relationship). The radio updates it on a
+    /// background thread while the contacts list and the database read it: always copy under this lock.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public object Sync { get; } = new();
+
+    /// <summary>A copy of the memories that's safe to use on any thread.</summary>
+    public List<string> MemoriesSnapshot()
+    {
+        lock (Sync) return SummarizedMemories.ToList();
+    }
 }
 
 public sealed class CBChannelDefinition

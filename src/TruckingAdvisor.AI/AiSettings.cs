@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared.Enums;
 using System.Text.Json;
 
 namespace TruckingAdvisor.AI;
@@ -21,11 +22,20 @@ public sealed class AiSettings
     public string ApiBaseUrl { get; set; } = "https://api.openai.com/v1";
     public string CustomChatEndpoint { get; set; } = string.Empty;
 
-    public string ChatModel { get; set; } = "gpt-5.4-mini";
+    /// <summary>Picks the models (see <see cref="AiModelCatalog"/>). The player never types a model name.</summary>
+    public AiQuality Quality { get; set; } = AiQuality.Balanced;
+    // The model names below are filled in by the app (the working model from the built-in list), for display and
+    // for the realtime client. Values from older settings files are ignored.
+    public string ChatModel { get; set; } = "gpt-5-mini";
     public string SpeechToTextModel { get; set; } = "gpt-4o-mini-transcribe";
     public string TextToSpeechModel { get; set; } = "gpt-4o-mini-tts";
     /// <summary>When false, AI voices use free Windows voices instead of OpenAI TTS (cheaper).</summary>
-    public bool UseOpenAiVoices { get; set; } = true;
+    /// <summary>Where voices come from. Default: free Microsoft neural voices (Windows voices as fallback).</summary>
+    public VoiceEngine VoiceEngine { get; set; } = VoiceEngine.FreeNeural;
+    /// <summary>Old setting (before voice engines); kept so old settings files load. Not used.</summary>
+    public bool UseOpenAiVoices { get; set; }
+    /// <summary>Co-driver (advisor) neural voice.</summary>
+    public string CoDriverNeuralVoice { get; set; } = "en-US-AndrewNeural|+0%|+0Hz";
 
     /// <summary>Max tokens per radio reply. CB transmissions are short.</summary>
     public int MaxResponseTokens { get; set; } = 160;
