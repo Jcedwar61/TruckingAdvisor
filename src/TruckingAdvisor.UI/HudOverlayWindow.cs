@@ -65,9 +65,18 @@ public sealed class HudOverlayWindow : Window
         speed.Style = style;
         var unit = new TextBlock { FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
         unit.SetBinding(TextBlock.TextProperty, new Binding("SpeedUnitText") { StringFormat = " {0}" });
+        // Not only colour: an "OVER" badge appears while speeding (readable for colour-blind drivers).
+        var over = new Border
+        {
+            Background = B("#EF4444"), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(6, 0, 0, 10), VerticalAlignment = VerticalAlignment.Bottom,
+            Child = new TextBlock { Text = "OVER", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Brushes.White }
+        };
+        over.SetBinding(UIElement.VisibilityProperty, new Binding("IsSpeeding") { Converter = new BooleanToVisibilityConverter() });
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(speed);
         row.Children.Add(unit);
+        row.Children.Add(over);
         return row;
     }
 

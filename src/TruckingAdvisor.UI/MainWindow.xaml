@@ -120,6 +120,44 @@
             <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
         </Border>
 
+        <!-- Getting started: hides itself once every step is done, or when closed -->
+        <Border CornerRadius="8" Padding="14,8" Margin="0,0,0,10" Background="{DynamicResource CardBrush}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowSetupChecklist}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="✕" Padding="8,2" VerticalAlignment="Top" Click="BtnDismissSetup_Click" ToolTip="Hide the checklist"/>
+                <TextBlock DockPanel.Dock="Top" Text="GETTING STARTED" Style="{StaticResource Label}" FontWeight="Bold" Margin="0,0,0,4"/>
+                <ItemsControl ItemsSource="{Binding SetupSteps}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,18,2" ToolTip="{Binding Hint}">
+                                <TextBlock x:Name="M" Text="{Binding Mark}" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="T" Text="{Binding Text}" Foreground="{DynamicResource TextBrush}"/>
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Done}" Value="True">
+                                    <Setter TargetName="M" Property="Foreground" Value="{DynamicResource GoodBrush}"/>
+                                    <Setter TargetName="T" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    <Setter TargetName="T" Property="TextDecorations" Value="Strikethrough"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+
         <!-- Update banner: only when a new version is downloaded and verified. Never spoken, never interrupts. -->
         <Border CornerRadius="8" Padding="14,8" Margin="0,0,0,10" Background="{DynamicResource CardBrush}"
                 BorderThickness="4,0,0,0" BorderBrush="{DynamicResource AccentBrush}">

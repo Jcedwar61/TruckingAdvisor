@@ -251,10 +251,15 @@ public partial class MainWindow : Window
         catch (Exception ex) { games = Array.Empty<GameInstall>(); Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = $"Game search failed: {ex.Message}"); return; }
 
         string text = games.Count == 0
-            ? "American Truck Simulator not found. Use \"Install Telemetry Plugin\" to pick the game folder."
+            ? "ATS / ETS2 not found. Use More > Install Telemetry Plugin to pick the game folder."
             : string.Join("   ", games.Select(g =>
                 $"{g.Name}: {g.InstallFolder} - plugin {(File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)) ? "installed" : "NOT installed")}"));
-        Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = text);
+        bool pluginOk = games.Any(g => File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)));
+        Dispatcher.BeginInvoke(() =>
+        {
+            _viewModel.GameStatusText = text;
+            _viewModel.SetSetupStatus(gameFound: games.Count > 0, pluginInstalled: pluginOk);
+        });
 
         // First run: the game is there but can't send data yet. Offer to fix it once.
         var missing = games.FirstOrDefault(g => !File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)));
@@ -472,6 +477,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowNotice($"Couldn't copy diagnostics: {ex.Message}"); }
     }
+
+    private void BtnDismissSetup_Click(object sender, RoutedEventArgs e) => _viewModel.DismissSetupChecklist();
 
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
 

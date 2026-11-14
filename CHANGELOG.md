@@ -1,5 +1,21 @@
 # Changelog — TruckingAdvisor
 
+## [v3.0.0] — 2026-11-14
+
+### Added
+- **Map tab — a map that draws itself.** Every road you drive is added to a map of your own, separately for ATS and ETS2, in every DLC region and even map mods. Cities appear once you've picked up or delivered there; your destination is marked (with a line to it) if you've been there before. Pan, zoom, follow the truck, or show everything. Re-driving a known road adds nothing, so the data stays small. Nothing is taken from the game's files. Optional **mini-map** HUD row (Layout & Theme).
+- **What the game actually pays and charges.** Delivery pay and game XP, fines (with the offence), tolls, ferry and train fares, cancellation penalties and refuels are read from the telemetry plugin. Delivery reports, the trip list, CSV export and the delivery banner show pay, costs and **net income**. Career income uses real pay.
+- **Fines get a reaction.** The co-driver says the fine out loud (turn off in Settings), and dispatch may mention a big one once. Tolls, fares and refuels are listed under coaching events, never spoken.
+- **Euro Truck Simulator 2 and metric units.** Settings > Units: Auto (ATS miles, ETS2 kilometres), Imperial or Metric — everywhere: dials, HUD, reports, PDFs, charts, co-driver, dispatcher. Money shows as $ in ATS and € in ETS2. The header names the game you're playing.
+- **Getting-started checklist** on the dashboard (game found, plugin installed, live data, first CB call, first delivery). Hides itself when done.
+- **Diagnostics for bug reports.** A log file (with your user name, personal paths and any API keys removed), crash handling that keeps the app running, **More > Copy Diagnostics**, and **More > Record a Session**, which saves the raw telemetry of a drive so a bug can be replayed exactly (`--replay file`).
+- HUD shows an **OVER** badge when speeding, not just red text.
+- CI checks the pinned telemetry-plugin checksum against the official release on every build.
+
+### Fixed
+- Learned cities and steep-grade warnings were shared between ATS and ETS2, whose world coordinates overlap, so ETS2 could say "near Denver". Each game now has its own (existing data becomes ATS's).
+- A trip now closes one telemetry frame after the delivery event, so the game's final pay and XP are captured.
+
 ## [v2.9.0] — 2026-11-13
 
 ### Added

@@ -97,6 +97,9 @@ public sealed class AiSettings
     /// <summary>HUD rows to show, in order.</summary>
     public List<string> HudRows { get; set; } = new(DefaultHudRows);
     public double HudOpacity { get; set; } = 0.85;
+    /// <summary>The player closed the getting-started checklist.</summary>
+    public bool SetupChecklistDismissed { get; set; }
+
     /// <summary>Auto = miles in ATS, kilometres in ETS2.</summary>
     public TruckingAdvisor.Shared.UnitPreference Units { get; set; } = TruckingAdvisor.Shared.UnitPreference.Auto;
     /// <summary>The co-driver says fines out loud (tolls and fares are never spoken).</summary>
