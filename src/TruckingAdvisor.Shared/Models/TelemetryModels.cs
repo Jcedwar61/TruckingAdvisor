@@ -100,6 +100,15 @@ public sealed record AtsTelemetrySnapshot
     public string CurrentState { get; init; } = string.Empty;
     /// <summary>Not exposed by the SCS SDK. Empty unless a map integration provides it.</summary>
     public string CurrentCity { get; init; } = string.Empty;
+    /// <summary>
+    /// Real-world description of where the truck is ("east of Flagstaff, Arizona, on or near I-40, heading east
+    /// toward Winslow"), estimated by matching the game map to real geography. Empty when not calibrated yet.
+    /// </summary>
+    public string RealWorldPlace { get; init; } = string.Empty;
+    /// <summary>Numbered highway the truck is probably on (estimated). Empty when unknown.</summary>
+    public string ProbableHighway { get; init; } = string.Empty;
+    /// <summary>Next town ahead (estimated). Empty when unknown.</summary>
+    public string NextTownAhead { get; init; } = string.Empty;
     public float PlannedDistanceMiles { get; init; }
     public float NavigationDistanceRemainingMiles { get; init; }
     public float NavigationTimeRemainingMinutes { get; init; }

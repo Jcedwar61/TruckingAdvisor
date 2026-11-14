@@ -10,7 +10,7 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-3.0.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-3.1.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
@@ -36,6 +36,7 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | Dispatcher | A named dispatcher (default "Sarah") who briefs you on new loads, checks in at your chosen frequency, and calls about approaching the destination, low fuel vs. distance, rest, new damage and deadline risk, then wraps up each delivery. Dispatch and CB truckers don't share what you told the other. |
 | Controls | **More > Controls & Key Bindings**: every function can be bound to keyboard keys and to buttons or D-pads on a wheel, button box, joystick or gamepad, several per function. Includes push-to-talk (hold), next/previous channel (scrolls through the channels), dispatch check-in, Quiet 30 min, radio volume, mute, repeat, fuel and distance reports, HUD and channel picker. Controllers are read in the background without taking them from the game. |
 | Map | **Map** tab: a map that draws itself from the roads you drive, per game (ATS and ETS2), in every DLC region and map mod. Learned cities, your destination (if you've been there), your truck; pan, zoom, follow. Optional HUD mini-map. Nothing is taken from the game's files. |
+| Real places | After deliveries in two cities, the game map is matched to real geography (Natural Earth, public domain, bundled). The header, the Map tab and the AI truckers then know the real-world area: town, state or country, probable highway and the next town ahead, always marked as an estimate. |
 | Money & events | Game pay and XP, fines (with the offence), tolls, ferry/train fares, cancellation penalties and refuels, from the telemetry plugin. Reports and the trip list show net income. |
 | Units | Auto (ATS imperial, ETS2 metric), Imperial or Metric, everywhere including speech. |
 | Diagnostics | Log file (scrubbed of personal details), **More > Copy Diagnostics**, **More > Record a Session** (raw telemetry for bug reports; replay with `--replay file`). |

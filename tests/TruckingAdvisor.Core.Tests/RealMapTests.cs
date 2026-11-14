@@ -111,4 +111,23 @@ public class RealMapTests
         var cal = GeoCalibration.Fit(gaz, Array.Empty<LocationMemory.City>());
         Assert.Null(PlaceDescriber.Describe(gaz, cal, 1000, 2000, 0, true));
     }
+
+    [Fact]
+    public void TruckerPrompt_GetsTheEstimatedPlace_AndTheRuleToHedge()
+    {
+        var snap = new TruckingAdvisor.Shared.Models.AtsTelemetrySnapshot
+        {
+            ConnectionState = TruckingAdvisor.Shared.Enums.ConnectionState.Connected,
+            RealWorldPlace = "east of Flagstaff, Arizona, on or near I-40, heading east toward Winslow",
+            ProbableHighway = "I-40", NextTownAhead = "Winslow"
+        };
+        var roster = TruckingAdvisor.AI.PersonalityCatalog.CreateDefaultRoster();
+        string prompt = TruckingAdvisor.AI.ContextBuilder.BuildTruckerSystemPrompt(roster[0], new TruckingAdvisor.Shared.Models.VirtualCompanyProfile(), snap,
+            Array.Empty<TruckingAdvisor.AI.RadioTurn>(), 19, TruckingAdvisor.Shared.Enums.ConversationTimingMode.Brief, roster);
+        Assert.Contains("east of Flagstaff, Arizona, on or near I-40", prompt);
+        Assert.Contains("(estimated)", prompt);
+        Assert.Contains("Winslow", prompt);
+        Assert.Contains("sounds like you're", prompt);
+        Assert.Contains("don't invent specific businesses, exits or mile markers", prompt);
+    }
 }
