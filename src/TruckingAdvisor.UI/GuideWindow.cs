@@ -148,7 +148,7 @@ public sealed class GuideWindow : Window
             {
                 int bar = line.IndexOf(" | ", StringComparison.Ordinal);
                 var g = new Grid { Margin = new Thickness(4, 2, 0, 2) };
-                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(250) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
                 g.ColumnDefinitions.Add(new ColumnDefinition());
                 var left = new TextBlock { Text = line[..bar], TextWrapping = TextWrapping.Wrap, FontWeight = FontWeights.SemiBold };
                 var right = Body(line[(bar + 3)..]);
