@@ -6,6 +6,10 @@
     <LangVersion>12.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Natural Earth towns, areas and highways (public domain); rebuild with tools/build_gazetteer.py -->
+    <EmbeddedResource Include="Mapping\Data\geo.json.gz" LogicalName="TruckingAdvisor.Core.Mapping.Data.geo.json.gz" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\TruckingAdvisor.Shared\TruckingAdvisor.Shared.csproj" />
   </ItemGroup>
 </Project>
