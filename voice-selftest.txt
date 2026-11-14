@@ -1,0 +1,6 @@
+FreeNeural: Microsoft neural voice, 3.6 s at 24000 Hz
+Windows: Windows voice, 6.6 s at 22050 Hz
+Model ggml-base.en-q5_1.bin: sha256 4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f
+Whisper base.en: "Breaker one-nine, business, big red, ten-four, copy you, off the clue." in 0.7 s (gain 1.0, 4 CPUs)
+Model ggml-small.en-q5_1.bin: sha256 bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30
+Whisper small.en: "Breaker one-nine, this is Big Red. Ten-four, I copy you on the incline." in 9.4 s (gain 1.0, 4 CPUs)
