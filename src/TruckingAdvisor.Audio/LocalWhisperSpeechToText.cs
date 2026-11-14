@@ -94,14 +94,15 @@ public sealed class LocalWhisperSpeechToText : ISpeechToText, IDisposable
             // and use most of the CPU for the second or two it takes.
             double seconds = samples16k.Length / 16000.0;
             int audioContext = Math.Clamp((int)(seconds * 50) + 128, 256, 1500);
-            await using var processor = factory.CreateBuilder()
+            var builder = factory.CreateBuilder()
                 .WithLanguage("en")
                 .WithPrompt(prompt)
                 .WithNoContext()
-                .WithAudioContextSize(audioContext)
                 .WithThreads(Math.Clamp(Environment.ProcessorCount - 1, 2, 8))
-                .WithNoSpeechThreshold(0.6f)
-                .Build();
+                .WithNoSpeechThreshold(0.6f);
+            // The shortened window is great for the fast model; the accurate model loses accuracy with it (measured in CI).
+            if (!Accurate) builder = builder.WithAudioContextSize(audioContext);
+            await using var processor = builder.Build();
             var text = new System.Text.StringBuilder();
             await foreach (var seg in processor.ProcessAsync(samples16k, ct))
                 text.Append(seg.Text);
