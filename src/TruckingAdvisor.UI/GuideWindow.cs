@@ -18,7 +18,7 @@ public sealed class GuideWindow : Window
     private readonly ListBox _list = new() { Width = 230, Margin = new Thickness(0, 0, 12, 0) };
     private readonly StackPanel _page = new() { Margin = new Thickness(4, 0, 12, 12) };
     private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    private readonly TextBox _search = new() { Margin = new Thickness(0, 0, 0, 10) };
+    private readonly TextBox _search = new() { Margin = new Thickness(0, 0, 0, 0), MinWidth = 300, VerticalAlignment = VerticalAlignment.Center };
     private string _query = "";
 
     private static GuideWindow? _open;
@@ -59,6 +59,16 @@ public sealed class GuideWindow : Window
         top.Children.Add(title);
         _search.ToolTip = "Search the guide (e.g. \"dispatch\", \"fuel\", \"wheel\")";
         _search.TextChanged += (_, _) => { _query = _search.Text.Trim(); Refresh(); };
+        var searchLabel = new TextBlock
+        {
+            Text = "Search", FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        searchLabel.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        DockPanel.SetDock(searchLabel, Dock.Left);
+        // Visible label: an empty box in a header reads as a decoration, not a search field.
+        top.Children.Add(searchLabel);
+        _search.MinWidth = 300;
         top.Children.Add(_search);
         DockPanel.SetDock(top, Dock.Top);
         root.Children.Add(top);

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using TruckingAdvisor.AI;
 using TruckingAdvisor.Audio;
+using TruckingAdvisor.Audio.Local;
 using TruckingAdvisor.Shared.Input;
 using InputBinding = TruckingAdvisor.Shared.Input.InputBinding;
 using TruckingAdvisor.Core.Advisors;
@@ -44,6 +45,7 @@ public partial class MainWindow : Window
     private readonly MicrophoneRecorder _mic = new();
     private readonly WindowsSpeechToText _localStt = new();
     private readonly LocalWhisperSpeechToText _whisper = new(Path.Combine(AppDataDir, "models"));
+    private readonly LocalVoiceSynthesizer _localVoice = new(Path.Combine(AppDataDir, "voice"));
     private readonly SpeechRouter _speech;
     private DateTime _lastDownloadNotice = DateTime.MinValue;
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
@@ -90,6 +92,22 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow - _lastDownloadNotice < TimeSpan.FromSeconds(2) && p < 1) return;
             _lastDownloadNotice = DateTime.UtcNow;
             ShowNotice($"Downloading the offline speech model: {p:P0} (one time only). Until it's ready, Windows recognition is used.");
+        });
+        _sink.Local = _localVoice;
+        _localVoice.StatusChanged += msg => Dispatcher.BeginInvoke(() =>
+        {
+            ShowNotice(msg);
+            if (_localVoice.IsReady && !_aiSettings.LocalVoiceModelReady)
+            {
+                _aiSettings.LocalVoiceModelReady = true;
+                try { _aiSettings.Save(); } catch { }
+            }
+        });
+        _localVoice.DownloadProgress += p => Dispatcher.BeginInvoke(() =>
+        {
+            if (DateTime.UtcNow - _lastDownloadNotice < TimeSpan.FromSeconds(2) && p < 1) return;
+            _lastDownloadNotice = DateTime.UtcNow;
+            ShowNotice($"Downloading the on-device voice: {p:P0} (one time only). Free voices speak until it's ready.");
         });
         _audio.AudioStarted += (_, item) => { if (item.Channel == "advisor") _lastAdvisory = item.Text; };
         _cbRadio = new CBRadioService(roster, _company, _audio, () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot, _aiSettings,
@@ -250,11 +268,23 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(dir);
-            foreach (var engine in new[] { VoiceEngine.FreeNeural, VoiceEngine.Windows })
+            _localVoice.Enabled = true;
+            // The self-test renders every on-device engine, so both models have to be on disk.
+            foreach (var kind in new[] { LocalVoiceModelKind.Supertonic, LocalVoiceModelKind.Kokoro })
             {
+                _localVoice.Kind = kind;
+                await _localVoice.EnsureModelAsync();
+            }
+            _localVoice.Kind = LocalVoiceModelKind.Supertonic;
+            if (!_localVoice.IsReady) report.AppendLine("Local: model missing, the app would fall back to a free voice");
+            foreach (var engine in new[] { VoiceEngine.Local, VoiceEngine.LocalKokoro, VoiceEngine.FreeNeural, VoiceEngine.Windows })
+            {
+                // The sink picks the model from the engine, so the model has to switch before rendering.
+                _localVoice.Kind = engine == VoiceEngine.LocalKokoro ? LocalVoiceModelKind.Kokoro : LocalVoiceModelKind.Supertonic;
+                await _localVoice.EnsureModelAsync();
                 _sink.Engine = engine;
                 var item = new AudioItem("Breaker one-nine, this is Big Red. Ten-four, I copy you loud and clear.", AudioPriority.Normal, "cb",
-                    VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-8%|-8Hz");
+                    VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-45%|-8Hz");
                 try
                 {
                     var (samples, rate, source) = await _sink.RenderAsync(item, CancellationToken.None);
@@ -262,14 +292,13 @@ public partial class MainWindow : Window
                     using (var w = new NAudio.Wave.WaveFileWriter(file, NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(rate, 1)))
                         w.WriteSamples(samples, 0, samples.Length);
                     report.AppendLine($"{engine}: {source}, {samples.Length / (double)rate:F1} s at {rate} Hz");
-                    if (engine == VoiceEngine.FreeNeural && source.Contains("neural")) neural = (samples, rate);
+                    if (engine is VoiceEngine.Local or VoiceEngine.LocalKokoro) neural = (samples, rate);
                 }
                 catch (Exception ex) { report.AppendLine($"{engine}: FAILED {ex.GetType().Name}: {ex.Message}"); }
             }
         }
         catch (Exception ex) { report.AppendLine($"FAILED {ex}"); }
-
-        // Recognition, end to end: the neural voice's line, cleaned like a mic clip, through local Whisper.
+        // Recognition, end to end: the spoken line, cleaned like a mic clip, through local Whisper.
         foreach (bool accurate in new[] { false, true })
         {
             try
@@ -386,6 +415,13 @@ public partial class MainWindow : Window
         _sink.CleanAudio = _aiSettings.CleanAudio;
         _sink.Engine = _aiSettings.VoiceEngine;
         _sink.DefaultNeuralVoice = _aiSettings.CoDriverNeuralVoice;
+        bool onDevice = _aiSettings.VoiceEngine is VoiceEngine.Local or VoiceEngine.LocalKokoro;
+        _localVoice.Kind = _aiSettings.VoiceEngine == VoiceEngine.LocalKokoro ? LocalVoiceModelKind.Kokoro : LocalVoiceModelKind.Supertonic;
+        _localVoice.Enabled = onDevice || _aiSettings.LocalVoiceModelReady;
+        if (_localVoice.Enabled && !_localVoice.IsReady && _voiceSelfTestDir is null)
+            _ = _localVoice.EnsureModelAsync();
+        else if (_localVoice.IsReady)
+            _ = _localVoice.WarmUpAsync();
         _sink.DeviceSelector = channel => channel switch
         {
             "cb" => _aiSettings.RadioOutputDevice,
@@ -656,9 +692,9 @@ public partial class MainWindow : Window
         var lines = new (string Who, AudioItem Item, float Volume)[]
         {
             ("Big Red (CB)", new AudioItem("Breaker one-nine, this is Big Red. I hear you loud and clear, driver.", AudioPriority.Normal, "cb", ApplyCbEffects: true,
-                VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-8%|-8Hz"), _aiSettings.RadioVolume),
+                VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-45%|-8Hz"), _aiSettings.RadioVolume),
             ("Dispatch", new AudioItem($"{_company.DisplayHandle}, this is dispatch. Radio check, you're coming through fine.", AudioPriority.Normal, "dispatcher", ApplyCbEffects: true,
-                VoiceId: "coral", NeuralVoice: "en-US-AriaNeural|+4%|+0Hz"), _aiSettings.DispatcherVolume),
+                VoiceId: "coral", NeuralVoice: "en-US-AriaNeural|-38%|+0Hz"), _aiSettings.DispatcherVolume),
             ("Co-driver", new AudioItem("Co-driver here. Voices are working.", AudioPriority.Normal, "advisor"), _aiSettings.AdvisorVolume)
         };
         var results = new List<string>();

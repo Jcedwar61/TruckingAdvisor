@@ -185,7 +185,7 @@ public sealed class MapView : FrameworkElement
             var p = ToScreen(c.X, c.Z);
             if (p.X < -50 || p.Y < -20 || p.X > w + 50 || p.Y > h + 20) continue;
             dc.DrawEllipse(TextBrush, null, p, dot, dot);
-            if (!Compact) DrawLabel(dc, c.Name, p, MutedBrush, 11);
+            if (!Compact) DrawLabel(dc, c.Name, p, MutedBrush, 11, offset: dot + 5);
         }
 
         // Destination (only known if you've delivered there before).
@@ -252,10 +252,15 @@ public sealed class MapView : FrameworkElement
         dc.DrawText(label, new Point(12, y - 6 - label.Height));
     }
 
-    private void DrawLabel(DrawingContext dc, string text, Point at, Brush brush, double size, bool bold = false)
+    private void DrawLabel(DrawingContext dc, string text, Point at, Brush brush, double size, bool bold = false, double offset = 7)
     {
         var t = Text(text, brush, size, bold);
-        dc.DrawText(t, new Point(at.X + 7, at.Y - t.Height / 2));
+        // A dark halo keeps the name readable where it crosses a road.
+        var halo = Text(text, Brushes.Black, size, bold);
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++)
+                if (dx != 0 || dy != 0) dc.DrawText(halo, new Point(at.X + offset + dx, at.Y - t.Height / 2 + dy));
+        dc.DrawText(t, new Point(at.X + offset, at.Y - t.Height / 2));
     }
 
     private FormattedText Text(string s, Brush brush, double size, bool bold = false) =>

@@ -40,3 +40,17 @@ come from Microsoft's online read-aloud service used by Microsoft Edge (not an o
 as `runtimes\win-x64\*.dll`. The English speech models (`ggml-small.en-q5_1.bin`, `ggml-base.en-q5_1.bin`) are
 OpenAI's Whisper weights (MIT) converted by the whisper.cpp project; they are downloaded on first use from
 huggingface.co/ggerganov/whisper.cpp and checked against pinned SHA-256 checksums.
+
+## sherpa-onnx, ONNX Runtime, Supertonic 3 (Apache-2.0 / MIT) - on-device voices
+
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0, Copyright (c) 2023-2026 k2-fsa) provides the
+`SherpaOnnx` .NET bindings and ships as `sherpa-onnx-c-api.dll`; it runs on [ONNX Runtime](https://github.com/microsoft/onnxruntime)
+(MIT, Copyright (c) Microsoft Corporation), shipped as `onnxruntime.dll`. Neither is bundled inside the single-file
+exe; both sit next to it, unwrapped, because the native library loader needs them there.
+
+The default voice model is [Supertonic 3](https://github.com/supertone-inc/supertonic) (MIT, Copyright (c) 2025 Supertone Inc.),
+converted to ONNX by k2-fsa (huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11). The higher-quality
+choice is [Kokoro 82M v1.0](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0), converted by k2-fsa
+(huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0). Either is downloaded once (about 145-150 MB, all voices share
+it), stored under `%LOCALAPPDATA%\TruckingAdvisor\voice`, and every file is checked against a pinned SHA-256 before use.
+per-word cost.

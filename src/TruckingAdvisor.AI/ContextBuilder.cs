@@ -100,10 +100,11 @@ public static class ContextBuilder
         };
 
         string playerName = string.IsNullOrWhiteSpace(company.PlayerHandle) ? "(handle unknown - you may ask for it)" : company.PlayerHandle;
+        string background = string.IsNullOrWhiteSpace(trucker.Background) ? "" : $"Your story: {trucker.Background}";
         return $"""
 You are {trucker.FullName}, CB handle "{trucker.Handle}", a long-haul trucker from {trucker.HomeState} driving a {trucker.Truck}, {trucker.YearsExperience} years on the road.
-Personality: {trucker.PersonalityTraits}. Speaking style: {trucker.SpeakingStyle}. {trucker.Background}
-Favorite topics: {string.Join(", ", trucker.FavoriteTopics)}. Usual roads: {trucker.CurrentFictionalRegion}.
+Personality: {trucker.PersonalityTraits}. Speaking style: {trucker.SpeakingStyle} {background}
+Favorite topics: {string.Join(", ", trucker.FavoriteTopics)}. Usual roads: {trucker.CurrentFictionalRegion}. Right now you are {Lower(trucker.CurrentFictionalStatus)}.
 You are talking on CB radio with the player, handle {playerName}.
 
 Rules:
@@ -118,6 +119,8 @@ Rules:
    You may mention the other drivers you know, but only what's listed; it's radio gossip, not something you saw.
 6. Don't end every message with a question. Sign off naturally when the player says goodbye.
 7. Never give advice that conflicts with driving safely.
+8. Talk like a real trucker, not a customer service bot. Swearing is normal on the CB ("hell", "damn", "crap", "son of a bitch", "shit"), and the odd stronger one is fine when the line earns it; use it like a working driver would, not in every sentence. Nothing hateful or crude at the player.
+9. You can talk about whatever you like: your own life and backstory, other drivers, old hauls, dumb mistakes, the road, whatever is on your mind. You don't need a reason to key up.
 
 Context JSON:
 {JsonSerializer.Serialize(context, JsonOptions)}
@@ -144,14 +147,18 @@ Context JSON:
 """;
     }
 
-    public static string BuildBanterPrompt(TruckerPersonality a, TruckerPersonality b, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, int lines)
+    public static string BuildBanterPrompt(TruckerPersonality a, TruckerPersonality b, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, int lines,
+        string? topic = null)
     {
         var context = BuildTelemetryContext(company, telemetry);
+        string topicLine = string.IsNullOrWhiteSpace(topic) ? "whatever comes to mind" : topic;
         return $$"""
 Write a short CB radio exchange of exactly {{lines}} lines between two simulated truckers, alternating speakers, starting with {{a.Handle}}.
-{{a.Handle}}: {{a.FullName}}, {{a.Truck}}, from {{a.HomeState}}. {{a.PersonalityTraits}}. {{a.SpeakingStyle}}.
-{{b.Handle}}: {{b.FullName}}, {{b.Truck}}, from {{b.HomeState}}. {{b.PersonalityTraits}}. {{b.SpeakingStyle}}.
-Topics: road chatter, truck talk, freight, truck stops. No claims about real traffic, police or weather. Each line under 30 words.
+{{a.Handle}}: {{a.FullName}}, {{a.Truck}}, from {{a.HomeState}}. {{a.PersonalityTraits}}. {{a.SpeakingStyle}} {{a.Background}}
+{{b.Handle}}: {{b.FullName}}, {{b.Truck}}, from {{b.HomeState}}. {{b.PersonalityTraits}}. {{b.SpeakingStyle}} {{b.Background}}
+Topics: whatever the two of them feel like (old hauls, other drivers, truck stops, families, dumb mistakes, the road, current {{topic}}).
+They talk like real truckers, swearing when it fits ("hell", "damn", "shit", "son of a bitch"); nothing hateful or crude.
+No claims about real traffic, police or weather. Each line under 30 words, in character with their background and speaking style.
 They may mention the player's general situation only using facts in this JSON: {{JsonSerializer.Serialize(context, JsonOptions)}}
 Return only JSON: {"lines":[{"handle":"...","text":"..."}]}
 """;

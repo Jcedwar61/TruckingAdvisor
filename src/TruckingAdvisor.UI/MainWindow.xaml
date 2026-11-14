@@ -10,6 +10,7 @@
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <local:TripFactsConverter x:Key="TripFacts"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
             <Setter Property="CornerRadius" Value="8"/>
@@ -320,7 +321,7 @@
                         </StackPanel>
                     </Border>
                 <Border x:Name="WTrend" Style="{StaticResource Card}" Margin="0,0,0,10">
-                        <c:TrendChart Title="DRIVER SCORE TREND" Values="{Binding ScoreTrend}" Height="150"
+                        <c:TrendChart Title="DRIVER SCORE TREND" Values="{Binding ScoreTrend}" Height="150" TitleBrush="{DynamicResource TextBrush}"
                                       LineBrush="{DynamicResource GoodBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                 </StackPanel>
@@ -633,6 +634,8 @@
                         <TextBlock Text="{Binding Topics}" TextWrapping="Wrap"/>
                         <TextBlock Text="USUALLY RUNS" Style="{StaticResource Label}" Margin="0,12,0,2"/>
                         <TextBlock Text="{Binding Region}" TextWrapping="Wrap"/>
+                        <TextBlock Text="BACKSTORY" Style="{StaticResource Label}" Margin="0,12,0,2" Visibility="{Binding HasBackground, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="{Binding Background}" TextWrapping="Wrap" Visibility="{Binding HasBackground, Converter={StaticResource BoolToVis}}"/>
                         <TextBlock Style="{StaticResource Label}" Margin="0,14,0,4">
                             <Run Text="RELATIONSHIP: "/><Run Text="{Binding Relationship, Mode=OneWay}"/><Run Text=" • "/><Run Text="{Binding Conversations, Mode=OneWay}"/><Run Text=" conversations"/>
                         </TextBlock>
@@ -660,16 +663,16 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <UniformGrid Columns="2">
                     <Border Style="{StaticResource Card}" Margin="0,0,6,10">
-                        <c:TrendChart Title="Driver score (0-100)" Values="{Binding ScoreTrend}" Height="200" LineBrush="{DynamicResource GoodBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="Driver score (0-100)" Values="{Binding ScoreTrend}" Height="200" LineBrush="{DynamicResource GoodBrush}" TextBrush="{DynamicResource MutedBrush}" TitleBrush="{DynamicResource TextBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="{Binding MpgTrendTitle}" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MpgTrendTitle}" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}" TitleBrush="{DynamicResource TextBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,0,6,10">
-                        <c:TrendChart Title="{Binding IncidentTrendTitle}" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding IncidentTrendTitle}" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}" TitleBrush="{DynamicResource TextBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="{Binding MilesTrendTitle}" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MilesTrendTitle}" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}" TitleBrush="{DynamicResource TextBrush}"/>
                     </Border>
                 </UniformGrid>
             </ScrollViewer>
@@ -682,7 +685,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <WrapPanel Margin="0,0,0,8">
+                <WrapPanel Margin="0,2,0,12">
                     <Button Content="Export all (CSV)" Click="BtnExportCsv_Click" Style="{StaticResource TopButton}"/>
                     <Button Content="Export selected (JSON)" Click="BtnExportJson_Click" Style="{StaticResource TopButton}"/>
                     <Button Content="Copy selected report" Click="BtnCopyReport_Click" Style="{StaticResource TopButton}"/>
@@ -690,15 +693,21 @@
                     <Button Content="All trips (PDF)" Click="BtnExportAllPdf_Click" Style="{StaticResource TopButton}"/>
                     <Button Content="Share image (PNG)" Click="BtnExportPng_Click" Style="{StaticResource TopButton}"/>
                 </WrapPanel>
-                <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstTrips" Grid.Row="1" ItemsSource="{Binding TripHistory}">
+                <Grid Grid.Row="1">
+                    <TextBlock Text="No trips recorded yet. Each delivery you finish in the game shows up here with its score, and the export buttons above work on them."
+                               Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="4,12,4,0"
+                               Visibility="{Binding HasNoTrips, Converter={StaticResource BoolToVis}}" VerticalAlignment="Top"/>
+                    <ListBox ScrollViewer.HorizontalScrollBarVisibility="Disabled" x:Name="LstTrips" ItemsSource="{Binding TripHistory}"
+                             Visibility="{Binding HasTrips, Converter={StaticResource BoolToVis}}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Margin="0,3">
-                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding Mode=OneWay, Converter={StaticResource TripFacts}}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay}" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
+                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding Mode=OneWay, Converter={StaticResource TripFacts}}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay, StringFormat={}{0}   }" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
                             </TextBlock>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
-                </ListBox>
+                    </ListBox>
+                </Grid>
             </Grid>
         </TabItem>
 

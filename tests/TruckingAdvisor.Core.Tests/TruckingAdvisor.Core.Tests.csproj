@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -17,5 +17,6 @@
     <ProjectReference Include="..\..\src\TruckingAdvisor.Data\TruckingAdvisor.Data.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Audio\TruckingAdvisor.Audio.csproj" />
   </ItemGroup>
 </Project>

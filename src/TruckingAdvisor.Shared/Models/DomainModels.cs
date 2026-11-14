@@ -121,12 +121,16 @@ public sealed class TruckerPersonality
     public string Background { get; set; } = string.Empty;
     public List<string> PreferredRoutes { get; set; } = new();
     public string VoiceId { get; set; } = "onyx";
-    /// <summary>Free Microsoft neural voice as "voice|rate|pitch", e.g. "en-US-ChristopherNeural|-6%|-6Hz". Empty = pick one.</summary>
+    /// <summary>Free Microsoft neural voice as "voice|rate|pitch", e.g. "en-US-ChristopherNeural|-45%|-8Hz". Empty = pick one.</summary>
     public string NeuralVoice { get; set; } = string.Empty;
     public float PitchMultiplier { get; set; } = 1.0f;
     public float SpeechRate { get; set; } = 1.0f;
     public List<string> PreferredStates { get; set; } = new();
     public List<string> FavoriteTopics { get; set; } = new();
+    /// <summary>What this trucker likes to start unprompted conversations about (empty = use favorite topics).</summary>
+    public List<string> ChatterTopics { get; set; } = new();
+    /// <summary>Ways this trucker opens a call when AI is off.</summary>
+    public List<string> OfflineOpeners { get; set; } = new();
     public string CurrentFictionalRegion { get; set; } = string.Empty;
     public string CurrentFictionalStatus { get; set; } = string.Empty;
     public RelationshipLevel Relationship { get; set; } = RelationshipLevel.Stranger;

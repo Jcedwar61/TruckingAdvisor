@@ -1,4 +1,44 @@
-# Changelog — TruckingAdvisor
+# Changelog - TruckingAdvisor
+
+## [v3.6.0] - 2026-11-14
+
+### Cast and conversations
+- **A full crew of regulars: fifteen of them.** Carolina Chrome, Bayou Belle, Glacier Gus, Texas Slim, Prairie Rose, Cajun Coyote, Flatbed Frank, Mama Bear, Vinegar Val and Dusty Dakota join the five originals, each with a backstory, a truck, a home patch of highway, opinions and their own way of talking. They talk like truckers: some swearing, no formality, never at you.
+- **Anyone will start a conversation on their own now**, about whatever is on their mind: their own topics first, then truck-stop talk, plus a nudge when you are parked, low on fuel, heavy or running at night. The old five-trucker assumption is gone, including in the hourly cap and the newcomer roll.
+- **Newcomers are more likely to pull onto the channel and stay** (up to six extras), and they arrive with a backstory and their own opener rather than a name and a trait list.
+- The AI is told each trucker's story and told that mild swearing is normal. CB Contacts gained a BACKSTORY panel, so you can read who you are talking to.
+- Relationship labels read properly ("Familiar Voice", not "FamiliarVoice"), and the settings pickers do too ("Old School Trucker", "Very Busy").
+
+### Voices
+- **New on-device model: Kokoro 82M (Apache-2.0)**, offering the most natural offline voices in the app. Fifty-four voices, one per regular, and the men sound like men. Settings > Voices has it next to the existing on-device model; both download once, checksum-pinned, and need no key.
+- **Pitch was upside down.** A "deep" voice spec (-8 Hz) was raising pitch by a quarter instead of lowering it. Fixed, and the tempo change that pitch-shifting causes is now given back to the synthesizer, so a deep voice is no longer also a fast one. Measured, both on-device engines now land at 80-125 Hz for a deep line and 120-140 wpm.
+- **Voices are assigned by measurement, not by luck.** Every speaker in both on-device models was rendered and its pitch measured, so every male regular gets a man's voice and every female regular a woman's, all fifteen distinct on Kokoro. Before, three men had women's voices and the newcomer pool could hand a man a soprano.
+- **Nothing sounds like a walkie-talkie any more, and the bass is back.** The radio band went from 300-3200 Hz to 145-4800 Hz; it now starts at 72 Hz because the old cut was stripping the fundamental out of deep voices and leaving them thin. Presence is +2 dB at 1.7 kHz instead of +3.
+- **Much quieter static, and no more fizz.** Hiss drops to 8 % under the voice (was 15 %), is rolled off by 2.2 kHz and tilted pink, and a new de-esser pulls back the 5-8 kHz band that sampled voices hiss in. Measured, the gaps sit about 40x below the voice. Key-up ticks are 12 ms and the squelch tail 26 ms, separated instead of one 40 ms warble.
+- **The Windows fallback no longer mumbles at 93 wpm.** Its rate is mapped to the same target pace as the neural voices, and it now honours the pitch hint so the fallback cast stops sounding like one man.
+- Pitch resampling is low-pass filtered first, so deep voices stop picking up aliasing buzz.
+
+### Fixed
+- Every regular has a unique voice id again (three newcomers had borrowed one), which is what actually keeps them apart on the on-device models.
+- `--voice-selftest` covers both on-device models.
+- **The Kokoro download 404ed.** Its file list never carried its own repository name, so the downloader asked the Supertonic repo for Kokoro files and the model never arrived; a test now pins each model's files to its own repo.
+- **The installer left out the native DLLs.** onnxruntime, sherpa-onnx, the WPF and SQLite natives were in the portable zip but not in setup, so an installed copy started and then died. Setup ships them now (and removes them again on uninstall).
+## [v3.5.0] - 2026-11-14
+### Voice and audio quality
+- **Lines were about twice as fast as a person talks** (257-281 words per minute; natural is 150-170). Every voice spec was re-paced: truckers, dispatch and the co-driver now land at 150-180 wpm, and the on-device engine gets its own mapping because it already speaks at a natural pace.
+- **The static is gone.** Hiss was a flat wash over every gap and the limiter clipped hard. The filter is now second-order: a real 300-3200 Hz band pass, gentle saturation, a soft knee limiter, and hiss that ducks to a quarter under a voice. Noise floor dropped about 5 dB and the pauses are quiet again. Clicks went from 90 ms to 40 ms with a 1.5 ms fade-in instead of a pop.
+- **Every line is levelled** to the same loudness before playback, so a quiet voice and a loud one sound like the same station, and nothing clips.
+- **On-device filter rates**: the band pass is now designed for whatever sample rate the engine produces (22.05 kHz Windows voices included); before, it was tuned for 24 kHz only.
+- Neural voices ask for a higher bitrate (96 kbps instead of 48).
+- **Windows voice pitch**: the pitch in a voice spec was parsed and thrown away; the Windows fallback ignored it entirely. Both are honoured now.
+
+### Added
+- **On-device voice engine (Supertonic 3 through sherpa-onnx, MIT).** Natural, offline, no key, no cost. Ten voices, mapped to the cart's regulars so they keep their character; about fifteen times faster than realtime on a desktop CPU. Downloads once (~145 MB, checksum-pinned) and then runs entirely on the PC. Settings > Voices has it as an engine, and Test voices covers it.
+- `--voice-selftest` now renders the on-device voice too.
+## [v3.4.1] — 2026-11-14
+
+### Fixed
+- **No voice line played at all.** Every line failed with ArrayTypeMismatchException (A voice line couldn't be played: Source array type cannot be assigned to destination array type). NAudio hands the playback provider a byte buffer disguised as a float array, and the sample copy used Array.Copy, whose array-type check rejected it. The copy now goes through spans, which copy by memory. Covered by a test that drives the real NAudio provider chain.
 
 ## [v3.4.0] — 2026-11-14
 

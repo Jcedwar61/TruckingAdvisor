@@ -1,13 +1,13 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Security.Cryptography;
 
 namespace TruckingAdvisor.Core.Speech;
 
 /// <summary>
-/// Downloads a speech model once into the app's data folder. Interrupted downloads resume; a pinned
+/// Downloads a model file once into the app's data folder. Interrupted downloads resume; a pinned
 /// SHA-256 is checked before the file is used (a mismatch deletes it). Only HTTPS from huggingface.co.
 /// </summary>
-public sealed class ModelDownloader
+public sealed class ModelDownloader : IDisposable
 {
     private readonly HttpClient _http;
     public string Folder { get; }
@@ -25,11 +25,16 @@ public sealed class ModelDownloader
     /// <summary>True when the model is on disk (and matches its checksum if one is pinned and verified before).</summary>
     public bool IsReady(WhisperModelInfo model) => File.Exists(PathFor(model)) && new FileInfo(PathFor(model)).Length > 1_000_000;
 
-    public async Task<string> EnsureAsync(WhisperModelInfo model, IProgress<double>? progress = null, CancellationToken ct = default)
+    public Task<string> EnsureAsync(WhisperModelInfo model, IProgress<double>? progress = null, CancellationToken ct = default) =>
+        EnsureFileAsync(model.Url, model.FileName, model.Sha256, model.ApproxBytes, progress, ct);
+
+    /// <summary>Downloads one pinned file into the folder (resuming a partial one) and checks its SHA-256.</summary>
+    public async Task<string> EnsureFileAsync(string url, string fileName, string sha256, long approxBytes,
+        IProgress<double>? progress = null, CancellationToken ct = default)
     {
-        string target = PathFor(model);
-        if (IsReady(model)) return target;
-        if (!Uri.TryCreate(model.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "huggingface.co")
+        string target = Path.Combine(Folder, fileName);
+        if (File.Exists(target) && new FileInfo(target).Length == approxBytes) return target;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "huggingface.co")
             throw new InvalidOperationException("Untrusted model address.");
         Directory.CreateDirectory(Folder);
         string partial = target + ".partial";
@@ -41,7 +46,7 @@ public sealed class ModelDownloader
         if (have > 0 && resp.StatusCode != System.Net.HttpStatusCode.PartialContent) have = 0; // server restarted it
         resp.EnsureSuccessStatusCode();
         if (resp.RequestMessage?.RequestUri is { Scheme: not "https" }) throw new InvalidDataException("Download left HTTPS.");
-        long total = (resp.Content.Headers.ContentLength ?? model.ApproxBytes - have) + have;
+        long total = (resp.Content.Headers.ContentLength ?? approxBytes - have) + have;
 
         await using (var input = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
         await using (var output = new FileStream(partial, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write))
@@ -58,10 +63,10 @@ public sealed class ModelDownloader
         }
 
         string sha = await HashAsync(partial, ct).ConfigureAwait(false);
-        if (model.Sha256.Length > 0 && !string.Equals(sha, model.Sha256, StringComparison.OrdinalIgnoreCase))
+        if (sha256.Length > 0 && !string.Equals(sha, sha256, StringComparison.OrdinalIgnoreCase))
         {
             File.Delete(partial);
-            throw new InvalidDataException($"The downloaded {model.Id} model doesn't match its checksum, so it was deleted. Try again later.");
+            throw new InvalidDataException($"The downloaded {fileName} doesn't match its checksum, so it was deleted. Try again later.");
         }
         File.Move(partial, target, overwrite: true);
         return target;
@@ -72,4 +77,6 @@ public sealed class ModelDownloader
         await using var fs = File.OpenRead(path);
         return Convert.ToHexString(await SHA256.HashDataAsync(fs, ct).ConfigureAwait(false)).ToLowerInvariant();
     }
+
+    public void Dispose() => _http.Dispose();
 }
