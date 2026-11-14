@@ -1,5 +1,11 @@
 # Changelog — TruckingAdvisor
 
+## [v3.2.0] — 2026-11-14
+
+### Added
+- **Built-in guide.** Press **F1**, click the small **?** in the header, or **More > User Guide**. A separate window (no space taken on the dashboard) with searchable pages: Getting started, Dashboard, HUD, CB radio (channels, the regulars, conversation starters), Voice commands, Controls & key bindings, Dispatch, Map & real places, Deliveries & money, Settings & AI cost, Updates & troubleshooting.
+- The Controls page shows **your own** current keys and wheel / button-box buttons, and every voice-command example in the guide is checked against the real command parser by the test suite, so the guide can't drift from the app.
+
 ## [v3.1.0] — 2026-11-14
 
 ### Added

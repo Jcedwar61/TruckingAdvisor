@@ -46,7 +46,7 @@ public sealed class WelcomeWindow : Window
         form.Children.Add(Label("Co-driver voice style"));
         form.Children.Add(_coDriver);
 
-        form.Children.Add(Para("Good to know:\n•  Hold LEFT ALT to talk on the CB (or type in the radio box).\n•  F8 shows the in-game HUD.  [ and ]  change channel.  F10 calls dispatch.\n•  Every function can go on a key or a wheel / button-box button: More > Controls & Key Bindings.\n•  Everything works offline. Add an OpenAI key later for real AI conversations.\n•  Say \"TruckingAdvisor, what's my fuel range?\" for voice commands."));
+        form.Children.Add(Para("Good to know:\n•  Hold LEFT ALT to talk on the CB (or type in the radio box).\n•  F8 shows the in-game HUD.  [ and ]  change channel.  F10 calls dispatch.\n•  Every function can go on a key or a wheel / button-box button: More > Controls & Key Bindings.\n•  Press F1 (or the ? button) any time for the guide: features, voice commands, CB tips.\n•  Everything works offline. Add an OpenAI key later for real AI conversations.\n•  Say \"TruckingAdvisor, what's my fuel range?\" for voice commands."));
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         var ai = new Button { Content = "Set up AI voices now", Margin = new Thickness(0, 0, 8, 0) };
