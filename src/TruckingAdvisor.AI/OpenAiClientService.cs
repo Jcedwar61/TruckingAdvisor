@@ -219,7 +219,8 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
         {
             string voice = string.IsNullOrWhiteSpace(voiceId) ? "onyx" : voiceId;
             if (model == "tts-1" && !AiModelCatalog.ClassicVoices.Contains(voice)) voice = "onyx";
-            var body = new { model, input = text, voice, response_format = "wav" };
+            // MP3: compact and always complete (streamed WAV can arrive with an unfinished header).
+            var body = new { model, input = text, voice, response_format = "mp3" };
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/speech")
             {
                 Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")

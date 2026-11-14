@@ -61,10 +61,20 @@ public sealed class WindowsAudioSink : IAudioSink
     /// </summary>
     public async Task<(float[] Samples, int SampleRate, string Source)> RenderAsync(AudioItem item, CancellationToken ct)
     {
-        if (item.WavAudio is { Length: > 44 } wav)
+        if (item.WavAudio is { Length: > 44 } audio)
         {
-            var (s, r) = DecodeWav(wav);
-            return (s, r, "OpenAI voice");
+            try
+            {
+                // OpenAI voices arrive as MP3; the realtime mode hands over WAV. Tell them apart by their header.
+                bool isWav = audio[0] == 'R' && audio[1] == 'I' && audio[2] == 'F' && audio[3] == 'F';
+                var (s, r) = isWav ? DecodeWav(audio) : DecodeMp3(audio);
+                if (s.Length > 0) return (s, r, "OpenAI voice");
+                Problem("The OpenAI voice returned no audio; using a free voice instead.");
+            }
+            catch (Exception ex)
+            {
+                Problem("The OpenAI voice audio couldn't be decoded; using a free voice instead.", ex);
+            }
         }
         if (Engine != VoiceEngine.Windows && DateTime.UtcNow >= _neuralPausedUntil)
         {
