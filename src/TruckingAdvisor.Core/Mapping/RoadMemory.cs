@@ -206,6 +206,20 @@ public sealed class GameWorld
         GameId = gameId; _dir = dir; Cities = cities; Grades = grades; Roads = roads;
     }
 
+    /// <summary>An in-memory world for demo data: shown on the map, never saved, never mixed with real data.</summary>
+    public static GameWorld CreateDemo(Func<double, (double X, double Z)> route, double untilSeconds)
+    {
+        var w = new GameWorld(2, "", new LocationMemory(), new GradeMemory(), new RoadMemory()) { IsDemo = true };
+        for (double t = -600; t <= untilSeconds; t += 1) { var p = route(t); w.Roads.Record(p.X, p.Z, true); }
+        var start = route(-600);
+        w.Cities.Learn("Phoenix", start.X, start.Z);
+        var end = route(1800);
+        w.Cities.Learn("Denver", end.X, end.Z);
+        return w;
+    }
+
+    public bool IsDemo { get; private init; }
+
     /// <summary>
     /// Loads one game's memories from <paramref name="dir"/>. Files from versions before per-game
     /// storage (learned-cities.json / learned-grades.json) were ATS-only and become ATS's.
@@ -225,6 +239,7 @@ public sealed class GameWorld
 
     public void Save()
     {
+        if (IsDemo) return;
         Cities.Save(Path.Combine(_dir, $"learned-cities-{Key}.json"));
         Grades.Save(Path.Combine(_dir, $"learned-grades-{Key}.json"));
         Roads.Save(Path.Combine(_dir, $"driven-roads-{Key}.bin"));

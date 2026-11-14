@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.IO.MemoryMappedFiles;
 using TruckingAdvisor.Shared.Diagnostics;
 using TruckingAdvisor.Shared.Enums;
@@ -354,6 +355,7 @@ public sealed class DerivedTelemetryCalculator
 /// </summary>
 public sealed class DemoTelemetryGenerator
 {
+
     private readonly DateTimeOffset _start = DateTimeOffset.UtcNow;
 
     public AtsTelemetrySnapshot Next(DateTimeOffset now)
@@ -396,7 +398,9 @@ public sealed class DemoTelemetryGenerator
             NavigationDistanceRemainingMiles = remaining,
             NavigationTimeRemainingMinutes = remaining / 59f * 60f,
             OdometerMiles = 1000f + miles,
-            WorldX = seconds * 29.0,
+            WorldX = DemoRoute.X(seconds),
+            WorldZ = DemoRoute.Z(seconds),
+            HeadingDegrees = DemoRoute.Heading(seconds),
             GameTimeMinutes = 23 * 60 + 45 + (uint)(seconds / 3.0),
             TimeScale = 19f,
             NextRestStopGameMinutes = 310

@@ -58,7 +58,9 @@ public partial class MainWindow : Window
         bool demo = args.Contains("--demo", StringComparer.OrdinalIgnoreCase);
         int shot = Array.FindIndex(args, a => a.Equals("--screenshot", StringComparison.OrdinalIgnoreCase));
         if (shot >= 0 && shot + 1 < args.Length) _screenshotDir = args[shot + 1];
-        _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo);
+        int replay = Array.FindIndex(args, a => a.Equals("--replay", StringComparison.OrdinalIgnoreCase));
+        string? replayFile = replay >= 0 && replay + 1 < args.Length ? args[replay + 1] : null;
+        _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo, replayFile: replayFile);
 
         _aiSettings = AiSettings.Load();
         _openAi = new OpenAiClientService(_aiSettings, new AiUsageTracker(AiUsageTracker.DefaultPath));
@@ -83,6 +85,7 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        _viewModel.IsReplay = replayFile is not null;
         // Keep the newest radio message in view, like a chat app.
         _viewModel.RadioMessages.CollectionChanged += (_, _) =>
         {
@@ -417,6 +420,59 @@ public partial class MainWindow : Window
     private void BtnMapFollow_Click(object sender, RoutedEventArgs e) => BigMap.FollowTruck();
     private void BtnMapAll_Click(object sender, RoutedEventArgs e) => BigMap.ShowAll();
 
+    // ---- Diagnostics ----
+
+    private static string RecordingsDir => Path.Combine(AppDataDir, "recordings");
+
+    /// <summary>Records raw telemetry to a file that can be sent with a bug report and replayed exactly.</summary>
+    private void BtnRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (_telemetry.IsRecording)
+        {
+            var path = _telemetry.StopRecording();
+            BtnRecord.Content = "Record a Session";
+            if (path is not null)
+            {
+                ShowNotice($"Recording saved: {Path.GetFileName(path)}");
+                try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true }); } catch { }
+            }
+            return;
+        }
+        if (MessageBox.Show(this,
+                "Record what the game's telemetry plugin reports (speed, truck, cargo, cities, positions...) to a file, to attach to a bug report.\n\n" +
+                "It holds no personal data and no audio. Stop it from the same menu; it also stops on its own at 200 MB.",
+                "Record a session", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK) return;
+        string file = Path.Combine(RecordingsDir, $"session-{DateTime.Now:yyyyMMdd-HHmmss}.tarec");
+        try
+        {
+            _telemetry.StartRecording(file);
+            BtnRecord.Content = "Stop Recording";
+            ShowNotice("Recording the session. More > Stop Recording when done.");
+        }
+        catch (Exception ex) { ShowNotice($"Couldn't start recording: {ex.Message}"); }
+    }
+
+    /// <summary>Version, Windows, connection state, settings that matter and the recent log, with personal details removed.</summary>
+    private void BtnDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var s = _telemetry.LatestSnapshot;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"TruckingAdvisor {AppVersion.ToString(3)} on {Environment.OSVersion.VersionString} ({(Environment.Is64BitProcess ? "64" : "32")}-bit)");
+        sb.AppendLine($"Telemetry: {_telemetry.CurrentState} - {_telemetry.StatusDetail}");
+        sb.AppendLine($"Game: {(s.GameId == 1 ? "ETS2" : s.GameId == 2 ? "ATS" : "unknown")}, plugin revision {s.PluginRevision}, demo {s.IsDemoData}");
+        sb.AppendLine($"AI: {(_aiSettings.GlobalAiEnabled ? "on" : "off")}, voice {_aiSettings.VoicePipeline}, mic {(_aiSettings.MicrophoneEnabled ? "on" : "off")}, units {_aiSettings.Units}");
+        sb.AppendLine($"Controllers: {string.Join(", ", _controllers?.DeviceNames ?? Array.Empty<string>())}");
+        sb.AppendLine();
+        sb.AppendLine("Recent log:");
+        foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(line);
+        try
+        {
+            Clipboard.SetText(TruckingAdvisor.Shared.Diagnostics.AppLog.Scrub(sb.ToString()));
+            ShowNotice("Diagnostics copied to the clipboard (no keys, user name or personal paths). Paste them into a bug report.");
+        }
+        catch (Exception ex) { ShowNotice($"Couldn't copy diagnostics: {ex.Message}"); }
+    }
+
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
 
     private void BtnDismissBanner_Click(object sender, RoutedEventArgs e) => _viewModel.DismissBanner();
@@ -439,6 +495,7 @@ public partial class MainWindow : Window
         {
             _db.SaveCompany(_company);
             ApplyAudioSettings();
+            _viewModel.RefreshUnits();
         }
     }
 

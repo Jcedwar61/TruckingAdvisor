@@ -195,7 +195,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     {
         ApplyUnits(snapshot.GameId);
         _analyzer.EvaluateSnapshot(snapshot, _previous);
-        if (snapshot.IsLive && !snapshot.IsDemoData) World.Roads.Record(snapshot.WorldX, snapshot.WorldZ, !snapshot.IsPaused && snapshot.SpeedMph > 2);
+        if (snapshot.IsLive || snapshot.IsDemoData) World.Roads.Record(snapshot.WorldX, snapshot.WorldZ, !snapshot.IsPaused && snapshot.SpeedMph > 2);
         _gameEvents.Update(snapshot); // before the trip tracker, so a fine in the last frame still lands on the trip
         _trips.Update(snapshot);
         OnTelemetryFeatures(snapshot, _previous);

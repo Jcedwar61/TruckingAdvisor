@@ -93,6 +93,9 @@
                                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
                                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
                                     <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Click="BtnCheckUpdates_Click"/>
+                                    <Separator Margin="0,4" Background="{DynamicResource ButtonBrush}"/>
+                                    <Button x:Name="BtnRecord" Content="Record a Session" Click="BtnRecord_Click" ToolTip="Save telemetry to a file for a bug report"/>
+                                    <Button x:Name="BtnDiagnostics" Content="Copy Diagnostics" Click="BtnDiagnostics_Click" ToolTip="Copy version, status and the recent log for a bug report"/>
                                 </StackPanel>
                             </Border>
                         </Popup>

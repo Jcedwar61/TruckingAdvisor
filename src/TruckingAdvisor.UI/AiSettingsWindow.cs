@@ -36,6 +36,8 @@ public sealed class AiSettingsWindow : Window
     private readonly Slider _radioVol = Vol(), _dispatchVol = Vol(), _advisorVol = Vol();
     private readonly ComboBox _pipeline = new();
     private readonly TextBox _realtimeModel = new();
+    private readonly ComboBox _units = new();
+    private readonly CheckBox _announceFines = new() { Content = "Co-driver says fines out loud (tolls and fares are only listed, never spoken)" };
     private readonly CheckBox _autoUpdate = new() { Content = "Check for updates automatically and download them in the background" };
     private readonly CheckBox _updateOnExit = new() { Content = "Install a downloaded update when I close the app" };
     private readonly CheckBox _offlineStt = new() { Content = "Offline speech recognition (Windows) when OpenAI transcription isn't available" };
@@ -69,6 +71,9 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Dispatch contact", _dispatch));
         form.Children.Add(Row("Max unprompted calls / hour", _maxUnsolicited));
         form.Children.Add(_remember);
+        form.Children.Add(_announceFines);
+        _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, °F)", "Metric (km, km/h, L, kg, °C)" };
+        form.Children.Add(Row("Units", _units));
 
         form.Children.Add(Header("Audio devices & volume"));
         var outputs = new[] { "Windows default" }.Concat(WindowsAudioSink.ListOutputDevices()).ToList();
@@ -169,6 +174,8 @@ public sealed class AiSettingsWindow : Window
         _realtimeModel.Text = _s.RealtimeModel;
         _offlineStt.IsChecked = _s.OfflineSpeechRecognition;
         _autoUpdate.IsChecked = _s.AutoUpdate;
+        _units.SelectedIndex = (int)_s.Units;
+        _announceFines.IsChecked = _s.AnnounceFines;
         _updateOnExit.IsChecked = _s.InstallUpdatesOnExit;
         _hq.Text = _company.Headquarters;
         _dispatcherName.Text = _company.DispatcherName;
@@ -215,6 +222,8 @@ public sealed class AiSettingsWindow : Window
         _s.RealtimeModel = NonEmpty(_realtimeModel.Text, _s.RealtimeModel);
         _s.OfflineSpeechRecognition = _offlineStt.IsChecked == true;
         _s.AutoUpdate = _autoUpdate.IsChecked == true;
+        _s.Units = (TruckingAdvisor.Shared.UnitPreference)Math.Max(0, _units.SelectedIndex);
+        _s.AnnounceFines = _announceFines.IsChecked == true;
         _s.InstallUpdatesOnExit = _updateOnExit.IsChecked == true;
         _company.Headquarters = _hq.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_dispatcherName.Text)) _company.DispatcherName = _dispatcherName.Text.Trim();

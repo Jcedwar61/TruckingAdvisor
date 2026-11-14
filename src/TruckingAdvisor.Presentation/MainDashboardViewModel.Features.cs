@@ -34,10 +34,14 @@ public sealed partial class MainDashboardViewModel
     private readonly object _worldLock = new();
     private readonly Dictionary<uint, GameWorld> _worlds = new();
     /// <summary>The current game's learned cities, grades and roads (ATS and ETS2 kept apart).</summary>
+    private GameWorld? _demoWorld;
+
     private GameWorld World
     {
         get
         {
+            if (_telemetry.LatestSnapshot.IsDemoData)
+                return _demoWorld ??= GameWorld.CreateDemo(t => (DemoRoute.X(t), DemoRoute.Z(t)), 0);
             uint id = _telemetry.LatestSnapshot.GameId == 1 ? 1u : 2u;
             lock (_worldLock)
             {
