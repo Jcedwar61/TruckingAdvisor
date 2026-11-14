@@ -17,7 +17,7 @@
 
 !define APP "TruckingAdvisor"
 !ifndef VERSION
-  !define VERSION "3.3.0"
+  !define VERSION "3.4.0"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\publish\bin"
@@ -125,6 +125,10 @@ Section "${APP} (required)" SecMain
   File "..\LICENSE"
   File "..\THIRD_PARTY_NOTICES.md"
   File "..\SECURITY.md"
+  ; Offline speech recognition engine (whisper.cpp via Whisper.net); loaded from here, not from inside the exe.
+  SetOutPath "$INSTDIR\runtimes\win-x64"
+  File "${PUBLISH_DIR}\runtimes\win-x64\*.dll"
+  SetOutPath "$INSTDIR"
   File /oname=LICENSE.LGPL.txt "..\src\TruckingAdvisor.EdgeTts\LICENSE.LGPL"
   File /oname=LICENSE.GPL.txt "..\src\TruckingAdvisor.EdgeTts\LICENSE.GPL"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -170,6 +174,7 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\SECURITY.md"
+  RMDir /r "$INSTDIR\runtimes"
   Delete "$INSTDIR\LICENSE.LGPL.txt"
   Delete "$INSTDIR\LICENSE.GPL.txt"
   Delete "$INSTDIR\Uninstall.exe"

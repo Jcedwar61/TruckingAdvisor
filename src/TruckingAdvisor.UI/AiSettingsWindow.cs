@@ -26,6 +26,10 @@ public sealed class AiSettingsWindow : Window
     private readonly TextBlock _modelsInUse = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly TextBlock _voiceTestResult = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
     private readonly Func<VoiceEngine, Task<string>>? _testVoices;
+    private readonly Func<int, Task<string>>? _testMic;
+    private readonly ComboBox _speechMode = new(), _whisperModel = new();
+    private readonly CheckBox _keepMicReady = new() { Content = "Keep the microphone ready so your first word isn't cut off (only the last half second is held in memory; nothing is saved or sent until you press push-to-talk)" };
+    private readonly TextBlock _micTestResult = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
     private readonly TextBox _priceIn = new(), _priceOut = new(), _priceStt = new(), _priceTts = new();
     private readonly TextBox _handle = new(), _companyName = new();
     private readonly CheckBox _mic = new() { Content = "Use my microphone for push-to-talk (recorded only while the PTT key is held)" };
@@ -42,11 +46,12 @@ public sealed class AiSettingsWindow : Window
     private readonly CheckBox _announceFines = new() { Content = "Co-driver says fines out loud (tolls and fares are only listed, never spoken)" };
     private readonly CheckBox _autoUpdate = new() { Content = "Check for updates automatically and download them in the background" };
     private readonly CheckBox _updateOnExit = new() { Content = "Install a downloaded update when I close the app" };
-    private readonly CheckBox _offlineStt = new() { Content = "Offline speech recognition (Windows) when OpenAI transcription isn't available" };
 
-    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company, Func<VoiceEngine, Task<string>>? testVoices = null)
+    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company,
+        Func<VoiceEngine, Task<string>>? testVoices = null, Func<int, Task<string>>? testMic = null)
     {
         _testVoices = testVoices;
+        _testMic = testMic;
         _s = settings;
         _client = client;
         _company = company;
@@ -103,6 +108,35 @@ public sealed class AiSettingsWindow : Window
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
 
+        form.Children.Add(Header("Speech recognition (push-to-talk)"));
+        form.Children.Add(_mic);
+        _speechMode.ItemsSource = new[]
+        {
+            "Automatic: OpenAI when AI is on, otherwise Whisper on this PC (recommended)",
+            "Whisper on this PC only (free, private, offline)",
+            "OpenAI first (needs AI on), Whisper on this PC as backup",
+            "Windows basic recognition (least accurate)"
+        };
+        form.Children.Add(Row("Recognize speech with", _speechMode));
+        _whisperModel.ItemsSource = new[] { "Accurate (~180 MB download, recommended)", "Fast (~60 MB, for slower PCs)" };
+        form.Children.Add(Row("Offline model", _whisperModel));
+        form.Children.Add(_keepMicReady);
+        var micRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(150, 4, 0, 0) };
+        micRow.Children.Add(Button("Test microphone (4 s)", async (_, _) =>
+        {
+            if (_testMic is null) return;
+            _micTestResult.Text = "Speak now: \"Breaker one-nine, Big Red, you got a copy?\"";
+            try { _micTestResult.Text = await _testMic(4); }
+            catch (Exception ex) { _micTestResult.Text = $"Microphone test failed: {ex.Message}"; }
+        }));
+        form.Children.Add(micRow);
+        form.Children.Add(Indent(_micTestResult));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Whisper is the same offline recognizer SimCoach uses; the model downloads once. Every recognizer is told your handle, the truckers' handles, your dispatcher, your cities and CB slang, and silent clips are never sent.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
+
         form.Children.Add(Header("Audio devices & volume"));
         var outputs = new[] { "Windows default" }.Concat(WindowsAudioSink.ListOutputDevices()).ToList();
         foreach (var c in new[] { _radioOut, _advisorOut, _dispatchOut }) c.ItemsSource = outputs;
@@ -136,8 +170,6 @@ public sealed class AiSettingsWindow : Window
         _pipeline.ItemsSource = new[] { "Standard (cheapest)", "Realtime voice (faster, more natural replies; costs more)" };
         form.Children.Add(Row("Voice conversation mode", _pipeline));
         form.Children.Add(Row("Longest reply (tokens)", _maxTokens));
-        form.Children.Add(_mic);
-        form.Children.Add(_offlineStt);
         form.Children.Add(Indent(new TextBlock
         {
             Text = "When AI is on, OpenAI receives: your push-to-talk recording (for transcription), what was said on the radio, and a short summary of game data (speed, fuel, load, destination). Nothing is sent while you aren't talking or chatter is off.",
@@ -185,6 +217,9 @@ public sealed class AiSettingsWindow : Window
         _companyName.Text = _company.CompanyName;
         _enabled.IsChecked = _s.GlobalAiEnabled;
         _quality.SelectedIndex = (int)_s.Quality;
+        _speechMode.SelectedIndex = Math.Clamp(_s.SpeechRecognitionMode, 0, 3);
+        _whisperModel.SelectedIndex = _s.WhisperAccurate ? 0 : 1;
+        _keepMicReady.IsChecked = _s.KeepMicReady;
         _voiceEngine.SelectedIndex = (int)_s.VoiceEngine;
         _modelsInUse.Text = $"In use now: {_s.ChatModel} (chat), {_s.SpeechToTextModel} (listening), {_s.RealtimeModel} (realtime).";
         _maxTokens.Text = _s.MaxResponseTokens.ToString(inv);
@@ -197,7 +232,6 @@ public sealed class AiSettingsWindow : Window
         _priceStt.Text = _s.SpeechToTextPricePerMinute.ToString(inv);
         _priceTts.Text = _s.TextToSpeechPricePerMillionChars.ToString(inv);
         _pipeline.SelectedIndex = _s.VoicePipeline == VoicePipeline.Realtime ? 1 : 0;
-        _offlineStt.IsChecked = _s.OfflineSpeechRecognition;
         _autoUpdate.IsChecked = _s.AutoUpdate;
         _units.SelectedIndex = (int)_s.Units;
         _announceFines.IsChecked = _s.AnnounceFines;
@@ -245,8 +279,10 @@ public sealed class AiSettingsWindow : Window
         if (!string.IsNullOrWhiteSpace(_companyName.Text)) _company.CompanyName = _companyName.Text.Trim();
         _s.VoicePipeline = _pipeline.SelectedIndex == 1 ? VoicePipeline.Realtime : VoicePipeline.Modular;
         _s.Quality = (AiQuality)Math.Max(0, _quality.SelectedIndex);
+        _s.SpeechRecognitionMode = Math.Max(0, _speechMode.SelectedIndex);
+        _s.WhisperAccurate = _whisperModel.SelectedIndex != 1;
+        _s.KeepMicReady = _keepMicReady.IsChecked == true;
         _s.VoiceEngine = (VoiceEngine)Math.Max(0, _voiceEngine.SelectedIndex);
-        _s.OfflineSpeechRecognition = _offlineStt.IsChecked == true;
         _s.AutoUpdate = _autoUpdate.IsChecked == true;
         _s.Units = (TruckingAdvisor.Shared.UnitPreference)Math.Max(0, _units.SelectedIndex);
         _s.AnnounceFines = _announceFines.IsChecked == true;

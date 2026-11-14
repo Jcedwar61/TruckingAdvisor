@@ -109,20 +109,38 @@ public sealed class V24FeatureTests
         public Task<string?> TranscribeAsync(byte[] wav, CancellationToken ct) { Calls++; return Task.FromResult(Result); }
     }
 
+    private static byte[] SpokenClip()
+    {
+        // 0.3 s quiet, 1 s "voice", 0.3 s quiet: enough to count as speech.
+        var s = new float[16000 * 16 / 10];
+        for (int i = 4800; i < 4800 + 16000; i++) s[i] = (float)(0.3 * Math.Sin(2 * Math.PI * 200 * i / 16000.0));
+        return TruckingAdvisor.Core.Speech.SpeechAudio.ToWav(s);
+    }
+
     [Fact]
-    public async Task OfflineRecognition_IsUsedWhenOpenAiUnavailableOrEmpty()
+    public async Task SpeechRouter_FallsThroughRecognizers_AndRejectsSilence()
     {
         var openAi = new FakeStt { IsAvailable = false };
-        var windows = new FakeStt { IsAvailable = true, Result = "breaker one nine" };
-        var stt = new FallbackSpeechToText(openAi, windows);
-        Assert.Equal("breaker one nine", await stt.TranscribeAsync(new byte[100], default));
-        Assert.Equal("Windows (offline)", stt.LastUsed);
+        var whisper = new FakeStt { IsAvailable = true, Result = "breaker one nine" };
+        var windows = new FakeStt { IsAvailable = true, Result = "brake her one nine" };
+        var stt = new TruckingAdvisor.Core.Speech.SpeechRouter(() => new (string, ISpeechToText)[]
+            { ("OpenAI", openAi), ("Whisper (this PC)", whisper), ("Windows", windows) });
 
-        openAi.IsAvailable = true; openAi.Result = "";            // online but heard nothing -> try offline
-        Assert.Equal("breaker one nine", await stt.TranscribeAsync(new byte[100], default));
+        Assert.Equal("breaker one nine", await stt.TranscribeAsync(SpokenClip(), default));
+        Assert.Equal("Whisper (this PC)", stt.LastUsed);
+
+        openAi.IsAvailable = true; openAi.Result = "";            // online but heard nothing -> next recognizer
+        Assert.Equal("breaker one nine", await stt.TranscribeAsync(SpokenClip(), default));
+        openAi.Result = "Thank you.";                             // a known hallucination -> next recognizer
+        Assert.Equal("breaker one nine", await stt.TranscribeAsync(SpokenClip(), default));
         openAi.Result = "hello there";
-        Assert.Equal("hello there", await stt.TranscribeAsync(new byte[100], default));
+        Assert.Equal("hello there", await stt.TranscribeAsync(SpokenClip(), default));
         Assert.Equal("OpenAI", stt.LastUsed);
+
+        int calls = openAi.Calls;
+        Assert.Null(await stt.TranscribeAsync(TruckingAdvisor.Core.Speech.SpeechAudio.ToWav(new float[16000]), default)); // silence
+        Assert.True(stt.LastWasSilent);
+        Assert.Equal(calls, openAi.Calls);                       // silence is never sent anywhere
     }
 
     // ---- Realtime speech-to-speech ----

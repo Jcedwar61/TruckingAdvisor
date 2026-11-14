@@ -10,7 +10,7 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-3.3.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-3.4.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
@@ -40,6 +40,7 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | Money & events | Game pay and XP, fines (with the offence), tolls, ferry/train fares, cancellation penalties and refuels, from the telemetry plugin. Reports and the trip list show net income. |
 | Units | Auto (ATS imperial, ETS2 metric), Imperial or Metric, everywhere including speech. |
 | Diagnostics | Log file (scrubbed of personal details), **More > Copy Diagnostics**, **More > Record a Session** (raw telemetry for bug reports; replay with `--replay file`). |
+| Speech recognition | Whisper on your PC (free, offline, private; one-time model download) or OpenAI with AI on. Mic stays ready so first words aren't clipped; silence is never sent; your handle, truckers, cities and CB slang are recognized. **Settings > Test microphone**. |
 | Voices | Free Microsoft neural voices by default (each trucker, dispatch and the co-driver has their own; Windows voices take over offline), or OpenAI voices with your key. **Settings > Test voices** plays a sample. |
 | AI models | Nothing to pick: choose **AI quality** (Economy / Balanced / Best); built-in model lists, automatic fallback if a model is unavailable. |
 | Guide | **F1**, the **?** button or **More > User Guide**: searchable help for every feature, voice command and CB tip, with your own key and wheel bindings. |

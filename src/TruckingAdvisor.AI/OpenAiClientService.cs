@@ -34,6 +34,8 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
     }
 
     public AiSettings Settings => _settings;
+    /// <summary>Recognition hints (CB slang, handles, cities) for transcription.</summary>
+    public Func<string>? SpeechPromptProvider { get; set; }
     public AiUsageTracker Usage => _usage;
 
     public bool IsAvailable =>
@@ -187,8 +189,10 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
             form.Add(file, "file", "ptt.wav");
             form.Add(new StringContent(model), "model");
             form.Add(new StringContent("json"), "response_format");
-            // Bias recognition toward CB/trucking vocabulary.
-            form.Add(new StringContent("CB radio trucker talk: breaker one-nine, ten-four, copy, handle, rig, hammer down, bear, Jake brake."), "prompt");
+            form.Add(new StringContent("en"), "language");
+            // Bias recognition toward CB slang and the names the player is likely to say.
+            form.Add(new StringContent(SpeechPromptProvider?.Invoke()
+                ?? "CB radio trucker talk: breaker one-nine, ten-four, copy, handle, rig, hammer down, bear, Jake brake."), "prompt");
 
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/transcriptions") { Content = form };
             var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
