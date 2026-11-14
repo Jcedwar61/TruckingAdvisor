@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -371,9 +372,9 @@ public partial class MainWindow : Window
     private static string FuelReport(AtsTelemetrySnapshot s)
     {
         if (!s.HasFuelCapacity) return "Fuel data isn't available right now.";
-        string range = s.EstimatedRangeMiles > 0 ? $" About {s.EstimatedRangeMiles:F0} miles of range." : string.Empty;
-        string mpg = s.HasFuelEconomy ? $" Averaging {s.AverageMpg:F1} miles per gallon." : string.Empty;
-        return $"Fuel at {s.FuelPercent:F0} percent, {s.FuelGallons:F0} gallons.{range}{mpg}";
+        string range = s.EstimatedRangeMiles > 0 ? $" About {Units.Dist(s.EstimatedRangeMiles):F0} {Units.DistWord} of range." : string.Empty;
+        string mpg = s.HasFuelEconomy ? $" Averaging {Units.Economy(s.AverageMpg):F1} {Units.EconomySpoken}." : string.Empty;
+        return $"Fuel at {s.FuelPercent:F0} percent, {Units.Vol(s.FuelGallons):F0} {Units.VolWord}.{range}{mpg}";
     }
 
     // ---- Buttons ----

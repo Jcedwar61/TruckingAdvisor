@@ -2,12 +2,14 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:TruckingAdvisor.UI.Controls"
+        xmlns:local="clr-namespace:TruckingAdvisor.UI"
         Title="TruckingAdvisor — ATS Telemetry, Driving Coach &amp; AI CB Radio"
         Icon="Assets/TruckingAdvisor.ico"
         Width="1380" Height="880" MinWidth="900" MinHeight="600" ResizeMode="CanResize"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <local:TripFactsConverter x:Key="TripFacts"/>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
             <Setter Property="CornerRadius" Value="8"/>
@@ -187,7 +189,7 @@
                     <UniformGrid x:Name="WGauges" Columns="4" Margin="0,0,0,10">
                         <Border x:Name="GSpeed" Style="{StaticResource Card}" Margin="0,0,6,0">
                             <StackPanel>
-                                <c:RadialGauge Title="SPEED" Unit="MPH" Maximum="100" MajorStep="20"
+                                <c:RadialGauge Title="SPEED" Unit="{Binding SpeedUnitText}" Maximum="{Binding SpeedGaugeMax}" MajorStep="20"
                                                Value="{Binding SpeedValue, Mode=OneWay}" Marker="{Binding SpeedLimitValue, Mode=OneWay}"
                                                ValueText="{Binding SpeedText, Mode=OneWay}" IsAlert="{Binding IsSpeeding, Mode=OneWay}"
                                                ValueBrush="{DynamicResource AccentBrush}" AlertBrush="{DynamicResource BadBrush}"
@@ -451,7 +453,7 @@
                                 </Border>
                                 <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="MILES" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMilesLabel}" Style="{StaticResource Label}"/>
                                         <TextBlock Text="{Binding StatMiles, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
                                     </StackPanel>
                                 </Border>
@@ -469,7 +471,7 @@
                                 </Border>
                                 <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="LIFETIME MPG" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMpgLabel}" Style="{StaticResource Label}"/>
                                         <TextBlock Text="{Binding StatMpg, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                     </StackPanel>
                                 </Border>
@@ -617,13 +619,13 @@
                         <c:TrendChart Title="Driver score (0-100)" Values="{Binding ScoreTrend}" Height="200" LineBrush="{DynamicResource GoodBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="Fuel economy (MPG)" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MpgTrendTitle}" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,0,6,10">
-                        <c:TrendChart Title="Coaching events per 100 miles" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding IncidentTrendTitle}" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="Trip distance (miles)" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MilesTrendTitle}" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                 </UniformGrid>
             </ScrollViewer>
@@ -648,7 +650,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Margin="0,3">
-                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding DistanceMiles, Mode=OneWay, StringFormat={}{0:F0} mi}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay}" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
+                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding Mode=OneWay, Converter={StaticResource TripFacts}}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay}" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
                             </TextBlock>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

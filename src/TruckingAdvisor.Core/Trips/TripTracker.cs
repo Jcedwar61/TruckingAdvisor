@@ -28,6 +28,8 @@ public sealed class TripTracker
     /// <summary>How long to wait for the delivered/cancelled flag after the job disappears.</summary>
     public static readonly TimeSpan EndGracePeriod = TimeSpan.FromSeconds(10);
     private bool _rebaselineOnReconnect;
+    /// <summary>Set when an end flag flips; the trip closes on the next snapshot so the game's pay figures are in.</summary>
+    private DeliveryState? _pendingFinal;
 
     public DeliveryTripRecord? ActiveTrip { get; private set; }
 
@@ -41,6 +43,8 @@ public sealed class TripTracker
     {
         if (s.IsDemoData || !s.IsLive)
         {
+            // An end event was seen right before the connection dropped: close the trip with what we have.
+            if (_pendingFinal is { } pending && ActiveTrip is not null && _last is not null) Finish(_last, pending, eventSeen: true);
             _last = null; // don't bridge distance across a disconnect
             _rebaselineOnReconnect = ActiveTrip is not null;
             return;
@@ -76,12 +80,21 @@ public sealed class TripTracker
             return;
         }
 
+        if (_pendingFinal is { } final)
+        {
+            _pendingFinal = null;
+            Finish(s, final, eventSeen: true);
+            _last = s;
+            return;
+        }
+
         Accumulate(s);
         if (s.JobDeadlineGameMinutes > 0) _deadline = s.JobDeadlineGameMinutes;
 
         // The plugin flips these flags on each event, so a change from the trip-start value is the event.
-        if (s.JobDeliveredFlag != _deliveredBaseline) Finish(s, DeliveryState.Completed);
-        else if (s.JobCancelledFlag != _cancelledBaseline) Finish(s, DeliveryState.Cancelled);
+        // It flips the flag first and writes revenue/XP right after, so close the trip one snapshot later.
+        if (s.JobDeliveredFlag != _deliveredBaseline) _pendingFinal = DeliveryState.Completed;
+        else if (s.JobCancelledFlag != _cancelledBaseline) _pendingFinal = DeliveryState.Cancelled;
         else if (!s.JobActive)
         {
             // Job vanished without a flag yet; the event may land a moment later. If it never does
@@ -96,6 +109,25 @@ public sealed class TripTracker
         }
 
         _last = s;
+    }
+
+    /// <summary>Adds a game-reported fine, toll, fare or refuel to the active trip.</summary>
+    public void RecordGameEvent(Events.GameEvent e)
+    {
+        var t = ActiveTrip;
+        if (t is null) return;
+        switch (e.Kind)
+        {
+            case Events.GameEventKind.Fine:
+                t.Fines += e.Amount;
+                t.FineCount++;
+                t.FineOffences.Add(Events.GameEvent.OffenceText(e.Detail));
+                break;
+            case Events.GameEventKind.Toll: t.Tolls += e.Amount; break;
+            case Events.GameEventKind.Ferry:
+            case Events.GameEventKind.Train: t.TransportCosts += e.Amount; break;
+            case Events.GameEventKind.Refuel: t.RefueledGallons += e.Gallons; break;
+        }
     }
 
     /// <summary>Counts a coaching incident against the active trip.</summary>
@@ -122,8 +154,10 @@ public sealed class TripTracker
         _cancelledBaseline = s.JobCancelledFlag;
         _deadline = s.JobDeadlineGameMinutes;
         _jobEndedAt = null;
+        _pendingFinal = null;
         ActiveTrip = new DeliveryTripRecord
         {
+            GameId = s.GameId,
             StartedAt = s.Timestamp,
             State = DeliveryState.JobStarted,
             StartedMidDelivery = startedMidDelivery,
@@ -184,11 +218,23 @@ public sealed class TripTracker
             : DeliveryState.CargoAttached;
     }
 
-    private void Finish(AtsTelemetrySnapshot s, DeliveryState final)
+    private void Finish(AtsTelemetrySnapshot s, DeliveryState final, bool eventSeen = false)
     {
         var t = ActiveTrip!;
         t.State = final;
         t.CompletedAt = s.Timestamp;
+        _pendingFinal = null;
+        // Only trust the game's "last delivery" figures when we saw the event for THIS trip.
+        if (eventSeen && final == DeliveryState.Completed)
+        {
+            t.PaidRevenue = Math.Max(0, s.DeliveredRevenue);
+            t.GameXp = Math.Max(0, s.DeliveredEarnedXp);
+            t.UsedAutoPark = s.DeliveredWithAutoPark;
+        }
+        else if (eventSeen && final == DeliveryState.Cancelled)
+        {
+            t.CancelPenalty = Math.Max(0, s.CancelledPenalty);
+        }
         // The game may clear the deadline on delivery, so use the last one seen during the trip.
         if (final == DeliveryState.Completed && _deadline > 0 && s.GameTimeMinutes > 0)
             t.DeliveredOnTime = s.GameTimeMinutes <= _deadline;

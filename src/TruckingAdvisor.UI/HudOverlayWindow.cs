@@ -62,7 +62,8 @@ public sealed class HudOverlayWindow : Window
         trigger.Setters.Add(new Setter(TextBlock.ForegroundProperty, B("#EF4444")));
         style.Triggers.Add(trigger);
         speed.Style = style;
-        var unit = new TextBlock { Text = " MPH", FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
+        var unit = new TextBlock { FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
+        unit.SetBinding(TextBlock.TextProperty, new Binding("SpeedUnitText") { StringFormat = " {0}" });
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(speed);
         row.Children.Add(unit);

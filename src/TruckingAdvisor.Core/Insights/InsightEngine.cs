@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
 
@@ -22,8 +23,8 @@ public static class InsightEngine
         {
             double recent = withMpg.Take(5).Average(t => t.AverageMpg);
             double before = withMpg.Skip(5).Take(5).Average(t => t.AverageMpg);
-            if (recent >= before + 0.2) insights.Add($"Your fuel economy over your last 5 trips ({recent:F1} MPG) is up from {before:F1} MPG.");
-            else if (recent <= before - 0.2) insights.Add($"Your fuel economy has slipped to {recent:F1} MPG over your last 5 trips, from {before:F1} MPG.");
+            if (recent >= before + 0.2) insights.Add($"Your fuel economy over your last 5 trips ({Units.EconomyText(recent)}) has improved from {Units.EconomyText(before)}.");
+            else if (recent <= before - 0.2) insights.Add($"Your fuel economy has slipped to {Units.EconomyText(recent)} over your last 5 trips, from {Units.EconomyText(before)}.");
         }
 
         // Damage-free run.
@@ -36,7 +37,7 @@ public static class InsightEngine
             cleanTrips++;
         }
         if (cleanTrips >= 2 && cleanMiles >= 300)
-            insights.Add($"You've driven {cleanMiles:N0} miles over {cleanTrips} deliveries without damaging your truck.");
+            insights.Add($"You've driven {Units.Dist(cleanMiles):N0} {Units.DistWord} over {cleanTrips} deliveries without damaging your truck.");
 
         // Braking trend per 100 miles.
         var braking = done.Where(t => t.DistanceMiles >= 50).ToList();
@@ -45,7 +46,7 @@ public static class InsightEngine
             static double Rate(IEnumerable<DeliveryTripRecord> ts) =>
                 ts.Sum(t => t.HarshBrakingIncidents) * 100.0 / Math.Max(1, ts.Sum(t => t.DistanceMiles));
             double recent = Rate(braking.Take(5)), before = Rate(braking.Skip(5).Take(5));
-            if (before > 0 && recent < before * 0.7) insights.Add("Your braking has been smoother lately: fewer hard stops per 100 miles than before.");
+            if (before > 0 && recent < before * 0.7) insights.Add("Your braking has been smoother lately: fewer hard stops than before.");
         }
 
         // Regular destination this week.
@@ -58,7 +59,7 @@ public static class InsightEngine
 
         // This truck's economy.
         if (!string.IsNullOrWhiteSpace(currentTruck) && career.TruckEconomy.TryGetValue(currentTruck, out var econ) && econ.Trips >= 2 && econ.AverageMpg > 0)
-            insights.Add($"In the {currentTruck} you average {econ.AverageMpg:F1} MPG over {econ.Trips} recorded trips.");
+            insights.Add($"In the {currentTruck} you average {Units.EconomyText(econ.AverageMpg)} over {econ.Trips} recorded trips.");
 
         return insights;
     }

@@ -116,6 +116,28 @@ public sealed record AtsTelemetrySnapshot
     /// <summary>Flipped on every cancellation; compare with an earlier value.</summary>
     public bool JobCancelledFlag { get; init; }
 
+    // --- Gameplay events (direct). The *Flag values are FLIPPED by the plugin on each event;
+    //     the amounts and names describe the most recent event of that kind. In-game currency. ---
+    public bool FinedFlag { get; init; }
+    public bool TollgateFlag { get; init; }
+    public bool FerryFlag { get; init; }
+    public bool TrainFlag { get; init; }
+    public long FineAmount { get; init; }
+    /// <summary>Game's offence id, e.g. "speeding", "red_signal", "crash".</summary>
+    public string FineOffence { get; init; } = string.Empty;
+    public long TollAmount { get; init; }
+    public long FerryAmount { get; init; }
+    public string FerryRoute { get; init; } = string.Empty;
+    public long TrainAmount { get; init; }
+    public string TrainRoute { get; init; } = string.Empty;
+    /// <summary>What the game actually paid for the last delivery (after its own bonuses and penalties).</summary>
+    public long DeliveredRevenue { get; init; }
+    public int DeliveredEarnedXp { get; init; }
+    public float DeliveredDistanceMiles { get; init; }
+    public float DeliveredCargoDamage { get; init; }
+    public bool DeliveredWithAutoPark { get; init; }
+    public long CancelledPenalty { get; init; }
+
     // --- World position (direct) & grade (calculated) ---
     public double WorldX { get; init; }
     /// <summary>Height in meters.</summary>

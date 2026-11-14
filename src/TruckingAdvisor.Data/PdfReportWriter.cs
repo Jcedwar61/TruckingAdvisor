@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Globalization;
 using System.Text;
 using TruckingAdvisor.Shared.Enums;
@@ -51,16 +52,16 @@ public static class PdfReportWriter
             new("TruckingAdvisor - Trip History", true, 18),
             new($"{company} - driver {driver} - {DateTime.Now.ToString("yyyy-MM-dd", inv)}"),
             new(""),
-            new($"{done.Count} completed deliveries, {done.Sum(t => t.DistanceMiles).ToString("N0", inv)} miles, " +
+            new($"{done.Count} completed deliveries, {Units.Dist(done.Sum(t => t.DistanceMiles)).ToString("N0", inv)} {Units.DistWord}, " +
                 $"average score {(done.Count > 0 ? done.Average(t => t.ScoreBreakdown.FinalScore) : 0).ToString("F0", inv)}"),
             new(""),
-            new("Date        Cargo                 Route                               Miles   MPG  Score  Result", true, 9)
+            new($"Date        Cargo                 Route                               {(Units.Metric ? "   Km" : "Miles")}  {(Units.Metric ? "L/100" : "  MPG")}  Score  Result", true, 9)
         };
         foreach (var t in list)
         {
             string route = $"{t.Origin} -> {t.Destination}";
             lines.Add(new(string.Create(inv,
-                $"{t.StartedAt:yyyy-MM-dd}  {Fit(t.Cargo, 20),-20}  {Fit(route, 34),-34}  {t.DistanceMiles,5:F0}  {(t.AverageMpg > 0 ? t.AverageMpg.ToString("F1", inv) : "--"),4}  {t.ScoreBreakdown.FinalScore,5}  {t.State}"), false, 9));
+                $"{t.StartedAt:yyyy-MM-dd}  {Fit(t.Cargo, 20),-20}  {Fit(route, 34),-34}  {Units.Dist(t.DistanceMiles),5:F0}  {(t.AverageMpg > 0 ? Units.Economy(t.AverageMpg).ToString("F1", inv) : "--"),5}  {t.ScoreBreakdown.FinalScore,5}  {t.State}"), false, 9));
         }
         return Write(lines, monospaceSmall: true);
     }

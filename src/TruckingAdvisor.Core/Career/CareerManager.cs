@@ -31,7 +31,9 @@ public static class CareerManager
         company.TotalDeliveries++;
         company.TotalMilesDriven += trip.DistanceMiles;
         company.TotalFuelGallons += trip.FuelUsedGallons;
-        company.RecordedRevenue += trip.RecordedRevenue;
+        company.RecordedRevenue += trip.PaidRevenue > 0 ? trip.PaidRevenue : (long)trip.RecordedRevenue;
+        company.RecordedFines += trip.Fines;
+        company.RecordedTolls += trip.Tolls + trip.TransportCosts;
         if (damageFree) company.DamageFreeDeliveries++;
         if (!string.IsNullOrWhiteSpace(trip.Destination)) company.VisitedCities.Add(trip.Destination);
         company.AverageDriverRating = (company.AverageDriverRating * previousDeliveries + trip.ScoreBreakdown.FinalScore) / company.TotalDeliveries;

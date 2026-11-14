@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using TruckingAdvisor.Shared.Models;
 
 namespace TruckingAdvisor.Core.Advisors;
@@ -30,18 +31,18 @@ public sealed class FuelAndMaintenanceAdvisor
             if (snapshot.EstimatedRangeMiles >= snapshot.NavigationDistanceRemainingMiles * 1.15f)
             {
                 string needed = snapshot.HasFuelEconomy
-                    ? $" (about {snapshot.NavigationDistanceRemainingMiles / snapshot.AverageMpg:F0} gal needed)"
+                    ? $" (about {Units.Vol(snapshot.NavigationDistanceRemainingMiles / snapshot.AverageMpg):F0} {Units.VolUnit} needed)"
                     : string.Empty;
-                advisories.Add($"Your current range ({snapshot.EstimatedRangeMiles:F0} mi) should reach {dest}, assuming similar conditions{needed}.");
+                advisories.Add($"Your current range ({Units.DistText(snapshot.EstimatedRangeMiles)}) should reach {dest}, assuming similar conditions{needed}.");
             }
             else
             {
-                advisories.Add($"Plan a fuel stop before {dest}: {snapshot.NavigationDistanceRemainingMiles:F0} mi to go vs about {snapshot.EstimatedRangeMiles:F0} mi of range.");
+                advisories.Add($"Plan a fuel stop before {dest}: {Units.DistText(snapshot.NavigationDistanceRemainingMiles)} to go vs about {Units.DistText(snapshot.EstimatedRangeMiles)} of range.");
             }
         }
 
         if (previousTripMpg is > 0 && snapshot.HasFuelEconomy && snapshot.AverageMpg > previousTripMpg + 0.15)
-            advisories.Add($"Your fuel economy ({snapshot.AverageMpg:F1} MPG) is better than your previous trip ({previousTripMpg:F1} MPG).");
+            advisories.Add($"Your fuel economy ({Units.EconomyText(snapshot.AverageMpg)}) is better than your previous trip ({Units.EconomyText(previousTripMpg ?? 0)}).");
 
         if (snapshot.DamageEngine >= EngineWearAdvisory)
             advisories.Add($"Engine damage is getting high ({snapshot.DamageEngine * 100f:F0}%). Might want to visit a service station.");
@@ -53,7 +54,7 @@ public sealed class FuelAndMaintenanceAdvisor
         {
             float milesSinceService = Math.Max(0f, snapshot.OdometerMiles - lastService);
             if (milesSinceService >= ServiceIntervalMiles)
-                advisories.Add($"Preventive maintenance due: {milesSinceService:N0} miles since your last logged service.");
+                advisories.Add($"Preventive maintenance due: {Units.Dist(milesSinceService):N0} {Units.DistWord} since your last logged service.");
         }
 
         // Deadline risk from the navigation estimate (both in game time).

@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -101,37 +102,37 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
 
     public string ConnectionStatusText => _current.ConnectionState switch
     {
-        ConnectionState.Connected => "● CONNECTED TO ATS",
-        ConnectionState.GamePaused => "● ATS PAUSED",
+        ConnectionState.Connected => IsReplay ? "● REPLAYING A RECORDED SESSION" : $"● CONNECTED TO {GameName}",
+        ConnectionState.GamePaused => $"● {GameName} PAUSED",
         ConnectionState.SimulationFallback => "● DEMO DATA (not from the game)",
         ConnectionState.Connecting => "● CONNECTING...",
-        _ => "● NOT CONNECTED - start ATS with the telemetry plugin installed"
+        _ => "● NOT CONNECTED - start the game with the telemetry plugin installed"
     };
     public bool IsDemo => _current.IsDemoData;
-    public string SpeedText => _current.IsLive || _current.IsDemoData ? $"{_current.SpeedMph:F0}" : "--";
-    public string SpeedLimitText => _current.SpeedLimitMph > 0 ? $"LIMIT {_current.SpeedLimitMph:F0} MPH" : "LIMIT --";
+    public string SpeedText => _current.IsLive || _current.IsDemoData ? $"{Units.Speed(_current.SpeedMph):F0}" : "--";
+    public string SpeedLimitText => _current.SpeedLimitMph > 0 ? $"LIMIT {Units.Speed(_current.SpeedLimitMph):F0} {Units.SpeedUnit}" : "LIMIT --";
     public bool IsSpeeding => _current.SpeedLimitMph > 0 && _current.SpeedMph >= _current.SpeedLimitMph + 1;
     public string RpmText => _current.EngineRpm > 0 ? $"{_current.EngineRpm:F0} RPM" : "-- RPM";
     public string GearText => _current.DisplayedGear switch { 0 => "GEAR N", < 0 => $"GEAR R{-_current.DisplayedGear}", var g => $"GEAR {g}" };
     public string FuelText => _current.HasFuelCapacity ? $"{_current.FuelPercent:F0}%" : "--";
-    public string RangeText => _current.EstimatedRangeMiles > 0 ? $"RANGE {_current.EstimatedRangeMiles:F0} MI" : "RANGE --";
-    public string MpgText => _current.HasFuelEconomy ? $"AVG {_current.AverageMpg:F1} MPG" : "AVG -- MPG";
-    public string AirText => _current.AirPressurePsi > 0 ? $"AIR {_current.AirPressurePsi:F0} PSI" : "AIR --";
-    public string EngineTempText => _current.WaterTempFahrenheit > 0 && (_current.IsLive || _current.IsDemoData) ? $"WATER {_current.WaterTempFahrenheit:F0}°F" : "WATER --";
-    public string CruiseText => _current.CruiseControlOn ? $"CRUISE {_current.CruiseControlSpeedMph:F0}" : "CRUISE OFF";
+    public string RangeText => _current.EstimatedRangeMiles > 0 ? $"RANGE {Units.DistText(_current.EstimatedRangeMiles).ToUpperInvariant()}" : "RANGE --";
+    public string MpgText => _current.HasFuelEconomy ? $"AVG {Units.EconomyText(_current.AverageMpg)}" : $"AVG -- {Units.EconomyUnit}";
+    public string AirText => _current.AirPressurePsi > 0 ? $"AIR {Units.PressureText(_current.AirPressurePsi)}" : "AIR --";
+    public string EngineTempText => _current.WaterTempFahrenheit > 0 && (_current.IsLive || _current.IsDemoData) ? $"WATER {Units.TempText(_current.WaterTempFahrenheit)}" : "WATER --";
+    public string CruiseText => _current.CruiseControlOn ? $"CRUISE {Units.Speed(_current.CruiseControlSpeedMph):F0}" : "CRUISE OFF";
     public string GameTimeText => _current.GameTimeMinutes > 0 ? _current.FormattedGameTime : "--:--";
     public string RestText =>
         (_current.HasRestData ? $"Rest due in {_current.NextRestStopGameMinutes / 60}h {_current.NextRestStopGameMinutes % 60:D2}m (game time)" : "Rest data unavailable")
         + $"  •  Session {(int)SessionDuration.TotalHours}h {SessionDuration.Minutes:D2}m (real time)";
 
     public string CargoText => _current.JobActive && !string.IsNullOrEmpty(_current.CargoName)
-        ? $"{_current.CargoName}{(_current.CargoWeightLbs > 0 ? $" ({_current.CargoWeightLbs:N0} lbs)" : "")}"
+        ? $"{_current.CargoName}{(_current.CargoWeightLbs > 0 ? $" ({Units.WeightText(_current.CargoWeightLbs)})" : "")}"
         : "No active delivery";
     public string RouteText => _current.JobActive
         ? $"{Fallback(_current.OriginCity, "?")}  ->  {Fallback(_current.DestinationCity, "?")}"
         : string.Empty;
     public string RemainingText => _current.JobActive && _current.NavigationDistanceRemainingMiles > 0
-        ? $"{_current.NavigationDistanceRemainingMiles:F0} mi remaining, ETA {(int)(_current.NavigationTimeRemainingMinutes / 60)}h {(int)_current.NavigationTimeRemainingMinutes % 60:D2}m (navigation)"
+        ? $"{Units.DistText(_current.NavigationDistanceRemainingMiles)} remaining, ETA {(int)(_current.NavigationTimeRemainingMinutes / 60)}h {(int)_current.NavigationTimeRemainingMinutes % 60:D2}m (navigation)"
         : string.Empty;
     public double TripProgressPercent => _current.JobActive && _current.PlannedDistanceMiles > 0
         ? Math.Clamp(100.0 * (1 - _current.NavigationDistanceRemainingMiles / _current.PlannedDistanceMiles), 0, 100) : 0;
@@ -192,7 +193,9 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
 
     private void OnTelemetryUpdated(object? sender, AtsTelemetrySnapshot snapshot)
     {
+        ApplyUnits(snapshot.GameId);
         _analyzer.EvaluateSnapshot(snapshot, _previous);
+        _gameEvents.Update(snapshot); // before the trip tracker, so a fine in the last frame still lands on the trip
         _trips.Update(snapshot);
         OnTelemetryFeatures(snapshot, _previous);
         _previous = snapshot;

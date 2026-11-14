@@ -97,14 +97,39 @@ public static class ScsTelemetryLayout
     public const int CitySource = 3004;
     public const int CompanySource = 3132;
 
+    // gameplay events (filled by the plugin when the event fires)
+    public const int JobDeliveredEarnedXp = 640;        // int
+    public const int JobDeliveredCargoDamage = 1456;    // float 0..1
+    public const int JobDeliveredDistanceKm = 1460;     // float
+    public const int JobDeliveredAutoparkUsed = 1613;   // bool
+    public const int JobDeliveredAutoloadUsed = 1614;   // bool
+    public const int FineOffence = 3436;                // char[32]
+    public const int FineOffenceSize = 32;
+    public const int FerrySourceName = 3468;
+    public const int FerryTargetName = 3532;
+    public const int TrainSourceName = 3724;
+    public const int TrainTargetName = 3788;
+
     // unsigned long long
     public const int JobIncome = 4000;
+
+    // long long (in-game currency)
+    public const int JobCancelledPenalty = 4200;
+    public const int JobDeliveredRevenue = 4208;
+    public const int FineAmount = 4216;
+    public const int TollgatePayAmount = 4224;
+    public const int FerryPayAmount = 4232;
+    public const int TrainPayAmount = 4240;
 
     // special event bools
     public const int OnJob = 4300;
     public const int JobFinished = 4301;
     public const int JobCancelled = 4302;      // flipped (^= true) on each cancellation
     public const int JobDelivered = 4303;      // flipped (^= true) on each delivery
+    public const int Fined = 4304;             // flipped on each fine
+    public const int Tollgate = 4305;          // flipped on each toll payment
+    public const int Ferry = 4306;             // flipped on each ferry trip
+    public const int Train = 4307;             // flipped on each train trip
 
     // trailer[0]
     public const int Trailer0Attached = 6080;  // bool

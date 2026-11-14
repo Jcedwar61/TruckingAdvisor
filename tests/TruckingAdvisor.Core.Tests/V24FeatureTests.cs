@@ -250,3 +250,162 @@ public sealed class V24FeatureTests
         Assert.Contains("standard voice pipeline", notice);
     }
 }
+
+public class GameEventTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+    private static TruckingAdvisor.Shared.Models.AtsTelemetrySnapshot Live(double seconds) => new()
+    {
+        ConnectionState = TruckingAdvisor.Shared.Enums.ConnectionState.Connected, Timestamp = T0.AddSeconds(seconds),
+        TruckId = "truck.1", FuelGallons = 100, FuelCapacityGallons = 200, SpeedMph = 60, GameId = 2
+    };
+
+    [Fact]
+    public void Fine_IsReportedOnce_WithTheAmountWrittenAfterTheFlagFlips()
+    {
+        var d = new TruckingAdvisor.Core.Events.GameEventDetector();
+        var events = new List<TruckingAdvisor.Core.Events.GameEvent>();
+        d.EventOccurred += (_, e) => events.Add(e);
+
+        d.Update(Live(0) with { FinedFlag = true, FineAmount = 100, FineOffence = "speeding" }); // state from before we started: not an event
+        d.Update(Live(1) with { FinedFlag = true, FineAmount = 100, FineOffence = "speeding" });
+        Assert.Empty(events);
+        d.Update(Live(2) with { FinedFlag = false, FineAmount = 100, FineOffence = "speeding" }); // flag flips, amount still the old one
+        Assert.Empty(events);
+        d.Update(Live(3) with { FinedFlag = false, FineAmount = 750, FineOffence = "red_signal" });
+        d.Update(Live(4) with { FinedFlag = false, FineAmount = 750, FineOffence = "red_signal" });
+
+        var fine = Assert.Single(events);
+        Assert.Equal(TruckingAdvisor.Core.Events.GameEventKind.Fine, fine.Kind);
+        Assert.Equal(750, fine.Amount);
+        Assert.Equal("running a red light", TruckingAdvisor.Core.Events.GameEvent.OffenceText(fine.Detail));
+    }
+
+    [Fact]
+    public void TollFerryAndRefuel_AreDetected_ButNotFromDemoDataOrATruckSwap()
+    {
+        var d = new TruckingAdvisor.Core.Events.GameEventDetector();
+        var events = new List<TruckingAdvisor.Core.Events.GameEvent>();
+        d.EventOccurred += (_, e) => events.Add(e);
+
+        d.Update(Live(0));
+        d.Update(Live(1) with { TollgateFlag = true });
+        d.Update(Live(2) with { TollgateFlag = true, TollAmount = 12 });
+        d.Update(Live(3) with { TollgateFlag = true, TollAmount = 12, FerryFlag = true });
+        d.Update(Live(4) with { TollgateFlag = true, TollAmount = 12, FerryFlag = true, FerryAmount = 300, FerryRoute = "Dover to Calais" });
+        Assert.Equal(new[] { TruckingAdvisor.Core.Events.GameEventKind.Toll, TruckingAdvisor.Core.Events.GameEventKind.Ferry }, events.Select(e => e.Kind));
+        Assert.Equal("Dover to Calais", events[1].Detail);
+
+        // Refuel: stopped, tank rises 100 -> 180 over a few frames, then settles.
+        events.Clear();
+        var flags = Live(0) with { TollgateFlag = true, TollAmount = 12, FerryFlag = true, FerryAmount = 300, SpeedMph = 0 };
+        d.Update(flags with { Timestamp = T0.AddSeconds(5) });
+        for (int i = 1; i <= 8; i++) d.Update(flags with { Timestamp = T0.AddSeconds(5 + i), FuelGallons = 100 + i * 10 });
+        d.Update(flags with { Timestamp = T0.AddSeconds(14), FuelGallons = 180 });
+        Assert.Empty(events); // not settled yet
+        d.Update(flags with { Timestamp = T0.AddSeconds(18), FuelGallons = 180 });
+        var refuel = Assert.Single(events);
+        Assert.Equal(80f, refuel.Gallons, 1);
+
+        // Switching to another truck with a fuller tank is not a refuel; demo data never raises anything.
+        events.Clear();
+        d.Update(flags with { Timestamp = T0.AddSeconds(20), TruckId = "truck.2", FuelGallons = 250 });
+        d.Update(flags with { Timestamp = T0.AddSeconds(25), TruckId = "truck.2", FuelGallons = 250 });
+        d.Update(new TruckingAdvisor.Shared.Models.AtsTelemetrySnapshot { IsDemoData = true, FinedFlag = true });
+        d.Update(flags with { Timestamp = T0.AddSeconds(30), FinedFlag = true }); // first frame after reconnect = new baseline
+        d.Update(flags with { Timestamp = T0.AddSeconds(31), FinedFlag = true });
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void Trip_AddsUpFinesTollsAndFares_IntoNetIncome()
+    {
+        var tracker = new TruckingAdvisor.Core.Trips.TripTracker();
+        TruckingAdvisor.Shared.Models.DeliveryTripRecord? finished = null;
+        tracker.TripFinished += (_, t) => finished = t;
+        var job = Live(0) with { JobActive = true, JobIncome = 12000, CargoName = "Lumber", DestinationCity = "Denver" };
+        tracker.Update(Live(-1));
+        tracker.Update(job);
+        tracker.RecordGameEvent(new(TruckingAdvisor.Core.Events.GameEventKind.Fine, 750, "red_signal", 0, T0));
+        tracker.RecordGameEvent(new(TruckingAdvisor.Core.Events.GameEventKind.Fine, 300, "speeding", 0, T0));
+        tracker.RecordGameEvent(new(TruckingAdvisor.Core.Events.GameEventKind.Toll, 25, "", 0, T0));
+        tracker.RecordGameEvent(new(TruckingAdvisor.Core.Events.GameEventKind.Ferry, 400, "A to B", 0, T0));
+        tracker.Update(job with { Timestamp = T0.AddSeconds(10), JobActive = false, JobDeliveredFlag = true });
+        tracker.Update(job with { Timestamp = T0.AddSeconds(10.05), JobActive = false, JobDeliveredFlag = true, DeliveredRevenue = 12400, DeliveredEarnedXp = 310 });
+
+        Assert.Equal(12400, finished!.PaidRevenue);
+        Assert.Equal(1050, finished.Fines);
+        Assert.Equal(2, finished.FineCount);
+        Assert.Equal(12400 - 1050 - 25 - 400, finished.NetIncome);
+        Assert.Contains("running a red light", finished.FineOffences);
+    }
+
+    [Fact]
+    public void Parser_ReadsGameplayEventFields_AtThePluginOffsets()
+    {
+        var block = new byte[TruckingAdvisor.Telemetry.ScsTelemetryLayout.RequiredBytes];
+        block[TruckingAdvisor.Telemetry.ScsTelemetryLayout.SdkActive] = 1;
+        BitConverter.GetBytes(12u).CopyTo(block, TruckingAdvisor.Telemetry.ScsTelemetryLayout.PluginRevision);
+        block[4304] = 1; block[4305] = 1;                          // fined, tollgate
+        BitConverter.GetBytes(750L).CopyTo(block, 4216);           // fineAmount
+        BitConverter.GetBytes(12L).CopyTo(block, 4224);            // tollgatePayAmount
+        BitConverter.GetBytes(12400L).CopyTo(block, 4208);         // jobDeliveredRevenue
+        BitConverter.GetBytes(900L).CopyTo(block, 4200);           // jobCancelledPenalty
+        BitConverter.GetBytes(310).CopyTo(block, 640);             // jobDeliveredEarnedXp
+        System.Text.Encoding.ASCII.GetBytes("red_signal").CopyTo(block, 3436);
+        System.Text.Encoding.ASCII.GetBytes("Dover").CopyTo(block, 3468);
+        System.Text.Encoding.ASCII.GetBytes("Calais").CopyTo(block, 3532);
+
+        Assert.Equal(TruckingAdvisor.Telemetry.ParseResult.Ok, TruckingAdvisor.Telemetry.ScsTelemetryParser.TryParse(block, T0, out var s));
+        Assert.True(s.FinedFlag);
+        Assert.True(s.TollgateFlag);
+        Assert.False(s.FerryFlag);
+        Assert.Equal(750, s.FineAmount);
+        Assert.Equal("red_signal", s.FineOffence);
+        Assert.Equal(12, s.TollAmount);
+        Assert.Equal(12400, s.DeliveredRevenue);
+        Assert.Equal(900, s.CancelledPenalty);
+        Assert.Equal(310, s.DeliveredEarnedXp);
+        Assert.Equal("Dover to Calais", s.FerryRoute);
+    }
+
+    [Fact]
+    public void Recording_RoundTrips_AndSurvivesBeingCutOff()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ta-rec-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "session.tarec");
+        try
+        {
+            var block = new byte[TruckingAdvisor.Telemetry.ScsTelemetryLayout.RequiredBytes];
+            using (var rec = new TruckingAdvisor.Telemetry.TelemetryRecorder(path))
+            {
+                for (int i = 0; i < 50; i++) { block[100] = (byte)i; rec.Write(T0.AddMilliseconds(200 * i), block); }
+                Assert.Equal(50, rec.Frames);
+            }
+            var frames = TruckingAdvisor.Telemetry.TelemetryRecorder.Read(path).ToList();
+            Assert.Equal(50, frames.Count);
+            Assert.Equal(49, frames[^1].Block[100]);
+            Assert.Equal(T0.AddMilliseconds(200 * 49), frames[^1].Time);
+            Assert.True(new FileInfo(path).Length < 50_000); // compressed
+
+            // A file cut off mid-write still gives the frames before the cut.
+            var bytes = File.ReadAllBytes(path);
+            File.WriteAllBytes(path, bytes[..(bytes.Length * 2 / 3)]);
+            var partial = TruckingAdvisor.Telemetry.TelemetryRecorder.Read(path).ToList();
+            Assert.InRange(partial.Count, 1, 49);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
+    public void Log_ScrubsUserNameProfilePathAndKeys()
+    {
+        string s = TruckingAdvisor.Shared.Diagnostics.AppLog.Scrub(
+            @"Found C:\Users\JaneDoe\AppData\Local\X and D:\Users\JaneDoe\Games; key sk-abc123DEF456ghi789 Bearer abcdefghijkl.mnop",
+            @"C:\Users\JaneDoe", "JaneDoe");
+        Assert.DoesNotContain("JaneDoe", s);
+        Assert.DoesNotContain("abc123DEF456", s);
+        Assert.DoesNotContain("abcdefghijkl", s);
+        Assert.Contains("%USERPROFILE%", s);
+    }
+}

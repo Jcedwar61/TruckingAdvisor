@@ -117,7 +117,10 @@ public sealed class DrivingAndScoringTests
         Assert.Equal(DeliveryState.Underway, tracker.ActiveTrip!.State);
 
         // Plugin flips the delivered flag, clears onJob and the deadline in the same frame.
-        tracker.Update(s with { Timestamp = T0.AddSeconds(11), SpeedMph = 0, JobDeliveredFlag = true, JobActive = false, JobDeadlineGameMinutes = 0, GameTimeMinutes = 4000 });
+        var done = s with { Timestamp = T0.AddSeconds(11), SpeedMph = 0, JobDeliveredFlag = true, JobActive = false, JobDeadlineGameMinutes = 0, GameTimeMinutes = 4000 };
+        tracker.Update(done);
+        Assert.Null(finished); // the trip closes one frame later, once the game's pay figures are written
+        tracker.Update(done with { Timestamp = T0.AddSeconds(11.05), DeliveredRevenue = 17250, DeliveredEarnedXp = 420 });
 
         Assert.NotNull(finished);
         Assert.Equal(DeliveryState.Completed, finished!.State);
@@ -126,6 +129,8 @@ public sealed class DrivingAndScoringTests
         Assert.Equal(5f, finished.AverageMpg, 2);
         Assert.True(finished.DeliveredOnTime);
         Assert.Equal(18000ul, finished.RecordedRevenue);
+        Assert.Equal(17250, finished.PaidRevenue);
+        Assert.Equal(420, finished.GameXp);
         Assert.Null(tracker.ActiveTrip);
     }
 
@@ -142,6 +147,8 @@ public sealed class DrivingAndScoringTests
         tracker.Update(Live(s => s with { JobActive = true, Timestamp = T0.AddSeconds(1) }));
         Assert.False(tracker.ActiveTrip!.StartedMidDelivery);
         tracker.Update(Live(s => s with { JobActive = true, JobCancelledFlag = true, Timestamp = T0.AddSeconds(2) }));
+        tracker.Update(Live(s => s with { JobActive = false, JobCancelledFlag = true, CancelledPenalty = 900, Timestamp = T0.AddSeconds(2.05) }));
+        Assert.Equal(900, finished!.CancelPenalty);
         Assert.Equal(DeliveryState.Cancelled, finished!.State);
     }
 
@@ -160,6 +167,7 @@ public sealed class DrivingAndScoringTests
         tracker.Update(At(false, true));   // flag stays true afterwards: no new trip, no double count
         tracker.Update(At(true, true));    // next job starts with the flag still true
         tracker.Update(At(false, false));  // 2nd delivery: flag true -> false
+        tracker.Update(At(false, false));
         Assert.Equal(new[] { DeliveryState.Completed, DeliveryState.Completed }, results);
     }
 
@@ -174,6 +182,7 @@ public sealed class DrivingAndScoringTests
         tracker.Update(Live(s => s with { JobActive = false, Timestamp = T0.AddSeconds(2) })); // job gone, no flag yet
         Assert.Null(finished);
         tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(3) }));
+        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddSeconds(3.05) }));
         Assert.Equal(DeliveryState.Completed, finished!.State);
 
         finished = null;
@@ -196,6 +205,7 @@ public sealed class DrivingAndScoringTests
         Assert.Null(finished);
         Assert.NotNull(tracker.ActiveTrip);
         tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddMinutes(6) }));  // real delivery
+        tracker.Update(Live(s => s with { JobActive = false, JobDeliveredFlag = true, Timestamp = T0.AddMinutes(6.01) }));
         Assert.Equal(DeliveryState.Completed, finished!.State);
     }
 

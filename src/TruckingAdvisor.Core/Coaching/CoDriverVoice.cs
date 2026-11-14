@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
 
@@ -19,10 +20,10 @@ public static class CoDriverVoice
         float over = incident.Intensity;
         return (incident.IncidentType, personality) switch
         {
-            ("Speeding", CoDriverPersonality.Professional) => $"You're {over:F0} over the limit. Please reduce speed.",
-            ("Speeding", CoDriverPersonality.Friendly) => $"Hey, you're running about {over:F0} over. Let's ease it back a little.",
-            ("Speeding", CoDriverPersonality.OldSchoolTrucker) => $"Easy on the hammer, driver. You're {over:F0} over. No sense feeding the bears.",
-            ("Speeding", CoDriverPersonality.StrictInstructor) => $"Speed violation: {over:F0} miles per hour over the posted limit. Correct it now.",
+            ("Speeding", CoDriverPersonality.Professional) => $"You're {Units.Speed(over):F0} over the limit. Please reduce speed.",
+            ("Speeding", CoDriverPersonality.Friendly) => $"Hey, you're running about {Units.Speed(over):F0} over. Let's ease it back a little.",
+            ("Speeding", CoDriverPersonality.OldSchoolTrucker) => $"Easy on the hammer, driver. You're {Units.Speed(over):F0} over. No sense feeding the bears.",
+            ("Speeding", CoDriverPersonality.StrictInstructor) => $"Speed violation: {Units.Speed(over):F0} {Units.SpeedSpoken} over the posted limit. Correct it now.",
 
             ("HarshBraking", CoDriverPersonality.Professional) => "Hard braking recorded. Increase your following distance.",
             ("HarshBraking", CoDriverPersonality.Friendly) => "Whoa, that was a hard stop. Give yourself a bit more room next time.",

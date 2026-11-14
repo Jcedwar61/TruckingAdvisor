@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -119,21 +120,41 @@ public sealed class TruckingAdvisorDatabase
     {
         var inv = CultureInfo.InvariantCulture;
         string mid = trip.StartedMidDelivery ? "\nNote: TruckingAdvisor started mid-delivery; stats cover only the part it saw." : string.Empty;
-        string mpg = trip.AverageMpg > 0 ? trip.AverageMpg.ToString("F1", inv) + " MPG" : "n/a";
+        string mpg = trip.AverageMpg > 0 ? Units.Economy(trip.AverageMpg).ToString("F1", inv) + " " + Units.EconomyUnit : "n/a";
+        string weight = Units.Metric ? $"{trip.CargoWeightLbs * 0.45359237:N0} kg" : $"{trip.CargoWeightLbs:N0} lbs";
+        string distWord = Units.Metric ? "Kilometers" : "Miles", volWord = Units.Metric ? "Liters" : "Gallons";
         return string.Create(inv, $"""
 TRUCKINGADVISOR - DELIVERY REPORT
 =================================================
-Cargo: {trip.Cargo} ({trip.CargoWeightLbs:N0} lbs)
+Cargo: {trip.Cargo} ({weight})
 Origin: {trip.Origin} -> Destination: {trip.Destination}
-Distance: {trip.DistanceMiles:F0} Miles | Driving Time: {(int)trip.DrivingDuration.TotalHours}h {trip.DrivingDuration.Minutes:D2}m
-Avg Speed: {trip.AverageSpeedMph:F0} MPH | Max Speed: {trip.MaxSpeedMph:F0} MPH
-Fuel: {trip.FuelUsedGallons:F0} Gallons | Economy: {mpg}
+Distance: {Units.Dist(trip.DistanceMiles):F0} {distWord} | Driving Time: {(int)trip.DrivingDuration.TotalHours}h {trip.DrivingDuration.Minutes:D2}m
+Avg Speed: {Units.Speed(trip.AverageSpeedMph):F0} {Units.SpeedUnit} | Max Speed: {Units.Speed(trip.MaxSpeedMph):F0} {Units.SpeedUnit}
+Fuel: {Units.Vol(trip.FuelUsedGallons):F0} {volWord} | Economy: {mpg}
 Speeding Incidents: {trip.SpeedingIncidents} | Harsh Braking: {trip.HarshBrakingIncidents}
 Truck Damage: {trip.AddedTruckDamagePercent:F1}% | Trailer Damage: {trip.AddedTrailerDamagePercent:F1}%
+{MoneyLines(trip)}
 
 FINAL DRIVER SCORE: {trip.ScoreBreakdown.FinalScore}/100
 RATING: {trip.ScoreBreakdown.RatingLabel.ToUpperInvariant()}{mid}
 """);
+    }
+
+    /// <summary>Game-reported pay and costs for the trip (in-game money). Empty when the game reported none.</summary>
+    public static string MoneyLines(DeliveryTripRecord t)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        string M(long v) => (v < 0 ? "-" : "") + (t.GameId == 1 ? "EUR " : "$") + Math.Abs(v).ToString("N0", inv);
+        long pay = t.PaidRevenue > 0 ? t.PaidRevenue : t.State == TruckingAdvisor.Shared.Enums.DeliveryState.Completed ? (long)t.RecordedRevenue : 0;
+        if (pay == 0 && !t.HasCosts) return string.Empty;
+        var sb = new StringBuilder("\nGAME INCOME (in-game money, as reported by the game)\n");
+        if (pay > 0) sb.Append(inv, $"Pay: {M(pay)}{(t.PaidRevenue > 0 ? "" : " (job offer; final pay not reported)")}{(t.GameXp > 0 ? $" | Game XP: {t.GameXp:N0}" : "")}\n");
+        if (t.Fines > 0) sb.Append(inv, $"Fines: -{M(t.Fines)} ({string.Join(", ", t.FineOffences.GroupBy(o => o).Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key))})\n");
+        if (t.Tolls > 0) sb.Append(inv, $"Tolls: -{M(t.Tolls)}\n");
+        if (t.TransportCosts > 0) sb.Append(inv, $"Ferry / train: -{M(t.TransportCosts)}\n");
+        if (t.CancelPenalty > 0) sb.Append(inv, $"Cancellation penalty: -{M(t.CancelPenalty)}\n");
+        sb.Append(inv, $"Net: {M(t.NetIncome)} (fuel cost isn't reported by the game)\n");
+        return sb.ToString();
     }
 
     public static string ExportDeliveryReportJson(DeliveryTripRecord trip) =>
@@ -142,7 +163,7 @@ RATING: {trip.ScoreBreakdown.RatingLabel.ToUpperInvariant()}{mid}
     public static string ExportDeliveryReportCsv(IEnumerable<DeliveryTripRecord> trips)
     {
         var inv = CultureInfo.InvariantCulture;
-        var sb = new StringBuilder("TripId,Date,Cargo,Origin,Destination,DistanceMiles,AvgMpg,Speeding,HarshBraking,TruckDamagePct,TrailerDamagePct,Score,Rating\r\n");
+        var sb = new StringBuilder("TripId,Date,Cargo,Origin,Destination,DistanceMiles,AvgMpg,Speeding,HarshBraking,TruckDamagePct,TrailerDamagePct,Score,Rating,GamePay,Fines,Tolls,FerryTrain,CancelPenalty,NetIncome,GameXp\r\n");
         foreach (var t in trips)
         {
             sb.AppendJoin(',',
@@ -150,7 +171,9 @@ RATING: {trip.ScoreBreakdown.RatingLabel.ToUpperInvariant()}{mid}
                 t.DistanceMiles.ToString("F1", inv), t.AverageMpg.ToString("F2", inv),
                 t.SpeedingIncidents.ToString(inv), t.HarshBrakingIncidents.ToString(inv),
                 t.AddedTruckDamagePercent.ToString("F1", inv), t.AddedTrailerDamagePercent.ToString("F1", inv),
-                t.ScoreBreakdown.FinalScore.ToString(inv), Csv(t.ScoreBreakdown.RatingLabel));
+                t.ScoreBreakdown.FinalScore.ToString(inv), Csv(t.ScoreBreakdown.RatingLabel),
+                (t.PaidRevenue > 0 ? t.PaidRevenue : (long)t.RecordedRevenue).ToString(inv), t.Fines.ToString(inv), t.Tolls.ToString(inv),
+                t.TransportCosts.ToString(inv), t.CancelPenalty.ToString(inv), t.NetIncome.ToString(inv), t.GameXp.ToString(inv));
             sb.Append("\r\n");
         }
         return sb.ToString();

@@ -77,6 +77,30 @@ public sealed class DeliveryTripRecord
     public float AddedTrailerDamagePercent { get; set; }
     /// <summary>Job income reported by the game (in-game currency). Not real money.</summary>
     public ulong RecordedRevenue { get; set; }
+    // --- Money and events reported by the game during this trip (in-game currency; 0 = none / unknown) ---
+    /// <summary>What the game paid on delivery. 0 if the game didn't report it (then RecordedRevenue is the offer).</summary>
+    public long PaidRevenue { get; set; }
+    /// <summary>XP the game awarded for the delivery.</summary>
+    public int GameXp { get; set; }
+    public long Fines { get; set; }
+    public int FineCount { get; set; }
+    /// <summary>Offences fined during the trip, e.g. "speeding x2, red light".</summary>
+    public List<string> FineOffences { get; set; } = new();
+    public long Tolls { get; set; }
+    /// <summary>Ferry and train fares.</summary>
+    public long TransportCosts { get; set; }
+    public long CancelPenalty { get; set; }
+    public float RefueledGallons { get; set; }
+    public bool UsedAutoPark { get; set; }
+    /// <summary>1 = ETS2 (euros), 2 = ATS (dollars), 0 = unknown.</summary>
+    public uint GameId { get; set; }
+    /// <summary>Game pay minus fines, tolls, fares and penalties recorded during the trip (fuel cost isn't reported by the game).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long NetIncome => (PaidRevenue > 0 ? PaidRevenue : State == DeliveryState.Completed ? (long)RecordedRevenue : 0)
+                             - Fines - Tolls - TransportCosts - CancelPenalty;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasCosts => Fines > 0 || Tolls > 0 || TransportCosts > 0 || CancelPenalty > 0;
+
     /// <summary>Null when the game gave no deadline or we could not tell.</summary>
     public bool? DeliveredOnTime { get; set; }
     /// <summary>True if the app started after the job was already underway (stats are partial).</summary>
@@ -139,6 +163,10 @@ public sealed class VirtualCompanyProfile
     public int DamageFreeDeliveries { get; set; }
     /// <summary>Sum of in-game job income from recorded deliveries (in-game currency).</summary>
     public decimal RecordedRevenue { get; set; }
+    /// <summary>Fines the game charged during recorded deliveries.</summary>
+    public long RecordedFines { get; set; }
+    /// <summary>Tolls, ferry and train fares during recorded deliveries.</summary>
+    public long RecordedTolls { get; set; }
     public double TotalFuelGallons { get; set; }
     public double LifetimeAverageMpg => TotalFuelGallons > 0 ? TotalMilesDriven / TotalFuelGallons : 0;
     public double AverageDriverRating { get; set; }
