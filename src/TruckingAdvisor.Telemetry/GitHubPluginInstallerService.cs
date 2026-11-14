@@ -43,7 +43,7 @@ public sealed class GitHubPluginInstallerService
         OwnerRepo: "RenCloud/scs-sdk-plugin",
         Tag: "V.1.12.1",
         TargetDllName: "scs-telemetry.dll",
-        ExpectedAssetSha256: "");
+        ExpectedAssetSha256: "3679ec81407de0ebfb45241e496e2ad31e30a6e409ef0246fc86195bfee9c9a5");
 
     private static readonly HttpClient Http = CreateHttpClient();
 

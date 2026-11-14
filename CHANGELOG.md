@@ -10,7 +10,7 @@
 - **Getting-started checklist** on the dashboard (game found, plugin installed, live data, first CB call, first delivery). Hides itself when done.
 - **Diagnostics for bug reports.** A log file (with your user name, personal paths and any API keys removed), crash handling that keeps the app running, **More > Copy Diagnostics**, and **More > Record a Session**, which saves the raw telemetry of a drive so a bug can be replayed exactly (`--replay file`).
 - HUD shows an **OVER** badge when speeding, not just red text.
-- CI checks the pinned telemetry-plugin checksum against the official release on every build.
+- **Telemetry plugin download is pinned** to the official release checksum: a download that doesn't match is refused instead of asking you to confirm a hash. CI re-checks it against GitHub on every build.
 
 ### Fixed
 - Learned cities and steep-grade warnings were shared between ATS and ETS2, whose world coordinates overlap, so ETS2 could say "near Denver". Each game now has its own (existing data becomes ATS's).
