@@ -198,7 +198,7 @@ public static class Guide
                 "• Updates download in the background, are checked against their published checksum, and install when you click Restart & update or when you close the app. More > Check for Updates checks now.",
                 "• Not connecting? Check the header: it says what's wrong (game not running, plugin missing, plugin version). More > Install Telemetry Plugin fixes most cases.",
                 "• HUD not showing over the game: switch the game to borderless or windowed mode.",
-                "• Your words aren't understood? Settings > Test microphone: check the level (\"very quiet\" means a muted or wrong mic) and what was heard. The Accurate offline model is better than Fast; OpenAI recognition is best with AI on.",
+                "• Your words aren't understood? Settings > Test microphone: check the level (\"very quiet\" means a muted or wrong mic) and what was heard. OpenAI recognition is the most accurate with AI on; the Fast offline model answers quickest.",
                 "• Truckers reply in text but you hear nothing? Settings > Test voices: it says which voice spoke or what failed. Check the output devices there too. Without internet, Windows voices take over automatically.",
                 "• Found a bug? More > Copy Diagnostics copies version, status and the recent log (no keys, user name or personal paths) for a bug report.",
                 "• Strange data? More > Record a Session saves the raw telemetry of a drive so the problem can be replayed exactly. Stop it from the same menu.",

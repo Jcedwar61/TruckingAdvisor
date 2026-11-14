@@ -24,7 +24,7 @@ public sealed class LocalWhisperSpeechToText : ISpeechToText, IDisposable
 
     public bool Enabled { get; set; } = true;
     /// <summary>Accurate (small.en) or Fast (base.en).</summary>
-    public bool Accurate { get; set; } = true;
+    public bool Accurate { get; set; }
     /// <summary>Names and slang to bias recognition toward (handles, cities, CB terms).</summary>
     public Func<string>? PromptProvider { get; set; }
 
@@ -50,6 +50,7 @@ public sealed class LocalWhisperSpeechToText : ISpeechToText, IDisposable
                 AppLog.Info($"Downloading speech model {model.FileName}");
                 StatusChanged?.Invoke($"Downloading the offline speech model ({model.Label})...");
                 await _downloader.EnsureAsync(model, new Progress<double>(p => DownloadProgress?.Invoke(p)));
+                await WarmUpAsync();
                 AppLog.Info($"Speech model ready: {model.FileName} sha256 {await ModelDownloader.HashAsync(_downloader.PathFor(model))}");
                 StatusChanged?.Invoke("Offline speech recognition is ready.");
             }
@@ -61,6 +62,16 @@ public sealed class LocalWhisperSpeechToText : ISpeechToText, IDisposable
         });
         return _download;
     }
+
+    /// <summary>Loads the model in the background so the first push-to-talk isn't the slow one.</summary>
+    public Task WarmUpAsync() => Task.Run(async () =>
+    {
+        if (!IsAvailable) return;
+        await _lock.WaitAsync();
+        try { LoadFactory(); }
+        catch (Exception ex) { AppLog.Error("Loading the speech model failed", ex); }
+        finally { _lock.Release(); }
+    });
 
     public async Task<string?> TranscribeAsync(byte[] wavAudio, CancellationToken cancellationToken)
     {
@@ -79,11 +90,16 @@ public sealed class LocalWhisperSpeechToText : ISpeechToText, IDisposable
         {
             var factory = LoadFactory();
             string prompt = PromptProvider?.Invoke() ?? SpeechText.BuildPrompt(Array.Empty<string>());
+            // Radio messages are short: size Whisper's 30-second audio window to the clip (much faster encoder),
+            // and use most of the CPU for the second or two it takes.
+            double seconds = samples16k.Length / 16000.0;
+            int audioContext = Math.Clamp((int)(seconds * 50) + 128, 256, 1500);
             await using var processor = factory.CreateBuilder()
                 .WithLanguage("en")
                 .WithPrompt(prompt)
                 .WithNoContext()
-                .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8))
+                .WithAudioContextSize(audioContext)
+                .WithThreads(Math.Clamp(Environment.ProcessorCount - 1, 2, 8))
                 .WithNoSpeechThreshold(0.6f)
                 .Build();
             var text = new System.Text.StringBuilder();

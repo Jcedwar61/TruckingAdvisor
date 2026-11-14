@@ -37,7 +37,7 @@ public sealed class AiSettings
     /// <summary>Speech recognition: 0 Auto, 1 Whisper on this PC, 2 OpenAI, 3 Windows basic (see SpeechRecognition).</summary>
     public int SpeechRecognitionMode { get; set; }
     /// <summary>Whisper model: accurate (small.en) or fast (base.en).</summary>
-    public bool WhisperAccurate { get; set; } = true;
+    public bool WhisperAccurate { get; set; }
     /// <summary>Keep the microphone open (last half second only, in memory) so the first word isn't clipped.</summary>
     public bool KeepMicReady { get; set; } = true;
 

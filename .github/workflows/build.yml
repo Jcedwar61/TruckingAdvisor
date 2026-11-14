@@ -87,8 +87,8 @@ jobs:
           if ((Get-Item "$voice\voice-FreeNeural.wav").Length -lt 20000) { throw "Neural voice audio is too short" }
           if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "Windows: Windows voice" -Quiet)) { Write-Warning "Windows voice fallback did not synthesize on this runner" }
           # Speech recognition: local Whisper must understand the neural voice's line.
-          $heard = Select-String -Path "$voice\voice-selftest.txt" -Pattern 'Whisper small\.en: "(.*)"' | Select-Object -First 1
-          if (-not $heard) { throw "Local Whisper (small.en) did not transcribe" }
+          $heard = Select-String -Path "$voice\voice-selftest.txt" -Pattern 'Whisper base\.en: "(.*)"' | Select-Object -First 1
+          if (-not $heard) { throw "Local Whisper (base.en, the default) did not transcribe" }
           if ($heard.Matches[0].Groups[1].Value -notmatch '(?i)big red' -or $heard.Matches[0].Groups[1].Value -notmatch '(?i)copy') { throw "Whisper misheard: $($heard.Matches[0].Groups[1].Value)" }
 
           # Render every tab to PNG so the UI can be reviewed without a Windows PC.

@@ -270,7 +270,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { report.AppendLine($"FAILED {ex}"); }
 
         // Recognition, end to end: the neural voice's line, cleaned like a mic clip, through local Whisper.
-        foreach (bool accurate in new[] { true, false })
+        foreach (bool accurate in new[] { false, true })
         {
             try
             {
@@ -281,9 +281,10 @@ public partial class MainWindow : Window
                 if (neural is { } n)
                 {
                     var (clean, info) = SpeechAudio.Prepare(n.Samples, n.Rate);
+                    await _whisper.WarmUpAsync(); // as in the app: loaded at startup, not on the first push-to-talk
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     string? heard = await _whisper.TranscribeSamplesAsync(clean, CancellationToken.None);
-                    report.AppendLine($"Whisper {_whisper.Model.Id}: \"{heard}\" in {sw.Elapsed.TotalSeconds:F1} s (gain {info.Gain:F1})");
+                    report.AppendLine($"Whisper {_whisper.Model.Id}: \"{heard}\" in {sw.Elapsed.TotalSeconds:F1} s (gain {info.Gain:F1}, {Environment.ProcessorCount} CPUs)");
                 }
             }
             catch (Exception ex) { report.AppendLine($"Whisper {( accurate ? "small.en" : "base.en")}: FAILED {ex.GetType().Name}: {ex.Message}"); }
@@ -399,7 +400,7 @@ public partial class MainWindow : Window
         if (_aiSettings.MicrophoneEnabled && _screenshotDir is null && _voiceSelfTestDir is null)
         {
             try { _mic.EnsureReady(); } catch (Exception ex) { ShowNotice($"Microphone error: {ex.Message}"); }
-            if (_whisper.Enabled) _ = _whisper.EnsureModelAsync();
+            if (_whisper.Enabled) _ = _whisper.ModelReady ? _whisper.WarmUpAsync() : _whisper.EnsureModelAsync();
         }
         else _mic.Close();
         _audio.SetChannelVolume("cb", _aiSettings.RadioVolume);
