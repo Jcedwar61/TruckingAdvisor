@@ -27,7 +27,8 @@ public sealed record AudioItem(
     string Channel = "advisor",
     bool ApplyCbEffects = false,
     byte[]? WavAudio = null,
-    string? VoiceId = null);
+    string? VoiceId = null,
+    string? NeuralVoice = null);
 
 /// <summary>Plays one item and completes when playback really ends (or is cancelled).</summary>
 public interface IAudioSink

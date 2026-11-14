@@ -519,8 +519,21 @@ public sealed class CBRadioService : ICBRadioService
         // Wait until the voice has actually finished, so the radio isn't "idle" while someone is talking.
         // Without OpenAI audio, the sink speaks Text with a Windows voice.
         await _audio.EnqueueAndWaitAsync(
-            new AudioItem(text, priority, channel == DispatchChannel ? "dispatcher" : "cb", ApplyCbEffects: true, WavAudio: wav, VoiceId: voiceId), ct);
+            new AudioItem(text, priority, channel == DispatchChannel ? "dispatcher" : "cb", ApplyCbEffects: true, WavAudio: wav, VoiceId: voiceId,
+                NeuralVoice: NeuralVoiceFor(handle)), ct);
     }
+
+    /// <summary>Each speaker keeps their own free neural voice.</summary>
+    private string NeuralVoiceFor(string handle)
+    {
+        if (handle == "Dispatch") return DispatchNeuralVoice;
+        if (handle == "Channel 9") return "en-US-GuyNeural|-6%|-4Hz";
+        TruckerPersonality? t;
+        lock (_roster) t = _roster.FirstOrDefault(r => r.Handle == handle);
+        return t is null ? PersonalityCatalog.NeuralVoicePool[0] : PersonalityCatalog.NeuralVoiceFor(t);
+    }
+
+    private const string DispatchNeuralVoice = "en-US-AriaNeural|+4%|+0Hz";
 
     private RadioTurn[] RecentTurns()
     {

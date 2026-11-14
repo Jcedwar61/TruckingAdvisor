@@ -20,6 +20,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TruckingAdvisor.Core.Tests"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TruckingAdvisor.Presentation", "src\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj", "{039B8CC5-DEAD-46DF-B541-30F6295AD1E3}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{47E6E5F6-F539-4C61-8CCA-A2D8DCA62A9D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TruckingAdvisor.EdgeTts", "src\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj", "{93BD7107-3D9D-466A-92CD-AA551AF692F0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -62,5 +66,12 @@ Global
 		{039B8CC5-DEAD-46DF-B541-30F6295AD1E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{039B8CC5-DEAD-46DF-B541-30F6295AD1E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{039B8CC5-DEAD-46DF-B541-30F6295AD1E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{93BD7107-3D9D-466A-92CD-AA551AF692F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{93BD7107-3D9D-466A-92CD-AA551AF692F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{93BD7107-3D9D-466A-92CD-AA551AF692F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{93BD7107-3D9D-466A-92CD-AA551AF692F0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{93BD7107-3D9D-466A-92CD-AA551AF692F0} = {47E6E5F6-F539-4C61-8CCA-A2D8DCA62A9D}
 	EndGlobalSection
 EndGlobal

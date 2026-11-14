@@ -22,6 +22,7 @@ public static class PersonalityCatalog
             PersonalityTraits = "Old-school veteran, warm, gravel-voiced, unhurried, looks out for younger drivers",
             SpeakingStyle = "Measured Texas drawl, practical mechanical wisdom, calls folks 'driver' or by their handle",
             VoiceId = "onyx",
+            NeuralVoice = "en-US-ChristopherNeural|-8%|-8Hz",
             PitchMultiplier = 0.88f,
             SpeechRate = 0.94f,
             PreferredStates = new() { "TX", "NM", "AZ", "CO", "OK" },
@@ -42,6 +43,7 @@ public static class PersonalityCatalog
             PersonalityTraits = "Friendly storyteller, upbeat, humorous, knows every independent truck stop",
             SpeakingStyle = "Energetic, conversational, loves sharing quick road stories and diner pie recommendations",
             VoiceId = "echo",
+            NeuralVoice = "en-US-EricNeural|+0%|-2Hz",
             PitchMultiplier = 0.96f,
             SpeechRate = 1.02f,
             PreferredStates = new() { "TN", "AR", "OK", "TX", "KS", "CO" },
@@ -62,6 +64,7 @@ public static class PersonalityCatalog
             PersonalityTraits = "Mechanically knowledgeable, analytical, pragmatic, fuel-efficiency nerd",
             SpeakingStyle = "Matter-of-fact Midwestern tone, talks gear ratios, turbo boost, air pressure, and MPG",
             VoiceId = "fable",
+            NeuralVoice = "en-US-RogerNeural|+0%|-4Hz",
             PitchMultiplier = 0.92f,
             SpeechRate = 1.0f,
             PreferredStates = new() { "OH", "IN", "IL", "MO", "KS", "CO", "WY" },
@@ -82,6 +85,7 @@ public static class PersonalityCatalog
             PersonalityTraits = "Quiet night driver, philosophical, calm, prefers empty highways and starlight",
             SpeakingStyle = "Low-key, concise, relaxed late-night cadence, never wastes words",
             VoiceId = "ash",
+            NeuralVoice = "en-US-SteffanNeural|-10%|-6Hz",
             PitchMultiplier = 0.85f,
             SpeechRate = 0.90f,
             PreferredStates = new() { "NV", "UT", "AZ", "CA", "ID", "OR" },
@@ -102,6 +106,7 @@ public static class PersonalityCatalog
             PersonalityTraits = "Professional, confident, sharp, safety-conscious heavy-haul specialist",
             SpeakingStyle = "Crisp, assured Southwestern voice, sharp wit, zero-nonsense logistics pro",
             VoiceId = "nova",
+            NeuralVoice = "en-US-MichelleNeural|+4%|+0Hz",
             PitchMultiplier = 1.04f,
             SpeechRate = 1.03f,
             PreferredStates = new() { "AZ", "NM", "TX", "CA", "CO", "UT" },
@@ -114,6 +119,24 @@ public static class PersonalityCatalog
     };
 
     private static readonly string[] DynamicVoices = { "verse", "sage", "coral", "ash" };
+
+    /// <summary>Free Microsoft neural voices for drivers who turn up later (and as a fallback).</summary>
+    public static readonly string[] NeuralVoicePool =
+    {
+        "en-US-BrianNeural|+0%|-4Hz", "en-US-AndrewNeural|-4%|-2Hz", "en-GB-RyanNeural|+0%|-2Hz",
+        "en-AU-WilliamNeural|+2%|+0Hz", "en-US-GuyNeural|-4%|-6Hz", "en-US-AvaNeural|+0%|+0Hz",
+        "en-CA-LiamNeural|+0%|-2Hz", "en-US-EmmaNeural|+2%|+0Hz"
+    };
+
+    /// <summary>The trucker's own neural voice, or a stable pick from the pool.</summary>
+    public static string NeuralVoiceFor(TruckerPersonality t) =>
+        !string.IsNullOrWhiteSpace(t.NeuralVoice) ? t.NeuralVoice
+            : NeuralVoicePool[(int)((uint)StableHash(t.Handle) % NeuralVoicePool.Length)];
+
+    private static int StableHash(string s)
+    {
+        unchecked { int h = 17; foreach (char c in s) h = h * 31 + c; return h; }
+    }
 
     public static TruckerPersonality GenerateDynamicTrucker(int seedIndex)
     {
@@ -139,6 +162,7 @@ public static class PersonalityCatalog
             CurrentFictionalRegion = pick.Region,
             CurrentFictionalStatus = "Running regional freight",
             VoiceId = DynamicVoices[Math.Abs(seedIndex) % DynamicVoices.Length],
+            NeuralVoice = NeuralVoicePool[Math.Abs(seedIndex) % NeuralVoicePool.Length],
             Relationship = RelationshipLevel.Stranger,
             RelationshipPoints = 0,
             ConversationCount = 0

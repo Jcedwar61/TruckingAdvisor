@@ -16,6 +16,9 @@ namespace TruckingAdvisor.Core.Audio;
 /// </summary>
 public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
 {
+    /// <summary>Playback of an item failed (it was skipped). Raised on the audio worker thread.</summary>
+    public event EventHandler<Exception>? PlaybackFailed;
+
     private readonly IAudioSink _sink;
     private readonly object _sync = new();
     private readonly List<(AudioItem Item, long Seq, TaskCompletionSource? Done, DateTime QueuedAt)> _queue = new();
@@ -155,7 +158,12 @@ public sealed class AudioPriorityManager : IAudioPriorityManager, IDisposable
                         await _sink.PlayAsync(item, GetChannelVolume(item.Channel), itemCts.Token);
                     }
                     catch (OperationCanceledException) when (!ct.IsCancellationRequested) { /* preempted */ }
-                    catch (Exception) { /* a broken voice must not kill the audio worker */ }
+                    catch (Exception ex)
+                    {
+                        // A broken voice must not kill the audio worker, but it must not be silent either.
+                        TruckingAdvisor.Shared.Diagnostics.AppLog.Error($"Audio playback failed ({item.Channel})", ex);
+                        PlaybackFailed?.Invoke(this, ex);
+                    }
                     finally
                     {
                         TaskCompletionSource? done;

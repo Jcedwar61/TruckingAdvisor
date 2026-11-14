@@ -43,7 +43,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
         !string.IsNullOrWhiteSpace(_apiKeyProvider());
 
     bool ISpeechToText.IsAvailable => IsAvailable && _settings.MicrophoneEnabled;
-    bool ITextToSpeech.IsAvailable => IsAvailable && _settings.UseOpenAiVoices;
+    bool ITextToSpeech.IsAvailable => IsAvailable && _settings.VoiceEngine == TruckingAdvisor.Shared.Enums.VoiceEngine.OpenAI;
 
     private string BaseUrl => _settings.ApiBaseUrl.TrimEnd('/');
 
@@ -52,137 +52,258 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
             ? _settings.CustomChatEndpoint
             : $"{BaseUrl}/chat/completions";
 
+    // ---- Model choice: built-in lists, first usable model wins, rejected models are skipped ----
+
+    private readonly HashSet<string> _unusable = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string>? _available;   // from GET /models; null = unknown (don't filter)
+    private readonly object _modelLock = new();
+
+    /// <summary>Models on the built-in list that haven't been rejected, best first.</summary>
+    public IReadOnlyList<string> Candidates(IReadOnlyList<string> list)
+    {
+        lock (_modelLock)
+        {
+            var usable = list.Where(m => !_unusable.Contains(m) && (_available is null || _available.Contains(m))).ToList();
+            // If everything was filtered out, try the whole list again rather than give up.
+            return usable.Count > 0 ? usable : list.Where(m => !_unusable.Contains(m)).DefaultIfEmpty(list[^1]).ToList();
+        }
+    }
+
+    private void MarkUnusable(string model, string why)
+    {
+        lock (_modelLock) _unusable.Add(model);
+        TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"OpenAI model {model} skipped: {why}");
+    }
+
+    /// <summary>
+    /// Asks OpenAI which models this key can use, so the built-in lists skip the rest straight away.
+    /// Fills in the working model names for display. Safe to call any time; failures are ignored.
+    /// </summary>
+    public async Task RefreshModelsAsync(CancellationToken ct = default)
+    {
+        if (!IsAvailable) return;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/models");
+            var (resp, _) = await SendRawAsync(req, ct);
+            if (resp is null) return;
+            using (resp)
+            using (var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct))
+            {
+                var ids = doc.RootElement.GetProperty("data").EnumerateArray()
+                    .Select(m => m.GetProperty("id").GetString() ?? "").Where(id => id.Length > 0);
+                lock (_modelLock) _available = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+            }
+            ApplyResolvedModels();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"Couldn't list OpenAI models: {ex.Message}");
+        }
+    }
+
+    /// <summary>Puts the model each job will use into the settings (shown in the UI, read by the realtime client).</summary>
+    public void ApplyResolvedModels()
+    {
+        _settings.ChatModel = Candidates(AiModelCatalog.Chat(_settings.Quality))[0];
+        _settings.SpeechToTextModel = Candidates(AiModelCatalog.Transcription)[0];
+        _settings.TextToSpeechModel = Candidates(AiModelCatalog.Speech)[0];
+        _settings.RealtimeModel = Candidates(AiModelCatalog.Realtime)[0];
+    }
+
     public async Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken cancellationToken)
     {
         if (!IsAvailable) return null;
 
-        var body = new Dictionary<string, object>
+        foreach (var model in Candidates(AiModelCatalog.Chat(_settings.Quality)))
         {
-            ["model"] = _settings.ChatModel,
-            ["max_completion_tokens"] = Math.Max(16, maxOutputTokens),
-            ["messages"] = new object[]
+            bool reasoning = AiModelCatalog.IsReasoningModel(model);
+            var body = new Dictionary<string, object>
             {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPrompt }
-            }
-        };
-        if (_settings.Creativity is { } temperature) body["temperature"] = temperature;
-        if (!string.IsNullOrWhiteSpace(_settings.ReasoningEffort)) body["reasoning_effort"] = _settings.ReasoningEffort!;
+                ["model"] = model,
+                // Reasoning models count their thinking in this budget; give them room so the reply isn't cut off.
+                ["max_completion_tokens"] = reasoning ? Math.Max(600, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens),
+                ["messages"] = new object[]
+                {
+                    new { role = "system", content = systemPrompt },
+                    new { role = "user", content = userPrompt }
+                }
+            };
+            if (reasoning) body["reasoning_effort"] = "minimal";
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint)
-        {
-            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
-        };
-        using var doc = await SendForJsonAsync(req, cancellationToken);
-        if (doc is null) return null;
-
-        try
-        {
-            var root = doc.RootElement;
-            string text = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
-            int input = 0, output = 0;
-            if (root.TryGetProperty("usage", out var u))
+            using var req = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint)
             {
-                if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
-                if (u.TryGetProperty("completion_tokens", out var ctk)) output = ctk.GetInt32();
+                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+            };
+            var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+            if (resp is null)
+            {
+                if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
+                return null; // key, credit, network: another model won't help
             }
-            _usage.RecordChat(_settings, input, output);
-            text = text.Trim();
-            return text.Length == 0 ? null : new LlmResult(text, new LlmUsage(input, output));
+            using (resp)
+            {
+                try
+                {
+                    using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                    var root = doc.RootElement;
+                    string text = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
+                    int input = 0, output = 0;
+                    if (root.TryGetProperty("usage", out var u))
+                    {
+                        if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
+                        if (u.TryGetProperty("completion_tokens", out var ctk)) output = ctk.GetInt32();
+                    }
+                    _usage.RecordChat(_settings, input, output);
+                    text = text.Trim();
+                    if (text.Length == 0)
+                    {
+                        // Spent its whole budget thinking: try the next model rather than go silent.
+                        MarkUnusable(model, "empty reply");
+                        continue;
+                    }
+                    _settings.ChatModel = model;
+                    return new LlmResult(text, new LlmUsage(input, output));
+                }
+                catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or JsonException)
+                {
+                    LastError = "Unexpected chat response format.";
+                    return null;
+                }
+            }
         }
-        catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
-        {
-            LastError = "Unexpected chat response format.";
-            return null;
-        }
+        LastError = "None of the built-in chat models worked for this API key.";
+        return null;
     }
 
     public async Task<string?> TranscribeAsync(byte[] wavAudio, CancellationToken cancellationToken)
     {
         if (!IsAvailable || wavAudio.Length < 64) return null;
+        foreach (var model in Candidates(AiModelCatalog.Transcription))
+        {
+            using var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(wavAudio);
+            file.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            form.Add(file, "file", "ptt.wav");
+            form.Add(new StringContent(model), "model");
+            form.Add(new StringContent("json"), "response_format");
+            // Bias recognition toward CB/trucking vocabulary.
+            form.Add(new StringContent("CB radio trucker talk: breaker one-nine, ten-four, copy, handle, rig, hammer down, bear, Jake brake."), "prompt");
 
-        using var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent(wavAudio);
-        file.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
-        form.Add(file, "file", "ptt.wav");
-        form.Add(new StringContent(_settings.SpeechToTextModel), "model");
-        form.Add(new StringContent("json"), "response_format");
-        // Bias recognition toward CB/trucking vocabulary.
-        form.Add(new StringContent("CB radio trucker talk: breaker one-nine, ten-four, copy, handle, rig, hammer down, bear, Jake brake."), "prompt");
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/transcriptions") { Content = form };
-        using var doc = await SendForJsonAsync(req, cancellationToken);
-        if (doc is null) return null;
-
-        _usage.RecordSpeechToText(_settings, WavDurationSeconds(wavAudio));
-        return doc.RootElement.TryGetProperty("text", out var t) ? t.GetString()?.Trim() : null;
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/transcriptions") { Content = form };
+            var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+            if (resp is null)
+            {
+                if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
+                return null;
+            }
+            using (resp)
+            {
+                try
+                {
+                    using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                    _usage.RecordSpeechToText(_settings, WavDurationSeconds(wavAudio));
+                    _settings.SpeechToTextModel = model;
+                    return doc.RootElement.TryGetProperty("text", out var t) ? t.GetString()?.Trim() : null;
+                }
+                catch (JsonException) { LastError = "Unexpected transcription response."; return null; }
+            }
+        }
+        return null;
     }
 
     public async Task<byte[]?> SynthesizeAsync(string text, string voiceId, CancellationToken cancellationToken)
     {
         if (!IsAvailable || string.IsNullOrWhiteSpace(text)) return null;
-
-        var body = new
+        foreach (var model in Candidates(AiModelCatalog.Speech))
         {
-            model = _settings.TextToSpeechModel,
-            input = text,
-            voice = string.IsNullOrWhiteSpace(voiceId) ? "onyx" : voiceId,
-            response_format = "wav"
-        };
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/speech")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
-        };
-        try
-        {
-            using var resp = await SendAsync(req, cancellationToken);
-            if (resp is null) return null;
-            var bytes = await resp.Content.ReadAsByteArrayAsync(cancellationToken);
-            _usage.RecordTextToSpeech(_settings, text.Length);
-            return bytes;
+            string voice = string.IsNullOrWhiteSpace(voiceId) ? "onyx" : voiceId;
+            if (model == "tts-1" && !AiModelCatalog.ClassicVoices.Contains(voice)) voice = "onyx";
+            var body = new { model, input = text, voice, response_format = "wav" };
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/speech")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+            };
+            try
+            {
+                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+                if (resp is null)
+                {
+                    if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
+                    return null;
+                }
+                using (resp)
+                {
+                    var bytes = await resp.Content.ReadAsByteArrayAsync(cancellationToken);
+                    _usage.RecordTextToSpeech(_settings, text.Length);
+                    _settings.TextToSpeechModel = model;
+                    return bytes;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                LastError = "Voice request failed or timed out.";
+                return null;
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            LastError = "Voice request failed or timed out.";
-            return null;
-        }
+        return null;
     }
 
-    private async Task<JsonDocument?> SendForJsonAsync(HttpRequestMessage req, CancellationToken ct)
-    {
-        try
-        {
-            using var resp = await SendAsync(req, ct);
-            if (resp is null) return null;
-            return await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            LastError = ex is TaskCanceledException ? "AI request timed out." : "AI request failed.";
-            return null;
-        }
-    }
-
-    private async Task<HttpResponseMessage?> SendAsync(HttpRequestMessage req, CancellationToken ct)
+    /// <summary>
+    /// Sends a request. On failure returns null and, if the failure is about the model itself
+    /// (not found, not enabled for this account, retired, unsupported option), a short reason.
+    /// </summary>
+    private async Task<(HttpResponseMessage? Response, string? ModelProblem)> SendRawAsync(HttpRequestMessage req, CancellationToken ct)
     {
         string? key = _apiKeyProvider();
-        if (string.IsNullOrWhiteSpace(key)) { LastError = "No API key saved."; return null; }
+        if (string.IsNullOrWhiteSpace(key)) { LastError = "No API key saved."; return (null, null); }
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(5, _settings.RequestTimeoutSeconds)));
-        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseContentRead, timeout.Token);
-        if (resp.IsSuccessStatusCode) { LastError = null; return resp; }
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.SendAsync(req, HttpCompletionOption.ResponseContentRead, timeout.Token);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            LastError = ex is TaskCanceledException ? "AI request timed out." : "AI request failed (network).";
+            return (null, null);
+        }
+        if (resp.IsSuccessStatusCode) { LastError = null; return (resp, null); }
 
-        LastError = (int)resp.StatusCode switch
+        string errorText = "";
+        try { errorText = await resp.Content.ReadAsStringAsync(ct); } catch { }
+        int status = (int)resp.StatusCode;
+        resp.Dispose();
+        string? modelProblem = IsModelProblem(status, errorText) ? $"{status} {Short(errorText)}" : null;
+        LastError = status switch
         {
             401 => "OpenAI rejected the API key (401).",
-            404 => "Model not found (404). Check the model names in AI settings.",
             429 => "Rate limited or out of credit (429).",
-            _ => $"AI request failed ({(int)resp.StatusCode})."
+            _ when modelProblem is not null => null, // handled by moving to the next model
+            _ => $"AI request failed ({status})."
         };
-        resp.Dispose();
-        return null;
+        return (null, modelProblem);
+    }
+
+    /// <summary>True when OpenAI is saying "this model can't be used" (so another model might work).</summary>
+    public static bool IsModelProblem(int status, string body)
+    {
+        if (status is 401 or 429 or >= 500) return false;
+        string b = body.ToLowerInvariant();
+        if (status == 404) return true;
+        return b.Contains("model_not_found") || b.Contains("does not exist") || b.Contains("do not have access to") ||
+               b.Contains("does not have access to model") || b.Contains("unsupported_model") || b.Contains("not supported with this model") ||
+               b.Contains("unsupported_parameter") || b.Contains("unsupported_value") || b.Contains("\"param\": \"model\"") ||
+               b.Contains("\"param\":\"model\"") || b.Contains("deprecated") || b.Contains("has been retired");
+    }
+
+    private static string Short(string s)
+    {
+        s = s.Replace('\n', ' ').Trim();
+        return s.Length > 160 ? s[..160] : s;
     }
 
     /// <summary>Duration of a PCM WAV from its header; 0 if it can't be read.</summary>

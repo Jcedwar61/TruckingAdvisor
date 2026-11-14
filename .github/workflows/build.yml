@@ -23,7 +23,7 @@ jobs:
       id-token: write       # only used for release attestation on tags
       attestations: write
     env:
-      VERSION: 3.2.0
+      VERSION: 3.3.0
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +77,15 @@ jobs:
           $relaunched | Stop-Process -Force
           if (Test-Path $desktopLnk) { throw "Update re-created a desktop shortcut the player had removed" }
           Start-Sleep -Seconds 2
+
+          # Voices: synthesize a line with the free neural voice and a Windows voice (no speaker needed on CI).
+          $voice = Join-Path $PWD "publish\screenshots"
+          $v = Start-Process "$dir\TruckingAdvisor.exe" -ArgumentList "--voice-selftest", "`"$voice`"" -PassThru
+          if (-not $v.WaitForExit(90000)) { Stop-Process -Id $v.Id -Force; throw "Voice self-test did not finish" }
+          Get-Content "$voice\voice-selftest.txt"
+          if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "FreeNeural: Microsoft neural voice" -Quiet)) { throw "The free neural voice did not synthesize" }
+          if ((Get-Item "$voice\voice-FreeNeural.wav").Length -lt 20000) { throw "Neural voice audio is too short" }
+          if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "Windows: Windows voice" -Quiet)) { Write-Warning "Windows voice fallback did not synthesize on this runner" }
 
           # Render every tab to PNG so the UI can be reviewed without a Windows PC.
           $shots = Join-Path $PWD "publish\screenshots"
@@ -141,7 +150,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: 3.2.0
+      VERSION: 3.3.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

@@ -17,7 +17,7 @@
 
 !define APP "TruckingAdvisor"
 !ifndef VERSION
-  !define VERSION "3.2.0"
+  !define VERSION "3.3.0"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\publish\bin"
@@ -125,6 +125,8 @@ Section "${APP} (required)" SecMain
   File "..\LICENSE"
   File "..\THIRD_PARTY_NOTICES.md"
   File "..\SECURITY.md"
+  File /oname=LICENSE.LGPL.txt "..\src\TruckingAdvisor.EdgeTts\LICENSE.LGPL"
+  File /oname=LICENSE.GPL.txt "..\src\TruckingAdvisor.EdgeTts\LICENSE.GPL"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   CreateDirectory "$SMPROGRAMS\${APP}"
@@ -168,6 +170,8 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\SECURITY.md"
+  Delete "$INSTDIR\LICENSE.LGPL.txt"
+  Delete "$INSTDIR\LICENSE.GPL.txt"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 

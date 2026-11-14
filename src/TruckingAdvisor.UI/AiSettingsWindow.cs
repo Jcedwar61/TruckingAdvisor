@@ -21,11 +21,14 @@ public sealed class AiSettingsWindow : Window
     private readonly CheckBox _enabled = new() { Content = "Enable AI (CB truckers, dispatcher, voice)" };
     private readonly PasswordBox _key = new();
     private readonly TextBlock _keyStatus = new();
-    private readonly TextBox _chat = new(), _stt = new(), _tts = new(), _maxTokens = new(), _requestLimit = new(), _spendLimit = new();
+    private readonly TextBox _maxTokens = new(), _requestLimit = new(), _spendLimit = new();
+    private readonly ComboBox _quality = new(), _voiceEngine = new();
+    private readonly TextBlock _modelsInUse = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+    private readonly TextBlock _voiceTestResult = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly Func<VoiceEngine, Task<string>>? _testVoices;
     private readonly TextBox _priceIn = new(), _priceOut = new(), _priceStt = new(), _priceTts = new();
     private readonly TextBox _handle = new(), _companyName = new();
     private readonly CheckBox _mic = new() { Content = "Use my microphone for push-to-talk (recorded only while the PTT key is held)" };
-    private readonly CheckBox _openAiVoices = new() { Content = "Use OpenAI voices (costs more; off = free Windows voices)" };
     private readonly ComboBox _activity = new();
     private readonly TextBlock _usage = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBox _dispatcherName = new(), _hq = new(), _maxUnsolicited = new();
@@ -35,15 +38,15 @@ public sealed class AiSettingsWindow : Window
     private readonly ComboBox _micDevice = new(), _radioOut = new(), _advisorOut = new(), _dispatchOut = new();
     private readonly Slider _radioVol = Vol(), _dispatchVol = Vol(), _advisorVol = Vol();
     private readonly ComboBox _pipeline = new();
-    private readonly TextBox _realtimeModel = new();
     private readonly ComboBox _units = new();
     private readonly CheckBox _announceFines = new() { Content = "Co-driver says fines out loud (tolls and fares are only listed, never spoken)" };
     private readonly CheckBox _autoUpdate = new() { Content = "Check for updates automatically and download them in the background" };
     private readonly CheckBox _updateOnExit = new() { Content = "Install a downloaded update when I close the app" };
     private readonly CheckBox _offlineStt = new() { Content = "Offline speech recognition (Windows) when OpenAI transcription isn't available" };
 
-    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company)
+    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company, Func<VoiceEngine, Task<string>>? testVoices = null)
     {
+        _testVoices = testVoices;
         _s = settings;
         _client = client;
         _company = company;
@@ -75,6 +78,31 @@ public sealed class AiSettingsWindow : Window
         _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, °F)", "Metric (km, km/h, L, kg, °C)" };
         form.Children.Add(Row("Units", _units));
 
+        form.Children.Add(Header("Voices"));
+        _voiceEngine.ItemsSource = new[]
+        {
+            "Free neural voices (Microsoft, natural; needs internet) - recommended",
+            "Windows voices (offline, more robotic)",
+            "OpenAI voices (uses your API key; costs money)"
+        };
+        form.Children.Add(Row("Truckers & co-driver speak with", _voiceEngine));
+        var testRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(150, 4, 0, 0) };
+        var testButton = Button("Test voices", async (_, _) =>
+        {
+            if (_testVoices is null) return;
+            _voiceTestResult.Text = "Playing a test line from a trucker, dispatch and your co-driver...";
+            try { _voiceTestResult.Text = await _testVoices((VoiceEngine)Math.Max(0, _voiceEngine.SelectedIndex)); }
+            catch (Exception ex) { _voiceTestResult.Text = $"Voice test failed: {ex.Message}"; }
+        });
+        testRow.Children.Add(testButton);
+        form.Children.Add(testRow);
+        form.Children.Add(Indent(_voiceTestResult));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Each trucker, your dispatcher and your co-driver have their own voice. If the free neural voices can't be reached (no internet), a Windows voice speaks instead, so nobody goes silent.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
+
         form.Children.Add(Header("Audio devices & volume"));
         var outputs = new[] { "Windows default" }.Concat(WindowsAudioSink.ListOutputDevices()).ToList();
         foreach (var c in new[] { _radioOut, _advisorOut, _dispatchOut }) c.ItemsSource = outputs;
@@ -96,18 +124,18 @@ public sealed class AiSettingsWindow : Window
         keyButtons.Children.Add(Button("Delete saved key", DeleteKey));
         form.Children.Add(keyButtons);
         form.Children.Add(Indent(_keyStatus));
-        form.Children.Add(Row("Chat model", _chat));
-        form.Children.Add(Row("Speech-to-text model", _stt));
-        form.Children.Add(Row("Text-to-speech model", _tts));
-        _pipeline.ItemsSource = Enum.GetValues<VoicePipeline>();
-        form.Children.Add(Row("Voice pipeline", _pipeline));
-        form.Children.Add(Row("Realtime model", _realtimeModel));
+        _quality.ItemsSource = Enum.GetValues<AiQuality>().Select(AiModelCatalog.Describe).ToList();
+        form.Children.Add(Row("AI quality", _quality));
         form.Children.Add(Indent(new TextBlock
         {
-            Text = "Modular: transcribe, then chat, then voice (cheapest, works with any chat model). Realtime: one speech-to-speech session for faster, more natural replies; costs more. If realtime fails, the radio falls back to modular.",
+            Text = "No model names to pick: TruckingAdvisor has built-in lists of OpenAI models for each quality level, uses the best one your key can use, and switches automatically if OpenAI retires one.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
-        form.Children.Add(Row("Max reply tokens", _maxTokens));
+        _modelsInUse.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        form.Children.Add(Indent(_modelsInUse));
+        _pipeline.ItemsSource = new[] { "Standard (cheapest)", "Realtime voice (faster, more natural replies; costs more)" };
+        form.Children.Add(Row("Voice conversation mode", _pipeline));
+        form.Children.Add(Row("Longest reply (tokens)", _maxTokens));
         form.Children.Add(_mic);
         form.Children.Add(_offlineStt);
         form.Children.Add(Indent(new TextBlock
@@ -115,7 +143,6 @@ public sealed class AiSettingsWindow : Window
             Text = "When AI is on, OpenAI receives: your push-to-talk recording (for transcription), what was said on the radio, and a short summary of game data (speed, fuel, load, destination). Nothing is sent while you aren't talking or chatter is off.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
-        form.Children.Add(_openAiVoices);
         _activity.ItemsSource = Enum.GetValues<RadioActivitySetting>();
         form.Children.Add(Row("Background radio activity", _activity));
 
@@ -157,12 +184,11 @@ public sealed class AiSettingsWindow : Window
         _handle.Text = _company.PlayerHandle;
         _companyName.Text = _company.CompanyName;
         _enabled.IsChecked = _s.GlobalAiEnabled;
-        _chat.Text = _s.ChatModel;
-        _stt.Text = _s.SpeechToTextModel;
-        _tts.Text = _s.TextToSpeechModel;
+        _quality.SelectedIndex = (int)_s.Quality;
+        _voiceEngine.SelectedIndex = (int)_s.VoiceEngine;
+        _modelsInUse.Text = $"In use now: {_s.ChatModel} (chat), {_s.SpeechToTextModel} (listening), {_s.RealtimeModel} (realtime).";
         _maxTokens.Text = _s.MaxResponseTokens.ToString(inv);
         _mic.IsChecked = _s.MicrophoneEnabled;
-        _openAiVoices.IsChecked = _s.UseOpenAiVoices;
         _activity.SelectedItem = _s.RadioActivity;
         _requestLimit.Text = _s.DailyRequestLimit.ToString(inv);
         _spendLimit.Text = _s.DailySpendLimitUsd.ToString(inv);
@@ -170,8 +196,7 @@ public sealed class AiSettingsWindow : Window
         _priceOut.Text = _s.ChatOutputPricePerMillionTokens.ToString(inv);
         _priceStt.Text = _s.SpeechToTextPricePerMinute.ToString(inv);
         _priceTts.Text = _s.TextToSpeechPricePerMillionChars.ToString(inv);
-        _pipeline.SelectedItem = _s.VoicePipeline;
-        _realtimeModel.Text = _s.RealtimeModel;
+        _pipeline.SelectedIndex = _s.VoicePipeline == VoicePipeline.Realtime ? 1 : 0;
         _offlineStt.IsChecked = _s.OfflineSpeechRecognition;
         _autoUpdate.IsChecked = _s.AutoUpdate;
         _units.SelectedIndex = (int)_s.Units;
@@ -218,8 +243,9 @@ public sealed class AiSettingsWindow : Window
         var inv = CultureInfo.InvariantCulture;
         _company.PlayerHandle = _handle.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_companyName.Text)) _company.CompanyName = _companyName.Text.Trim();
-        if (_pipeline.SelectedItem is VoicePipeline vp) _s.VoicePipeline = vp;
-        _s.RealtimeModel = NonEmpty(_realtimeModel.Text, _s.RealtimeModel);
+        _s.VoicePipeline = _pipeline.SelectedIndex == 1 ? VoicePipeline.Realtime : VoicePipeline.Modular;
+        _s.Quality = (AiQuality)Math.Max(0, _quality.SelectedIndex);
+        _s.VoiceEngine = (VoiceEngine)Math.Max(0, _voiceEngine.SelectedIndex);
         _s.OfflineSpeechRecognition = _offlineStt.IsChecked == true;
         _s.AutoUpdate = _autoUpdate.IsChecked == true;
         _s.Units = (TruckingAdvisor.Shared.UnitPreference)Math.Max(0, _units.SelectedIndex);
@@ -241,11 +267,7 @@ public sealed class AiSettingsWindow : Window
         _s.DispatcherVolume = (float)_dispatchVol.Value;
         _s.AdvisorVolume = (float)_advisorVol.Value;
         _s.GlobalAiEnabled = _enabled.IsChecked == true;
-        _s.ChatModel = NonEmpty(_chat.Text, _s.ChatModel);
-        _s.SpeechToTextModel = NonEmpty(_stt.Text, _s.SpeechToTextModel);
-        _s.TextToSpeechModel = NonEmpty(_tts.Text, _s.TextToSpeechModel);
         _s.MicrophoneEnabled = _mic.IsChecked == true;
-        _s.UseOpenAiVoices = _openAiVoices.IsChecked == true;
         if (_activity.SelectedItem is RadioActivitySetting a) _s.RadioActivity = a;
         if (int.TryParse(_maxTokens.Text, NumberStyles.Integer, inv, out var mt)) _s.MaxResponseTokens = Math.Clamp(mt, 32, 1000);
         if (int.TryParse(_requestLimit.Text, NumberStyles.Integer, inv, out var rl)) _s.DailyRequestLimit = Math.Max(0, rl);

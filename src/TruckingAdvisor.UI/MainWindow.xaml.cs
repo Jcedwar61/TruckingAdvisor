@@ -14,6 +14,7 @@ using TruckingAdvisor.Core.Trips;
 using TruckingAdvisor.Data;
 using TruckingAdvisor.Presentation;
 using TruckingAdvisor.Shared.Enums;
+using TruckingAdvisor.Shared.Interfaces;
 using TruckingAdvisor.Shared.Models;
 using TruckingAdvisor.Telemetry;
 using TruckingAdvisor.UI.Overlays;
@@ -48,6 +49,8 @@ public partial class MainWindow : Window
     private string? _lastAdvisory;
     /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
     private readonly string? _screenshotDir;
+    /// <summary>Set by "--voice-selftest &lt;folder&gt;": synthesize test lines with each voice engine to WAV, then exit (CI).</summary>
+    private readonly string? _voiceSelfTestDir;
 
     public MainWindow()
     {
@@ -58,6 +61,8 @@ public partial class MainWindow : Window
         bool demo = args.Contains("--demo", StringComparer.OrdinalIgnoreCase);
         int shot = Array.FindIndex(args, a => a.Equals("--screenshot", StringComparison.OrdinalIgnoreCase));
         if (shot >= 0 && shot + 1 < args.Length) _screenshotDir = args[shot + 1];
+        int voiceTest = Array.FindIndex(args, a => a.Equals("--voice-selftest", StringComparison.OrdinalIgnoreCase));
+        if (voiceTest >= 0 && voiceTest + 1 < args.Length) _voiceSelfTestDir = args[voiceTest + 1];
         int replay = Array.FindIndex(args, a => a.Equals("--replay", StringComparison.OrdinalIgnoreCase));
         string? replayFile = replay >= 0 && replay + 1 < args.Length ? args[replay + 1] : null;
         _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo, replayFile: replayFile);
@@ -107,6 +112,16 @@ public partial class MainWindow : Window
                 _viewModel.ConfirmHandle(handle);
         };
         ApplyAudioSettings();
+        _sink.VoiceProblem += msg => Dispatcher.BeginInvoke(() => ShowNotice(msg));
+        _audio.PlaybackFailed += (_, ex) => Dispatcher.BeginInvoke(() =>
+        {
+            if (DateTime.UtcNow - _lastPlaybackNotice < TimeSpan.FromMinutes(2)) return;
+            _lastPlaybackNotice = DateTime.UtcNow;
+            ShowNotice($"A voice line couldn't be played ({ex.Message}). Settings > Test voices checks your speakers.");
+        });
+        // Pick the working OpenAI models from the built-in lists (no model names for the player to choose).
+        _openAi.ApplyResolvedModels();
+        _ = _openAi.RefreshModelsAsync();
 
         // Every function can be bound to keys and to wheel / button-box buttons (More > Controls).
         // All input goes through one router on the UI thread. Hook callbacks must return fast
@@ -139,6 +154,11 @@ public partial class MainWindow : Window
         if (_screenshotDir is not null)
         {
             Loaded += async (_, _) => await CaptureScreenshotsAsync(_screenshotDir);
+            return;
+        }
+        if (_voiceSelfTestDir is not null)
+        {
+            Loaded += async (_, _) => await VoiceSelfTestAsync(_voiceSelfTestDir);
             return;
         }
         _ = Task.Run(RefreshGameStatus);
@@ -203,6 +223,34 @@ public partial class MainWindow : Window
         {
             try { File.WriteAllText(Path.Combine(dir, "error.txt"), ex.ToString()); } catch { }
         }
+        Close();
+    }
+
+    /// <summary>Renders a line with the free neural voice and with a Windows voice to WAV files (no speaker needed).</summary>
+    private async Task VoiceSelfTestAsync(string dir)
+    {
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var engine in new[] { VoiceEngine.FreeNeural, VoiceEngine.Windows })
+            {
+                _sink.Engine = engine;
+                var item = new AudioItem("Breaker one-nine, this is Big Red. Ten-four, I copy you loud and clear.", AudioPriority.Normal, "cb",
+                    VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-8%|-8Hz");
+                try
+                {
+                    var (samples, rate, source) = await _sink.RenderAsync(item, CancellationToken.None);
+                    string file = Path.Combine(dir, $"voice-{engine}.wav");
+                    using (var w = new NAudio.Wave.WaveFileWriter(file, NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(rate, 1)))
+                        w.WriteSamples(samples, 0, samples.Length);
+                    report.AppendLine($"{engine}: {source}, {samples.Length / (double)rate:F1} s at {rate} Hz");
+                }
+                catch (Exception ex) { report.AppendLine($"{engine}: FAILED {ex.GetType().Name}: {ex.Message}"); }
+            }
+        }
+        catch (Exception ex) { report.AppendLine($"FAILED {ex}"); }
+        try { File.WriteAllText(Path.Combine(dir, "voice-selftest.txt"), report.ToString()); } catch { }
         Close();
     }
 
@@ -297,6 +345,8 @@ public partial class MainWindow : Window
     private void ApplyAudioSettings()
     {
         _sink.CleanAudio = _aiSettings.CleanAudio;
+        _sink.Engine = _aiSettings.VoiceEngine;
+        _sink.DefaultNeuralVoice = _aiSettings.CoDriverNeuralVoice;
         _sink.DeviceSelector = channel => channel switch
         {
             "cb" => _aiSettings.RadioOutputDevice,
@@ -501,6 +551,43 @@ public partial class MainWindow : Window
     public void ShowErrorNotice(string message) => ShowNotice($"Something went wrong ({message}). Details are in the log: More > Copy Diagnostics.");
 
     private string? _selectedContactId;
+    private DateTime _lastPlaybackNotice = DateTime.MinValue;
+
+    /// <summary>Settings > Test voices: a trucker, dispatch and the co-driver, each through the real audio path.</summary>
+    private async Task<string> TestVoicesAsync(VoiceEngine engine)
+    {
+        var before = _sink.Engine;
+        _sink.Engine = engine;
+        var lines = new (string Who, AudioItem Item, float Volume)[]
+        {
+            ("Big Red (CB)", new AudioItem("Breaker one-nine, this is Big Red. I hear you loud and clear, driver.", AudioPriority.Normal, "cb", ApplyCbEffects: true,
+                VoiceId: "onyx", NeuralVoice: "en-US-ChristopherNeural|-8%|-8Hz"), _aiSettings.RadioVolume),
+            ("Dispatch", new AudioItem($"{_company.DisplayHandle}, this is dispatch. Radio check, you're coming through fine.", AudioPriority.Normal, "dispatcher", ApplyCbEffects: true,
+                VoiceId: "coral", NeuralVoice: "en-US-AriaNeural|+4%|+0Hz"), _aiSettings.DispatcherVolume),
+            ("Co-driver", new AudioItem("Co-driver here. Voices are working.", AudioPriority.Normal, "advisor"), _aiSettings.AdvisorVolume)
+        };
+        var results = new List<string>();
+        try
+        {
+            foreach (var (who, item, volume) in lines)
+            {
+                try
+                {
+                    var wav = engine == VoiceEngine.OpenAI ? await _openAi.SynthesizeAsync(item.Text, item.VoiceId ?? "onyx", CancellationToken.None) : null;
+                    await _sink.PlayAsync(item with { WavAudio = wav }, Math.Max(0.3f, volume), CancellationToken.None);
+                    results.Add($"✓ {who}: {_sink.LastVoiceSource}");
+                }
+                catch (Exception ex)
+                {
+                    results.Add($"✗ {who}: {ex.Message}");
+                }
+            }
+        }
+        finally { _sink.Engine = before; }
+        if (engine == VoiceEngine.OpenAI && results.Any(r => r.Contains("OpenAI voice")) == false)
+            results.Add("(OpenAI voices need AI on and a saved key; the free voice spoke instead.)");
+        return string.Join("\n", results) + "\n\nPress Save to keep this voice choice.";
+    }
 
     private void BtnDismissSetup_Click(object sender, RoutedEventArgs e) => _viewModel.DismissSetupChecklist();
 
@@ -521,12 +608,14 @@ public partial class MainWindow : Window
 
     private void BtnAiSettings_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _company) { Owner = this };
+        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _company, TestVoicesAsync) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
             _db.SaveCompany(_company);
             ApplyAudioSettings();
             _viewModel.RefreshUnits();
+            _openAi.ApplyResolvedModels();
+            _ = _openAi.RefreshModelsAsync();
         }
     }
 

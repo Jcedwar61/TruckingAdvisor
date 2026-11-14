@@ -185,7 +185,9 @@ public static class Guide
             {
                 "• Everything except AI conversations works offline with no account.",
                 "• AI uses your own OpenAI key, stored encrypted for your Windows account (never in a plain file). Daily request and spending limits stop it before it costs more than you allow.",
-                "• Voices: free Windows voices, or OpenAI voices (costs more). Realtime voice mode answers faster.",
+                "• No model names to choose: pick AI quality (Economy, Balanced, Best) and TruckingAdvisor uses the best built-in model your key can use, switching automatically if OpenAI retires one.",
+                "• Voices: free Microsoft neural voices by default (each trucker, dispatch and the co-driver has their own), Windows voices offline, or OpenAI voices with your key. Settings > Test voices plays a sample of each.",
+                "• Realtime voice mode answers faster (costs more).",
                 "• Pick separate audio devices for the radio, dispatch and co-driver; clean audio turns off the radio static.",
                 "• Co-driver personality: Professional, Friendly, Old-School Trucker, Strict Instructor, or Minimal (only important warnings).",
             }),
@@ -195,6 +197,7 @@ public static class Guide
                 "• Updates download in the background, are checked against their published checksum, and install when you click Restart & update or when you close the app. More > Check for Updates checks now.",
                 "• Not connecting? Check the header: it says what's wrong (game not running, plugin missing, plugin version). More > Install Telemetry Plugin fixes most cases.",
                 "• HUD not showing over the game: switch the game to borderless or windowed mode.",
+                "• Truckers reply in text but you hear nothing? Settings > Test voices: it says which voice spoke or what failed. Check the output devices there too. Without internet, Windows voices take over automatically.",
                 "• Found a bug? More > Copy Diagnostics copies version, status and the recent log (no keys, user name or personal paths) for a bug report.",
                 "• Strange data? More > Record a Session saves the raw telemetry of a drive so the problem can be replayed exactly. Stop it from the same menu.",
                 "• Project page: github.com/Jcedwar61/TruckingAdvisor",

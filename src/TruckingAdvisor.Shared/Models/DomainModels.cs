@@ -121,6 +121,8 @@ public sealed class TruckerPersonality
     public string Background { get; set; } = string.Empty;
     public List<string> PreferredRoutes { get; set; } = new();
     public string VoiceId { get; set; } = "onyx";
+    /// <summary>Free Microsoft neural voice as "voice|rate|pitch", e.g. "en-US-ChristopherNeural|-6%|-6Hz". Empty = pick one.</summary>
+    public string NeuralVoice { get; set; } = string.Empty;
     public float PitchMultiplier { get; set; } = 1.0f;
     public float SpeechRate { get; set; } = 1.0f;
     public List<string> PreferredStates { get; set; } = new();
