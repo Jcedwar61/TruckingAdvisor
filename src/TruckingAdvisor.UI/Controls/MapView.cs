@@ -42,6 +42,8 @@ public sealed class MapView : FrameworkElement
     public bool Follow { get; set; } = true;
 
     private StreamGeometry? _roads;
+    private StreamGeometry? _realRoads;
+    private int _realVersion = -1;
     private int _roadVersion = -1;
     private string _game = "";
     private Rect _roadBounds = Rect.Empty;
@@ -68,14 +70,25 @@ public sealed class MapView : FrameworkElement
             _roadVersion = s.RoadVersion;
             BuildRoads(s.Roads);
         }
+        if (s.RealVersion != _realVersion)
+        {
+            _realVersion = s.RealVersion;
+            _realRoads = s.RealRoads is { Count: > 0 } rr ? Build(rr, out _) : null;
+        }
         if (!_hasView) Fit();
         if ((Follow || Compact) && s.HasTruck) _center = new Point(s.TruckX, s.TruckZ);
     }
 
     private void BuildRoads(IReadOnlyList<float[]> segments)
     {
+        _roads = Build(segments, out var bounds);
+        _roadBounds = bounds;
+    }
+
+    private static StreamGeometry Build(IReadOnlyList<float[]> segments, out Rect bounds)
+    {
         var g = new StreamGeometry();
-        var bounds = Rect.Empty;
+        bounds = Rect.Empty;
         using (var ctx = g.Open())
         {
             foreach (var seg in segments)
@@ -89,8 +102,7 @@ public sealed class MapView : FrameworkElement
             }
         }
         g.Freeze();
-        _roads = g;
-        _roadBounds = bounds;
+        return g;
     }
 
     /// <summary>Frames everything known: roads, cities and the truck.</summary>
@@ -131,10 +143,36 @@ public sealed class MapView : FrameworkElement
         if (!_hasView) Fit();
         if (Compact && s.HasTruck) _center = new Point(s.TruckX, s.TruckZ);
 
-        // Roads, drawn in world coordinates with a pen that stays the same width on screen.
+        // Real highways (estimated placement) under everything, faint and dashed.
+        var world = new MatrixTransform(_scale, 0, 0, _scale, w / 2 - _center.X * _scale, h / 2 - _center.Y * _scale);
+        if (_realRoads is not null)
+        {
+            dc.PushTransform(world);
+            var faint = MutedBrush.Clone();
+            faint.Opacity = 0.35;
+            dc.DrawGeometry(null, new Pen(faint, (Compact ? 1.4 : 1.2) / _scale) { DashStyle = new DashStyle(new[] { 4.0, 3.0 }, 0) }, _realRoads);
+            dc.Pop();
+        }
+        if (s.RealTowns is { } towns && !Compact)
+        {
+            var faintText = MutedBrush.Clone();
+            faintText.Opacity = 0.6;
+            int minPop = _scale > 0.05 ? 0 : _scale > 0.02 ? 50_000 : 250_000;   // more towns as you zoom in
+            var learned = new HashSet<string>(s.Cities.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            foreach (var t in towns)
+            {
+                if (t.Population < minPop || learned.Contains(t.Name)) continue;
+                var p = ToScreen(t.X, t.Z);
+                if (p.X < -50 || p.Y < -20 || p.X > w + 50 || p.Y > h + 20) continue;
+                dc.DrawEllipse(null, new Pen(faintText, 1), p, 2.5, 2.5);
+                DrawLabel(dc, t.Name, p, faintText, 10);
+            }
+        }
+
+        // Roads you've driven, drawn in world coordinates with a pen that stays the same width on screen.
         if (_roads is not null && !_roads.IsEmpty())
         {
-            dc.PushTransform(new MatrixTransform(_scale, 0, 0, _scale, w / 2 - _center.X * _scale, h / 2 - _center.Y * _scale));
+            dc.PushTransform(world);
             var pen = new Pen(RoadBrush, (Compact ? 3.0 : 2.4) / _scale) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
             dc.DrawGeometry(null, pen, _roads);
             dc.Pop();

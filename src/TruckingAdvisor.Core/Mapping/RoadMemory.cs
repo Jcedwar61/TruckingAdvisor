@@ -237,6 +237,37 @@ public sealed class GameWorld
             RoadMemory.Load(Path.Combine(dir, $"driven-roads-{key}.bin")));
     }
 
+    private GeoCalibration? _calibration;
+    private int _calibrationKey = -1;
+
+    /// <summary>Real-world reference for this game (towns, areas, highways).</summary>
+    public Gazetteer Gazetteer => Gazetteer.For(Key);
+
+    /// <summary>Game-to-real-world calibration from learned cities; refitted when a city is learned.</summary>
+    private readonly object _calLock = new();
+
+    public GeoCalibration Calibration
+    {
+        get
+        {
+            var cities = Cities.Snapshot();
+            int key = cities.Sum(c => c.Samples) * 31 + cities.Count;
+            lock (_calLock)
+            {
+                if (_calibration is null || key != _calibrationKey)
+                {
+                    _calibration = GeoCalibration.Fit(Gazetteer, cities, GameId == 2 ? CityStates.StateFor : null);
+                    _calibrationKey = key;
+                }
+                return _calibration;
+            }
+        }
+    }
+
+    /// <summary>Where (x, z) is in real-world terms, or null until two learned cities match real towns.</summary>
+    public PlaceDescription? DescribePlace(double x, double z, float heading, bool moving) =>
+        PlaceDescriber.Describe(Gazetteer, Calibration, x, z, heading, moving, Cities.Snapshot().Select(c => c.Name).ToList());
+
     public void Save()
     {
         if (IsDemo) return;

@@ -53,6 +53,7 @@ public sealed partial class MainDashboardViewModel
     private LocationMemory _locations => World.Cities;
     private GradeMemory _grades => World.Grades;
     private DateTimeOffset _lastGradeWarning = DateTimeOffset.MinValue;
+    private volatile PlaceDescription? _place;
     private string _locationText = "Location: learning from your deliveries";
     private string _gradeAheadText = string.Empty;
 
@@ -69,7 +70,19 @@ public sealed partial class MainDashboardViewModel
         {
             var s = _telemetry.LatestSnapshot;
             var city = NearestCityName(s);
-            return city is null ? s : s with { CurrentCity = city, CurrentState = CityStates.StateFor(city) ?? string.Empty };
+            var place = _place;
+            if (place is not null)
+                s = s with
+                {
+                    RealWorldPlace = place.Text,
+                    ProbableHighway = place.Highway ?? string.Empty,
+                    NextTownAhead = place.Toward ?? string.Empty,
+                    CurrentState = place.AreaAbbr ?? place.Area ?? string.Empty,
+                    CurrentCity = city ?? place.NearTown ?? string.Empty
+                };
+            else if (city is not null)
+                s = s with { CurrentCity = city, CurrentState = CityStates.StateFor(city) ?? string.Empty };
+            return s;
         }
     }
 
@@ -89,9 +102,15 @@ public sealed partial class MainDashboardViewModel
         _grades.Record(s.WorldX, s.WorldZ, s.CalculatedGradePercent, s.HeadingDegrees, s.SpeedMph);
 
         var where = _locations.Describe(s.WorldX, s.WorldZ);
-        string location = where is null
-            ? $"Location: unknown here ({_locations.Cities.Count} cities learned from your deliveries)"
-            : $"Location: {where} (approximate, learned)";
+        PlaceDescription? place = null;
+        try { place = World.DescribePlace(s.WorldX, s.WorldZ, s.HeadingDegrees, s.SpeedMph > 5); }
+        catch (Exception ex) { TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Place lookup failed", ex); }
+        _place = place;
+        string location = place is not null
+            ? $"Location: {place.Text} (estimated from the real map, {place.Quality} match)"
+            : where is null
+                ? $"Location: unknown here ({_locations.Cities.Count} cities learned; real-map places start after deliveries in 2 cities)"
+                : $"Location: {where} (approximate, learned)";
 
         string ahead = string.Empty;
         if (s.SpeedMph > 20 && _grades.Ahead(s.WorldX, s.WorldZ, s.HeadingDegrees) is { } g)

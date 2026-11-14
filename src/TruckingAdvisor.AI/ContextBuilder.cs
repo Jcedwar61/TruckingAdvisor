@@ -45,9 +45,13 @@ public static class ContextBuilder
                 speedLimitMph = Positive(t.SpeedLimitMph),
                 fuelPercent = t.HasFuelCapacity ? Math.Round(t.FuelPercent) : (double?)null,
                 estimatedRangeMiles = Positive(t.EstimatedRangeMiles),
-                // Learned from the player's own deliveries; approximate, not from the game.
-                approximateLocation = string.IsNullOrEmpty(t.CurrentCity) ? null
+                // Estimated by matching the game map to real geography using cities the player has delivered to.
+                // Approximate: the game map is a scaled-down version of the real one.
+                approximateLocation = t.RealWorldPlace.Length > 0 ? $"{t.RealWorldPlace} (estimated)"
+                    : string.IsNullOrEmpty(t.CurrentCity) ? null
                     : $"near {t.CurrentCity}{(string.IsNullOrEmpty(t.CurrentState) ? "" : ", " + t.CurrentState)} (approximate)",
+                probableHighway = Text(t.ProbableHighway),
+                nextTownAhead = Text(t.NextTownAhead),
                 gameTime = t.GameTimeMinutes > 0 ? t.FormattedGameTime : null,
                 nightDriving = t.GameTimeMinutes > 0 ? t.IsNightDriving : (bool?)null,
                 gradePercent = Math.Abs(t.CalculatedGradePercent) >= 2 ? Math.Round(t.CalculatedGradePercent, 1) : (double?)null,
@@ -107,6 +111,9 @@ Rules:
 2. Sound like a real trucker: natural, warm, unhurried. Use slang (ten-four, copy, driver) only where it fits, not in every line.
 3. Only state facts about the player's truck, load, speed, fuel or location that appear in the JSON below. If something isn't there, you don't know it.
 4. You are a simulated radio voice. Never claim to see the player's truck, nearby traffic, police, weather or road conditions; say you can't tell from where you are.
+   If an approximate location, highway or next town is given, you may talk about that stretch the way truckers do
+   (towns, truck stops, the scenery and what the road is generally like there), but treat it as "sounds like you're
+   around...", never as fact, and don't invent specific businesses, exits or mile markers.
 5. Stay consistent with your identity and with the memories listed. If this is your first conversation, act like it.
    You may mention the other drivers you know, but only what's listed; it's radio gossip, not something you saw.
 6. Don't end every message with a question. Sign off naturally when the player says goodbye.

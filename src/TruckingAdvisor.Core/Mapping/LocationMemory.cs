@@ -23,9 +23,21 @@ public sealed class LocationMemory
     }
 
     public Dictionary<string, City> Cities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _sync = new();
+
+    /// <summary>A copy that's safe to read on another thread while cities are being learned.</summary>
+    public List<City> Snapshot()
+    {
+        lock (_sync) return Cities.Values.Select(c => new City { Name = c.Name, X = c.X, Z = c.Z, Samples = c.Samples }).ToList();
+    }
 
     /// <summary>Adds a sighting of a city at a world position (averages repeat visits; ignores outliers).</summary>
     public void Learn(string city, double x, double z)
+    {
+        lock (_sync) LearnCore(city, x, z);
+    }
+
+    private void LearnCore(string city, double x, double z)
     {
         if (string.IsNullOrWhiteSpace(city) || (x == 0 && z == 0)) return;
         if (!Cities.TryGetValue(city, out var c))

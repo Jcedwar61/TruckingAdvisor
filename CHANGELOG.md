@@ -1,5 +1,12 @@
 # Changelog — TruckingAdvisor
 
+## [v3.1.0] — 2026-11-14
+
+### Added
+- **Real places on the CB.** TruckingAdvisor now matches the game map to real geography, so the AI truckers and dispatcher know roughly where you are in real-world terms: *"east of Flagstaff, Arizona, on or near I-40, heading east toward Winslow"* (ATS) or the country and E-road you're on (ETS2). Truckers can talk about that stretch the way truckers do ("sounds like you're out around Flagstaff...") but are told it's an estimate and never to invent exits, businesses or mile markers, or to claim they can see you.
+- How it works: real towns, states / provinces / countries and numbered highways from **Natural Earth** (public domain) are bundled with the app (about 0.6 MB). Every pickup and delivery tells TruckingAdvisor where a real city is in game coordinates; after **deliveries in two cities** it fits the game map to the real one (separately for ATS and ETS2) and keeps improving with each new city. Nothing is read from the game's files.
+- The header shows the real-world place, and the **Map** tab draws real highways and towns faintly under the roads you've driven once the match is ready.
+
 ## [v3.0.0] — 2026-11-14
 
 ### Added

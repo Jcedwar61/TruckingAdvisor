@@ -23,7 +23,7 @@ jobs:
       id-token: write       # only used for release attestation on tags
       attestations: write
     env:
-      VERSION: 3.0.0
+      VERSION: 3.1.0
     steps:
       - uses: actions/checkout@v4
 
@@ -141,7 +141,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: 3.0.0
+      VERSION: 3.1.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
