@@ -107,5 +107,9 @@ public enum VoiceEngine
     /// <summary>Windows voices only (offline).</summary>
     Windows = 1,
     /// <summary>OpenAI voices with your key (costs money); free voices if they fail.</summary>
-    OpenAI = 2
+    OpenAI = 2,
+    /// <summary>On-device voice model (offline, free, private); free neural voices if it isn't downloaded.</summary>
+    Local = 3,
+    /// <summary>On-device Kokoro voices: the most natural offline option, slower to render.</summary>
+    LocalKokoro = 4
 }

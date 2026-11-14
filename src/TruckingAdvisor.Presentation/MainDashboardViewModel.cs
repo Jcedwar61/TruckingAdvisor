@@ -51,6 +51,10 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     public ObservableCollection<string> RadioTranscriptLog { get; } = new();
     public ObservableCollection<DeliveryTripRecord> TripHistory { get; } = new();
 
+    /// <summary>Drives the Trips tab empty state: the list and the hint swap, so neither sits blank.</summary>
+    public bool HasTrips => TripHistory.Count > 0;
+    public bool HasNoTrips => !HasTrips;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainDashboardViewModel(
@@ -153,7 +157,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
         _ => "MIC READY - HOLD PTT TO TRANSMIT"
     };
     public string PartnerText => _radio.ActivePartner is { } p
-        ? $"LAST HEARD: {p.Handle.ToUpperInvariant()} ({p.Truck} • {p.Relationship})"
+        ? $"LAST HEARD: {p.Handle.ToUpperInvariant()} ({p.Truck} • {Spaced(p.Relationship.ToString())})"
         : "Simulated CB radio - voices are app characters, not real nearby trucks";
     public string AiStatusText => _radio.AiAvailable ? $"AI: ON ({_aiSettings.ChatModel})" : "AI: OFF (offline radio lines)";
     public string RadioNotice { get => _radioNotice; private set { _radioNotice = value; Raise(); } }
@@ -194,6 +198,7 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     private void OnTelemetryUpdated(object? sender, AtsTelemetrySnapshot snapshot)
     {
         ApplyUnits(snapshot.GameId);
+        if (snapshot.IsDemoData) SeedDemoHistoryOnce();
         _analyzer.EvaluateSnapshot(snapshot, _previous);
         if (snapshot.IsLive || snapshot.IsDemoData) World.Roads.Record(snapshot.WorldX, snapshot.WorldZ, !snapshot.IsPaused && snapshot.SpeedMph > 2);
         _gameEvents.Update(snapshot); // before the trip tracker, so a fine in the last frame still lands on the trip

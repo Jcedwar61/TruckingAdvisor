@@ -53,6 +53,8 @@ public sealed class CBRadioService : ICBRadioService
     public HalfDuplexCollisionPolicy CollisionPolicy { get; set; } = HalfDuplexCollisionPolicy.InterruptSpeaker;
     public TruckerPersonality? ActivePartner { get; private set; }
     public IReadOnlyList<TruckerPersonality> Roster { get { lock (_roster) return _roster.ToArray(); } }
+    /// <summary>How many of the roster are regulars, so the radio knows which ones are still newcomers.</summary>
+    public int RegularCount { get; init; } = PersonalityCatalog.CreateDefaultRoster().Count;
     public bool AiAvailable => _llm?.IsAvailable == true;
     /// <summary>How long the truck has been parked (set by the dashboard); enables truck-stop talk.</summary>
     public TimeSpan ParkedFor { get; set; }
@@ -280,7 +282,9 @@ public sealed class CBRadioService : ICBRadioService
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return;
             string line = await GenerateAsync(
                 TruckerPrompt(trucker, snapshot, ActiveChannel),
-                $"(No one has spoken to you. Make one unprompted CB call to the channel about: {situation})", cancellationToken, MaxTokensForMode())
+                $"(No one has spoken to you. Make one unprompted CB call to the channel. It's your call: {situation}. " +
+                "Say whatever is on your mind in your own voice, as long as you like, even a story about your own past or a gripe about the road.)",
+                cancellationToken, MaxTokensForMode())
                 ?? OfflineEncounterLine(snapshot, trucker);
             ActivePartner = trucker;
             await SpeakAsync(trucker.FullName, trucker.Handle, line, trucker.VoiceId, AudioPriority.Low, ActiveChannel, cancellationToken, chatterVersion: version);
@@ -315,7 +319,7 @@ public sealed class CBRadioService : ICBRadioService
             }
             if (!TryChatterState(CBRadioState.PlayingTransmission, version)) return;
             // One API call for the whole exchange keeps cost down.
-            var lines = await GenerateBanterAsync(a, b, snapshot, cancellationToken) ?? OfflineBanter(a, b);
+            var lines = await GenerateBanterAsync(a, b, snapshot, DescribeBanterTopic(a, b), cancellationToken) ?? OfflineBanter(a, b);
             RememberBanter(a, b, lines);
             foreach (var (handle, text) in lines)
             {
@@ -331,13 +335,14 @@ public sealed class CBRadioService : ICBRadioService
         }
     }
 
-    private async Task<List<(string Handle, string Text)>?> GenerateBanterAsync(TruckerPersonality a, TruckerPersonality b, AtsTelemetrySnapshot snapshot, CancellationToken ct)
+    private async Task<List<(string Handle, string Text)>?> GenerateBanterAsync(TruckerPersonality a, TruckerPersonality b, AtsTelemetrySnapshot snapshot,
+        string? topic, CancellationToken ct)
     {
         if (_llm?.IsAvailable != true) return null;
         int lineCount = 4 + _random.Next(3);
         var result = await _llm.CompleteAsync(
-            "You write short, natural CB radio dialogue. Output JSON only.",
-            ContextBuilder.BuildBanterPrompt(a, b, _company, snapshot, lineCount),
+            "You write short, natural CB radio dialogue between working truckers. Output JSON only.",
+            ContextBuilder.BuildBanterPrompt(a, b, _company, snapshot, lineCount, topic),
             _settings.MaxResponseTokens * 3, ct);
         return result is null ? null : ParseBanter(result.Text, a, b);
     }
@@ -527,13 +532,13 @@ public sealed class CBRadioService : ICBRadioService
     private string NeuralVoiceFor(string handle)
     {
         if (handle == "Dispatch") return DispatchNeuralVoice;
-        if (handle == "Channel 9") return "en-US-GuyNeural|-6%|-4Hz";
+        if (handle == "Channel 9") return "en-US-GuyNeural|-46%|-4Hz";
         TruckerPersonality? t;
         lock (_roster) t = _roster.FirstOrDefault(r => r.Handle == handle);
         return t is null ? PersonalityCatalog.NeuralVoicePool[0] : PersonalityCatalog.NeuralVoiceFor(t);
     }
 
-    private const string DispatchNeuralVoice = "en-US-AriaNeural|+4%|+0Hz";
+    private const string DispatchNeuralVoice = "en-US-AriaNeural|-38%|+0Hz";
 
     private RadioTurn[] RecentTurns()
     {
@@ -570,20 +575,24 @@ public sealed class CBRadioService : ICBRadioService
     /// <summary>Occasionally a new (generated) trucker shows up; they persist like the core cast.</summary>
     private TruckerPersonality? MaybeMeetNewTrucker()
     {
-        const int coreCast = 5, maxExtra = 4;
+        const int maxExtra = 6;
         TruckerPersonality newcomer;
         lock (_roster)
         {
-            int extra = _roster.Count - coreCast;
-            if (extra >= maxExtra || _random.NextDouble() >= 0.15) return null;
-            newcomer = PersonalityCatalog.GenerateDynamicTrucker(Math.Max(0, extra));
-            if (_roster.Any(t => t.Id == newcomer.Id)) return null;
-            _roster.Add(newcomer);
+            int extra = _roster.Count - RegularCount;
+            if (extra >= maxExtra || _random.NextDouble() >= 0.2) return null;
+            // Try a few templates: the first one that hasn't already turned up.
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                newcomer = PersonalityCatalog.GenerateDynamicTrucker(Math.Max(0, extra) + attempt);
+                if (_roster.Any(t => t.Id == newcomer.Id)) continue;
+                _roster.Add(newcomer);
+                TruckerUpdated?.Invoke(this, newcomer);
+                return newcomer;
+            }
+            return null;
         }
-        TruckerUpdated?.Invoke(this, newcomer);
-        return newcomer;
     }
-
     private static readonly string[] TruckStopTopics =
     {
         "asking if anyone else is shutting down for the night at a truck stop",
@@ -595,17 +604,35 @@ public sealed class CBRadioService : ICBRadioService
         "fuel economy tricks"
     };
 
+    /// <summary>
+    /// One thing this trucker might key up about, all their own. Most calls are just whatever is on their
+    /// mind; the situation only nudges them when the game gives them something to react to.
+    /// </summary>
     private static string DescribeEncounter(AtsTelemetrySnapshot s, TruckerPersonality t, TimeSpan parkedFor, Random random)
     {
         if (parkedFor >= TimeSpan.FromMinutes(5))
-            return TruckStopTopics[random.Next(TruckStopTopics.Length)] + " (relaxed truck-stop talk; you're parked too)";
+            return "shutting down for the night at a truck stop, looking for somebody to pass the time with";
         if (s.HasFuelCapacity && s.FuelPercent < 25 && t.Relationship >= RelationshipLevel.RoadAcquaintance)
             return "checking whether the player plans a fuel stop soon (their fuel is low)";
         if (s.JobActive && s.CargoWeightLbs >= 38000)
             return "the heavy load the player is pulling and where they're headed";
         if (s.GameTimeMinutes > 0 && s.IsNightDriving)
-            return "asking who else is driving late tonight";
-        return "general road chatter or a short trucking story";
+            return "who else is driving late tonight";
+        var topics = t.ChatterTopics.Count > 0 ? t.ChatterTopics : t.FavoriteTopics;
+        if (topics.Count > 0 && random.NextDouble() < 0.6)
+            return $"{topics[random.Next(topics.Count)]}, from your own experience";
+        if (random.NextDouble() < 0.3)
+            return TruckStopTopics[random.Next(TruckStopTopics.Length)];
+        return "whatever is on your mind";
+    }
+
+    /// <summary>The two truckers' banter topic: one they share, or one of their own.</summary>
+    private string DescribeBanterTopic(TruckerPersonality a, TruckerPersonality b)
+    {
+        var shared = a.FavoriteTopics.Intersect(b.FavoriteTopics, StringComparer.OrdinalIgnoreCase).ToList();
+        if (shared.Count > 0 && _random.NextDouble() < 0.5) return shared[_random.Next(shared.Count)];
+        var own = a.ChatterTopics.Concat(b.ChatterTopics).ToList();
+        return own.Count > 0 && _random.NextDouble() < 0.7 ? own[_random.Next(own.Count)] : "whatever is on your minds";
     }
 
     // ---- Offline lines (AI disabled or unavailable) ----
@@ -623,10 +650,13 @@ public sealed class CBRadioService : ICBRadioService
 
     private string OfflineDispatchReply() => $"Dispatch copies, {_company.DisplayHandle}. Keep us posted.";
 
-    private string OfflineEncounterLine(AtsTelemetrySnapshot s, TruckerPersonality t) =>
-        s.GameTimeMinutes > 0 && s.IsNightDriving
+    private string OfflineEncounterLine(AtsTelemetrySnapshot s, TruckerPersonality t)
+    {
+        if (t.OfflineOpeners.Count > 0) return t.OfflineOpeners[_random.Next(t.OfflineOpeners.Count)];
+        return s.GameTimeMinutes > 0 && s.IsNightDriving
             ? $"Breaker one-nine, {t.Handle} here. Anybody else burning the midnight diesel?"
             : $"Breaker one-nine, {t.Handle} rolling. Hope everybody's having a clean run.";
+    }
 
     private static List<(string, string)> OfflineBanter(TruckerPersonality a, TruckerPersonality b) => new()
     {

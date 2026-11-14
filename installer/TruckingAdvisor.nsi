@@ -17,7 +17,7 @@
 
 !define APP "TruckingAdvisor"
 !ifndef VERSION
-  !define VERSION "3.4.0"
+  !define VERSION "3.6.0"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\publish\bin"
@@ -122,10 +122,17 @@ Section "${APP} (required)" SecMain
   File "${PUBLISH_DIR}\${APP}.exe"
   File "..\Assets\TruckingAdvisor.ico"
   File "..\README.md"
-  File "..\LICENSE"
-  File "..\THIRD_PARTY_NOTICES.md"
-  File "..\SECURITY.md"
-  ; Offline speech recognition engine (whisper.cpp via Whisper.net); loaded from here, not from inside the exe.
+  ; WPF and SQLite carry native pieces next to the exe; onnxruntime and sherpa-onnx drive the on-device
+  ; voices. All of them are loaded from here, not from inside the single file, so they must ship.
+  File "${PUBLISH_DIR}\D3DCompiler_47_cor3.dll"
+  File "${PUBLISH_DIR}\PenImc_cor3.dll"
+  File "${PUBLISH_DIR}\PresentationNative_cor3.dll"
+  File "${PUBLISH_DIR}\vcruntime140_cor3.dll"
+  File "${PUBLISH_DIR}\wpfgfx_cor3.dll"
+  File "${PUBLISH_DIR}\e_sqlite3.dll"
+  File "${PUBLISH_DIR}\onnxruntime.dll"
+  File "${PUBLISH_DIR}\sherpa-onnx-c-api.dll"
+  ; Offline speech recognition engine (whisper.cpp via Whisper.net).
   SetOutPath "$INSTDIR\runtimes\win-x64"
   File "${PUBLISH_DIR}\runtimes\win-x64\*.dll"
   SetOutPath "$INSTDIR"
@@ -175,6 +182,14 @@ Section "Uninstall"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\SECURITY.md"
   RMDir /r "$INSTDIR\runtimes"
+  Delete "$INSTDIR\D3DCompiler_47_cor3.dll"
+  Delete "$INSTDIR\PenImc_cor3.dll"
+  Delete "$INSTDIR\PresentationNative_cor3.dll"
+  Delete "$INSTDIR\vcruntime140_cor3.dll"
+  Delete "$INSTDIR\wpfgfx_cor3.dll"
+  Delete "$INSTDIR\e_sqlite3.dll"
+  Delete "$INSTDIR\onnxruntime.dll"
+  Delete "$INSTDIR\sherpa-onnx-c-api.dll"
   Delete "$INSTDIR\LICENSE.LGPL.txt"
   Delete "$INSTDIR\LICENSE.GPL.txt"
   Delete "$INSTDIR\Uninstall.exe"

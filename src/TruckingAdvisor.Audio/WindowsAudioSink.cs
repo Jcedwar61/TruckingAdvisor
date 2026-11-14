@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Speech.Synthesis;
 using NAudio.Wave;
 using TruckingAdvisor.Audio.Dsp;
+using TruckingAdvisor.Audio.Local;
 using TruckingAdvisor.EdgeTts;
 using TruckingAdvisor.Shared.Diagnostics;
 using TruckingAdvisor.Shared.Enums;
@@ -25,7 +26,7 @@ public sealed class WindowsAudioSink : IAudioSink
 
     /// <summary>Accessibility option: skip static, filtering and clicks.</summary>
     public bool CleanAudio { get; set; }
-    public float StaticLevel { get; set; } = 0.03f;
+    public float StaticLevel { get; set; } = 0.012f;
     public int WindowsVoiceRate { get; set; }
     /// <summary>Master mute: items complete immediately without sound.</summary>
     public bool Muted { get; set; }
@@ -36,6 +37,8 @@ public sealed class WindowsAudioSink : IAudioSink
     public VoiceEngine Engine { get; set; } = VoiceEngine.FreeNeural;
     /// <summary>Neural voice for items without one (the co-driver), "voice|rate|pitch".</summary>
     public string DefaultNeuralVoice { get; set; } = "en-US-AndrewNeural|+0%|+0Hz";
+    /// <summary>On-device voice (offline). Set once at startup; null keeps the network voice in use.</summary>
+    public LocalVoiceSynthesizer? Local { get; set; }
 
     /// <summary>A voice couldn't be produced or played (shown to the player once in a while, always logged).</summary>
     public event Action<string>? VoiceProblem;
@@ -61,6 +64,7 @@ public sealed class WindowsAudioSink : IAudioSink
     /// </summary>
     public async Task<(float[] Samples, int SampleRate, string Source)> RenderAsync(AudioItem item, CancellationToken ct)
     {
+        // Explicit OpenAI audio and the chosen engine come first; the local voice and Windows voices take over.
         if (item.WavAudio is { Length: > 44 } audio)
         {
             try
@@ -74,6 +78,26 @@ public sealed class WindowsAudioSink : IAudioSink
             catch (Exception ex)
             {
                 Problem("The OpenAI voice audio couldn't be decoded; using a free voice instead.", ex);
+            }
+        }
+        if (Engine is VoiceEngine.Local or VoiceEngine.LocalKokoro && Local is { IsReady: true })
+        {
+            var (localVoice, localRate, _) = ParseVoice(item.NeuralVoice ?? DefaultNeuralVoice);
+            try
+            {
+                // Resampling for pitch also changes the tempo, so ask the model for the difference back:
+                // the line lands at the intended pace instead of getting faster the deeper the voice is.
+                float pitch = PitchFactor(item.NeuralVoice ?? DefaultNeuralVoice);
+                float speed = Math.Clamp(LocalSpeed(localRate) / pitch, 0.6f, 1.4f);
+                var (s, r) = await Local.SynthesizeAsync(item.Text, LocalSpeaker(item.VoiceId, Engine), speed, ct);
+                s = Normalize(PitchShift(s, r, pitch));
+                if (s.Length > 0) return (s, r, "On-device voice");
+                Problem("The on-device voice returned no audio; using a free voice instead.");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                Problem("The on-device voice failed; using a free voice instead.", ex);
             }
         }
         if (Engine != VoiceEngine.Windows && DateTime.UtcNow >= _neuralPausedUntil)
@@ -96,7 +120,9 @@ public sealed class WindowsAudioSink : IAudioSink
         }
         try
         {
-            var (s, r) = DecodeWav(await Task.Run(() => RenderWindowsVoice(item.Text, item.VoiceId), ct));
+            // The Windows voices have their own pitch handling via the rate, so the pitch hint goes to it.
+            float pitch = PitchFactor(item.NeuralVoice ?? DefaultNeuralVoice);
+            var (s, r) = DecodeWav(await Task.Run(() => RenderWindowsVoice(item.Text, item.NeuralVoice ?? DefaultNeuralVoice, pitch), ct));
             return (s, r, "Windows voice");
         }
         catch (OperationCanceledException) { throw; }
@@ -148,6 +174,8 @@ public sealed class WindowsAudioSink : IAudioSink
         LastVoiceSource = source;
         cancellationToken.ThrowIfCancellationRequested();
 
+        samples = Normalize(samples);
+
         if (item.ApplyCbEffects && !CleanAudio)
         {
             var dsp = new CbRadioDspFilter { StaticLevel = StaticLevel };
@@ -156,7 +184,8 @@ public sealed class WindowsAudioSink : IAudioSink
             samples = [.. click, .. samples, .. click];
         }
 
-        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1;
+        // Leave headroom so a loud line doesn't clip against the device.
+        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1 * 0.9f;
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int device = DeviceSelector?.Invoke(item.Channel) ?? -1;
@@ -181,15 +210,164 @@ public sealed class WindowsAudioSink : IAudioSink
         cancellationToken.ThrowIfCancellationRequested();
     }
 
-    private byte[] RenderWindowsVoice(string text, string? voiceId)
+    /// <summary>
+    /// Brings every line to the same loudness. Voices differ a lot (a model may peak at 0.25, another at 0.7)
+    /// and a line played quiet is as bad as one played loud, so lines are matched to a comfortable target.
+    /// </summary>
+    internal static float[] Normalize(float[] samples)
     {
+        const float TargetPeak = 0.72f;
+        if (samples.Length == 0) return samples;
+        float peak = 0;
+        for (int i = 0; i < samples.Length; i++) peak = Math.Max(peak, MathF.Abs(samples[i]));
+        if (peak < 1e-4f) return samples;
+        float gain = Math.Clamp(TargetPeak / peak, 0.05f, 25f);
+        if (MathF.Abs(gain - 1f) < 0.02f) return samples;
+        for (int i = 0; i < samples.Length; i++) samples[i] = Math.Clamp(samples[i] * gain, -1f, 1f);
+        return samples;
+    }
+
+    /// <summary>
+    /// Voice ids are mapped to fixed speaker indexes so each character keeps their own voice offline.
+    /// Supertonic has ten voices and Kokoro fifty-four; Kokoro gives every male regular a man and every
+    /// female one a woman, and is the model that keeps all of them apart. Indexes come from measuring
+    /// each speaker (pitch in Hz), not from the order the file happens to list them in.
+    /// </summary>
+    internal static int LocalSpeaker(string? voiceId, VoiceEngine engine = VoiceEngine.Local)
+    {
+        string id = (voiceId ?? "").ToLowerInvariant();
+        if (engine == VoiceEngine.LocalKokoro)
+        {
+            return id switch
+            {
+                // Kokoro's table is af_*/am_*. Men, one each, chosen for depth that still stays clear:
+                // am_echo 12 (124 Hz), bm_lewis 27 (99), am_michael 16 (128), am_puck 18 (136),
+                // bm_fable 25 (141), am_liam 15 (139), bm_daniel 24 (136), bm_george 26 (158), am_adam 11 (131).
+                "onyx" => 12, "ash" => 27, "ballad" => 11, "echo" => 15, "coral" => 16,
+                "liam" => 24, "fable" => 26, "marin" => 25, "verse" => 18, "alloy" => 17,
+                // Women (192-238 Hz): af_nova 7, af_sarah 9, af_sky 10, bf_alice 20, bf_emma 21.
+                "nova" => 7, "sage" => 9, "shimmer" => 10, "jenny" => 20, "sonia" => 21,
+                var other => KokoroVoiceModel.MaleVoices[StableSpeaker(other) % KokoroVoiceModel.MaleVoices.Length]
+            };
+        }
+        return id switch
+        {
+            // Supertonic has ten voices and seven of them read male (9 = 93 Hz, 6 = 100, 7 = 109, 8 = 130,
+            // 5 = 151, 4 = 167, 2 = 179), so three of the men share. The women keep the three left over.
+            "onyx" => 9, "ash" => 6, "fable" => 7, "alloy" => 8, "ballad" => 5, "echo" => 4,
+            "verse" => 2, "coral" => 9, "liam" => 6, "marin" => 5,
+            "shimmer" => 0, "sage" => 0, "jenny" => 1, "sonia" => 3, "nova" => 3,
+            var other => StableSpeaker(other) % 10
+        };
+    }
+
+    private static int StableSpeaker(string? voiceId) => Math.Abs((voiceId ?? "").ToLowerInvariant() switch
+    {
+        "onyx" => 6,
+        "echo" => 9,
+        "fable" => 8,
+        "alloy" => 4,
+        "sage" => 5,
+        "nova" => 3,
+        "coral" => 1,
+        "ash" => 7,
+        "shimmer" => 2,
+        "verse" => 0,
+        var other => other.Length > 0 ? Math.Abs(other.Aggregate(17, (h, c) => unchecked(h * 31 + c))) : 5
+    });
+
+    /// <summary>The pitch offset in a "voice|rate|pitch" spec ("-8Hz") as a multiplier.</summary>
+    private static float PitchFactor(string spec)
+    {
+        var parts = (spec ?? "").Split('|');
+        if (parts.Length < 3) return 1f;
+        var m = System.Text.RegularExpressions.Regex.Match(parts[2], @"^([+-]?[\d.]+)Hz$");
+        if (!m.Success || !float.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float hz)) return 1f;
+        // Roughly 4.5 Hz per semitone at a 130 Hz speaking fundamental.
+        return Math.Clamp(MathF.Pow(2f, hz / 12f / 4.5f), 0.8f, 1.25f);
+    }
+
+    /// <summary>
+    /// Pitch shift by resampling; <paramref name="factor"/> is the pitch multiplier, so 0.9 is a deeper
+    /// voice and 1.1 a higher one. That changes the tempo by 1/factor, which callers give back to the
+    /// synthesizer. Shifting up skips input samples, which folds everything above the new Nyquist back in
+    /// as buzz, so the input is low-passed first. One-pole cascades are plenty for a 20 % shift and cost
+    /// nothing; the result is smoother than the raw nearest-neighbour decimation it replaces.
+    /// </summary>
+    internal static float[] PitchShift(float[] samples, int sampleRate, float factor)
+    {
+        if (MathF.Abs(factor - 1f) < 0.01f || samples.Length < 2) return samples;
+        double step = factor;
+        if (step > 1.02)
+        {
+            float cutoff = (float)(sampleRate * 0.45 / factor);
+            float a = 1f - MathF.Exp(-2f * MathF.PI * cutoff / sampleRate);
+            float z1 = samples[0], z2 = samples[0];
+            var filtered = new float[samples.Length];
+            for (int i = 0; i < samples.Length; i++)
+            {
+                z1 += (samples[i] - z1) * a;
+                z2 += (z1 - z2) * a;
+                filtered[i] = z2;
+            }
+            samples = filtered;
+        }
+        var output = new float[(int)(samples.Length / step)];
+        for (int i = 0; i < output.Length; i++)
+        {
+            double pos = i * step;
+            int j = (int)pos;
+            float frac = (float)(pos - j);
+            output[i] = j + 1 < samples.Length ? samples[j] * (1 - frac) + samples[j + 1] * frac : samples[Math.Min(j, samples.Length - 1)];
+        }
+        return output;
+    }
+
+    /// <summary>
+    /// The on-device model already speaks at ~150 wpm, so slow-down hints only move it a little: the
+    /// same -45% that tames a 280 wpm service voice lands the model at about 165 wpm here.
+    /// </summary>
+    internal static float LocalSpeed(string rate) => Math.Clamp(1f - (1f - RatePercent(rate)) * 0.15f, 0.7f, 1.35f);
+
+    /// <summary>
+    /// SpeechSynthesizer.Rate steps are worth about 12 % of pace each on the Windows voices (measured:
+    /// 128 wpm at 0, 183 wpm at 3), while the neural services run near 255 wpm. This maps the line's pace
+    /// onto the Windows scale so the fallback lands at the same speed as the neural voice instead of
+    /// crawling. <paramref name="pitchFactor"/> is folded in because the caller's resampling changes tempo.
+    /// </summary>
+    internal static int WindowsRate(string rateSpec, float pitchFactor, int offset)
+    {
+        const float ReferenceWpm = 128f, Step = 1.128f, NeutralWpm = 265f;
+        float target = NeutralWpm * RatePercent(rateSpec) / pitchFactor;
+        int rate = (int)MathF.Round(MathF.Log(target / ReferenceWpm) / MathF.Log(Step));
+        return Math.Clamp(rate + offset, -8, 8);
+    }
+
+    /// <summary>"+0%" / "-32%" (or a bare "0.92") to a speed multiplier.</summary>
+    internal static float RatePercent(string rate)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(rate ?? "", @"^([+-]?[\d.]+)%?$");
+        if (!m.Success || !float.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float v)) return 1f;
+        // A percent is relative to normal speed ("-32%" -> 0.68); a bare number is already a multiplier.
+        return Math.Clamp(m.Value.EndsWith('%') ? 1f + v / 100f : v, 0.5f, 1.5f);
+    }
+
+    /// <summary>
+    /// Windows voices are the last resort, but they still get the line's pace, so a trucker doesn't
+    /// suddenly read at machine speed on a bad connection.
+    /// </summary>
+    private byte[] RenderWindowsVoice(string text, string voiceSpec, float pitchFactor)
+    {
+        var (voiceId, rateSpec, _) = ParseVoice(voiceSpec);
         using var synth = new SpeechSynthesizer();
         try
         {
             synth.SelectVoiceByHints(voiceId is not null && FemaleVoices.Contains(voiceId) ? VoiceGender.Female : VoiceGender.Male);
         }
         catch { /* keep default voice */ }
-        synth.Rate = Math.Clamp(WindowsVoiceRate, -10, 10);
+        synth.Rate = WindowsRate(rateSpec, pitchFactor, WindowsVoiceRate);
         using var ms = new MemoryStream();
         synth.SetOutputToWaveStream(ms);
         synth.Speak(text);
@@ -207,7 +385,7 @@ public sealed class WindowsAudioSink : IAudioSink
         return all.ToArray();
     }
 
-    private sealed class ArraySampleProvider : ISampleProvider
+    internal sealed class ArraySampleProvider : ISampleProvider
     {
         private readonly float[] _samples;
         private int _position;
@@ -220,7 +398,9 @@ public sealed class WindowsAudioSink : IAudioSink
         public int Read(float[] buffer, int offset, int count)
         {
             int n = Math.Min(count, _samples.Length - _position);
-            Array.Copy(_samples, _position, buffer, offset, n);
+            // NAudio's SampleToWaveProvider hands Read a byte[] aliased as float[] (WaveBuffer), so
+            // Array.Copy's array-type check fails with ArrayTypeMismatchException. Spans copy by memory.
+            _samples.AsSpan(_position, n).CopyTo(buffer.AsSpan(offset, n));
             _position += n;
             return n;
         }
