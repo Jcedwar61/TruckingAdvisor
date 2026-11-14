@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Collections.ObjectModel;
 using TruckingAdvisor.AI;
 using TruckingAdvisor.Core.Career;
@@ -30,10 +31,27 @@ public sealed partial class MainDashboardViewModel
     private string? _lastSpokenAdvice;
 
     private static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor");
-    private static string LocationsPath => Path.Combine(DataDir, "learned-cities.json");
-    private static string GradesPath => Path.Combine(DataDir, "learned-grades.json");
-    private readonly LocationMemory _locations = LocationMemory.Load(LocationsPath);
-    private readonly GradeMemory _grades = GradeMemory.Load(GradesPath);
+    private readonly object _worldLock = new();
+    private readonly Dictionary<uint, GameWorld> _worlds = new();
+    /// <summary>The current game's learned cities, grades and roads (ATS and ETS2 kept apart).</summary>
+    private GameWorld? _demoWorld;
+
+    private GameWorld World
+    {
+        get
+        {
+            if (_telemetry.LatestSnapshot.IsDemoData)
+                return _demoWorld ??= GameWorld.CreateDemo(t => (DemoRoute.X(t), DemoRoute.Z(t)), 0);
+            uint id = _telemetry.LatestSnapshot.GameId == 1 ? 1u : 2u;
+            lock (_worldLock)
+            {
+                if (!_worlds.TryGetValue(id, out var w)) _worlds[id] = w = GameWorld.Load(DataDir, id);
+                return w;
+            }
+        }
+    }
+    private LocationMemory _locations => World.Cities;
+    private GradeMemory _grades => World.Grades;
     private DateTimeOffset _lastGradeWarning = DateTimeOffset.MinValue;
     private string _locationText = "Location: learning from your deliveries";
     private string _gradeAheadText = string.Empty;
@@ -98,8 +116,10 @@ public sealed partial class MainDashboardViewModel
 
     private void SaveMapMemories()
     {
-        _locations.Save(LocationsPath);
-        _grades.Save(GradesPath);
+        List<GameWorld> worlds;
+        lock (_worldLock) worlds = _worlds.Values.ToList();
+        foreach (var w in worlds)
+            try { w.Save(); } catch (Exception ex) { TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Saving map data failed", ex); }
     }
 
     public ObservableCollection<AchievementItem> Achievements { get; } = new();
@@ -120,10 +140,10 @@ public sealed partial class MainDashboardViewModel
     {
         var done = AllTrips.Where(t => t.State == DeliveryState.Completed).OrderBy(t => t.StartedAt).TakeLast(30).ToList();
         ScoreTrend = done.Select(t => (double)t.ScoreBreakdown.FinalScore).ToList();
-        MpgTrend = done.Where(t => t.AverageMpg > 0).Select(t => (double)t.AverageMpg).ToList();
+        MpgTrend = done.Where(t => t.AverageMpg > 0).Select(t => Units.Economy(t.AverageMpg)).ToList();
         IncidentTrend = done.Where(t => t.DistanceMiles >= 10)
-            .Select(t => (t.SpeedingIncidents + t.HarshBrakingIncidents + t.AggressiveAccelerationIncidents) * 100.0 / t.DistanceMiles).ToList();
-        MilesTrend = done.Select(t => (double)t.DistanceMiles).ToList();
+            .Select(t => (t.SpeedingIncidents + t.HarshBrakingIncidents + t.AggressiveAccelerationIncidents) * 100.0 / Units.Dist(t.DistanceMiles)).ToList();
+        MilesTrend = done.Select(t => Units.Dist(t.DistanceMiles)).ToList();
         Raise(nameof(ScoreTrend)); Raise(nameof(MpgTrend)); Raise(nameof(IncidentTrend)); Raise(nameof(MilesTrend));
     }
 
@@ -131,8 +151,8 @@ public sealed partial class MainDashboardViewModel
 
     // ---- Numbers for the dials ----
     private bool HasData => _current.IsLive || _current.IsDemoData;
-    public double SpeedValue => HasData ? _current.SpeedMph : 0;
-    public double SpeedLimitValue => HasData ? _current.SpeedLimitMph : 0;
+    public double SpeedValue => HasData ? Units.Speed(_current.SpeedMph) : 0;
+    public double SpeedLimitValue => HasData ? Units.Speed(_current.SpeedLimitMph) : 0;
     /// <summary>Dial top end: rounded up from the engine's max RPM (2500 until known).</summary>
     public double RpmMax => _current.MaxEngineRpm > 0 ? Math.Ceiling(_current.MaxEngineRpm / 500.0) * 500 : 2500;
     public double RpmValue => HasData ? _current.EngineRpm : 0;
@@ -162,10 +182,17 @@ public sealed partial class MainDashboardViewModel
 
     // ---- Career tiles ----
     public string StatDeliveries => Company.TotalDeliveries.ToString("N0");
-    public string StatMiles => Company.TotalMilesDriven.ToString("N0");
+    public string StatMiles => Units.Dist(Company.TotalMilesDriven).ToString("N0");
+    public string StatMilesLabel => Units.DistWord.ToUpperInvariant();
+    public string StatMpgLabel => $"LIFETIME {Units.EconomyUnit.ToUpperInvariant()}";
+    public string SpeedUnitText => Units.SpeedUnit;
+    public double SpeedGaugeMax => Units.Metric ? 160 : 100;
+    public string MpgTrendTitle => $"Fuel economy ({Units.EconomyUnit})";
+    public string IncidentTrendTitle => $"Coaching events per 100 {Units.DistWord}";
+    public string MilesTrendTitle => $"Trip distance ({Units.DistWord})";
     public string StatDamageFree => Company.TotalDeliveries > 0 ? $"{100.0 * Company.DamageFreeDeliveries / Company.TotalDeliveries:F0}%" : "--";
     public string StatAvgScore => Company.TotalDeliveries > 0 ? Company.AverageDriverRating.ToString("F0") : "--";
-    public string StatMpg => Company.LifetimeAverageMpg > 0 ? Company.LifetimeAverageMpg.ToString("F1") : "--";
+    public string StatMpg => Company.LifetimeAverageMpg > 0 ? Units.Economy(Company.LifetimeAverageMpg).ToString("F1") : "--";
     public string StatIncome => Company.RecordedRevenue.ToString("N0");
     public string StatCities => Company.VisitedCities.Count.ToString();
     public string StatStreak => $"{Career.CurrentDamageFreeStreak} (best {Career.BestDamageFreeStreak})";
@@ -192,8 +219,8 @@ public sealed partial class MainDashboardViewModel
 
     public string CompanySummary =>
         $"{Company.CompanyName}{(string.IsNullOrWhiteSpace(Company.Headquarters) ? "" : $" • {Company.Headquarters}")} • driver {Company.DisplayHandle}\n" +
-        $"{Company.TotalDeliveries} deliveries • {Company.TotalMilesDriven:N0} mi • {(Company.TotalDeliveries > 0 ? 100.0 * Company.DamageFreeDeliveries / Company.TotalDeliveries : 0):F0}% damage-free • " +
-        $"avg score {Company.AverageDriverRating:F0} • {(Company.LifetimeAverageMpg > 0 ? $"{Company.LifetimeAverageMpg:F1} MPG" : "MPG --")} • income {Company.RecordedRevenue:N0} (in-game) • {Company.VisitedCities.Count} cities";
+        $"{Company.TotalDeliveries} deliveries • {Units.DistText(Company.TotalMilesDriven)} • {(Company.TotalDeliveries > 0 ? 100.0 * Company.DamageFreeDeliveries / Company.TotalDeliveries : 0):F0}% damage-free • " +
+        $"avg score {Company.AverageDriverRating:F0} • {Units.EconomyText(Company.LifetimeAverageMpg)} • income {Units.Money((long)Company.RecordedRevenue, _current.GameId)}{(Company.RecordedFines > 0 ? $", fines {Units.Money(Company.RecordedFines, _current.GameId)}" : "")} (in-game) • {Company.VisitedCities.Count} cities";
 
     /// <summary>Raised when a voice command asks to mute/unmute (the UI owns the speaker).</summary>
     public event EventHandler<bool>? MuteRequested;
@@ -205,6 +232,7 @@ public sealed partial class MainDashboardViewModel
 
     private void InitFeatures()
     {
+        InitGameEvents();
         lock (_tripsLock) _allTrips.AddRange(TripHistory);
         _trips.StateChanged += (_, state) =>
         {
@@ -286,7 +314,7 @@ public sealed partial class MainDashboardViewModel
         foreach (var i in insights) Insights.Add(i);
         TruckEconomyRows.Clear();
         foreach (var (truck, e) in Career.TruckEconomy.OrderByDescending(kv => kv.Value.Miles))
-            TruckEconomyRows.Add($"{truck}: {e.AverageMpg:F1} MPG over {e.Miles:N0} mi ({e.Trips} trips)");
+            TruckEconomyRows.Add($"{truck}: {Units.EconomyText(e.AverageMpg)} over {Units.DistText(e.Miles)} ({e.Trips} trips)");
         RefreshTrends();
         RaiseAll();
     }
@@ -343,14 +371,14 @@ public sealed partial class MainDashboardViewModel
                 break;
             case VoiceCommandKind.FuelReport:
                 Say(!s.HasFuelCapacity ? "Fuel data isn't available right now."
-                    : $"Fuel at {s.FuelPercent:F0} percent.{(s.EstimatedRangeMiles > 0 ? $" About {s.EstimatedRangeMiles:F0} miles of range." : "")}" +
+                    : $"Fuel at {s.FuelPercent:F0} percent.{(s.EstimatedRangeMiles > 0 ? $" About {Units.Dist(s.EstimatedRangeMiles):F0} {Units.DistWord} of range." : "")}" +
                       (s.NavigationDistanceRemainingMiles > 0 && s.EstimatedRangeMiles > 0
                           ? (s.EstimatedRangeMiles >= s.NavigationDistanceRemainingMiles * 1.15f ? " Enough to reach your destination at this rate." : " Not enough to reach your destination; plan a fuel stop.")
                           : ""));
                 break;
             case VoiceCommandKind.DistanceReport:
                 Say(s.NavigationDistanceRemainingMiles > 0
-                    ? $"{s.NavigationDistanceRemainingMiles:F0} miles to {(string.IsNullOrEmpty(s.DestinationCity) ? "your destination" : s.DestinationCity)}" +
+                    ? $"{Units.Dist(s.NavigationDistanceRemainingMiles):F0} {Units.DistWord} to {(string.IsNullOrEmpty(s.DestinationCity) ? "your destination" : s.DestinationCity)}" +
                       (s.NavigationTimeRemainingMinutes > 0 ? $", about {(int)(s.NavigationTimeRemainingMinutes / 60)} hours {(int)s.NavigationTimeRemainingMinutes % 60} minutes by the navigation estimate." : ".")
                     : "No route is set in the game's navigation right now.");
                 break;

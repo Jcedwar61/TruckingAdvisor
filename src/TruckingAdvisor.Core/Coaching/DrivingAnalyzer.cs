@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Interfaces;
 using TruckingAdvisor.Shared.Models;
@@ -58,7 +59,7 @@ public sealed class DrivingAnalyzer : IDrivingAnalyzer
                 Intensity = CriticalAirPressurePsi - current.AirPressurePsi,
                 LocationState = current.CurrentState,
                 LocationCity = current.CurrentCity,
-                AdvisoryMessage = $"Brake air pressure is critically low at {current.AirPressurePsi:F0} PSI. Pull over safely and build air pressure."
+                AdvisoryMessage = $"Brake air pressure is critically low at {Units.PressureText(current.AirPressurePsi)}. Pull over safely and build air pressure."
             }, TimeSpan.FromSeconds(20));
         }
 
@@ -72,7 +73,7 @@ public sealed class DrivingAnalyzer : IDrivingAnalyzer
                 Intensity = current.WaterTempFahrenheit,
                 LocationState = current.CurrentState,
                 LocationCity = current.CurrentCity,
-                AdvisoryMessage = $"Engine coolant temperature is running hot at {current.WaterTempFahrenheit:F0}°F. Ease off the throttle."
+                AdvisoryMessage = $"Engine coolant temperature is running hot at {Units.TempText(current.WaterTempFahrenheit)}. Ease off the throttle."
             }, TimeSpan.FromSeconds(30));
         }
 
@@ -110,9 +111,9 @@ public sealed class DrivingAnalyzer : IDrivingAnalyzer
             {
                 string message = severity switch
                 {
-                    SpeedingSeverity.GentleAdvisory => $"Easy there, driver. You're creeping about {overLimit:F0} over the posted {current.SpeedLimitMph:F0} limit.",
-                    SpeedingSeverity.ModerateWarning => $"Easy there, driver. You're running about {overLimit:F0} over the limit.",
-                    SpeedingSeverity.SeriousWarning => $"Slow it down, driver! You're {overLimit:F0} MPH over the {current.SpeedLimitMph:F0} MPH limit—DOT won't let that slide.",
+                    SpeedingSeverity.GentleAdvisory => $"Easy there, driver. You're creeping about {Units.Speed(overLimit):F0} over the posted {Units.Speed(current.SpeedLimitMph):F0} limit.",
+                    SpeedingSeverity.ModerateWarning => $"Easy there, driver. You're running about {Units.Speed(overLimit):F0} over the limit.",
+                    SpeedingSeverity.SeriousWarning => $"Slow it down, driver! You're {Units.Speed(overLimit):F0} {Units.SpeedUnit} over the {Units.Speed(current.SpeedLimitMph):F0} {Units.SpeedUnit} limit—DOT won't let that slide.",
                     _ => string.Empty
                 };
 

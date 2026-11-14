@@ -1,6 +1,6 @@
 {
   "version": "2.2.0",
-  "notes": "TruckingAdvisor reads the shared-memory layout of RenCloud/scs-sdk-plugin revision 12 (V.1.12.x). Other plugins or versions use different layouts and are not installed automatically. Set sha256 once the release asset hash has been verified; until then the installer shows the hash and asks the user to confirm.",
+  "notes": "TruckingAdvisor reads the shared-memory layout of RenCloud/scs-sdk-plugin revision 12 (V.1.12.x). Other plugins or versions use different layouts and are not installed automatically. sha256 is the official release asset (release_v_1_12_1.zip), checked by CI against GitHub on every build; a download that does not match is refused.",
   "plugins": [
     {
       "id": "scs-sdk-plugin",
@@ -8,7 +8,7 @@
       "ownerRepo": "RenCloud/scs-sdk-plugin",
       "releaseTag": "V.1.12.1",
       "releasesUrl": "https://github.com/RenCloud/scs-sdk-plugin/releases/tag/V.1.12.1",
-      "sha256": "",
+      "sha256": "3679ec81407de0ebfb45241e496e2ad31e30a6e409ef0246fc86195bfee9c9a5",
       "targetDll": "scs-telemetry.dll",
       "installRelativePath": "bin\\win_x64\\plugins\\scs-telemetry.dll",
       "sharedMemoryMapName": "Local\\SCSTelemetry",

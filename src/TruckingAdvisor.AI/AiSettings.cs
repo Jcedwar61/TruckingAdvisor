@@ -97,6 +97,14 @@ public sealed class AiSettings
     /// <summary>HUD rows to show, in order.</summary>
     public List<string> HudRows { get; set; } = new(DefaultHudRows);
     public double HudOpacity { get; set; } = 0.85;
+    /// <summary>The player closed the getting-started checklist.</summary>
+    public bool SetupChecklistDismissed { get; set; }
+
+    /// <summary>Auto = miles in ATS, kilometres in ETS2.</summary>
+    public TruckingAdvisor.Shared.UnitPreference Units { get; set; } = TruckingAdvisor.Shared.UnitPreference.Auto;
+    /// <summary>The co-driver says fines out loud (tolls and fares are never spoken).</summary>
+    public bool AnnounceFines { get; set; } = true;
+
     // Updates.
     /// <summary>Check GitHub for new versions in the background and download them (never installs mid-drive).</summary>
     public bool AutoUpdate { get; set; } = true;
@@ -111,7 +119,7 @@ public sealed class AiSettings
     public static readonly string[] DefaultWidgetOrder = { "Gauges", "Delivery", "Advisories", "Trend", "Report" };
     /// <summary>Individual gauge cards inside the Gauges widget (can be hidden too).</summary>
     public static readonly string[] GaugeCards = { "Speed", "Engine", "Fuel", "Score" };
-    public static readonly string[] AllHudRows = { "Speed", "Limit", "Fuel", "Range", "Remaining", "Score", "Location", "Grade", "Radio" };
+    public static readonly string[] AllHudRows = { "Speed", "Limit", "Fuel", "Range", "Remaining", "Score", "Location", "Grade", "Radio", "Map" };
     public static readonly string[] DefaultHudRows = { "Speed", "Limit", "Fuel", "Remaining", "Radio" };
 
     public static string DefaultPath => Path.Combine(

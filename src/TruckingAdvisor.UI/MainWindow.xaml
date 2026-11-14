@@ -2,12 +2,14 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:TruckingAdvisor.UI.Controls"
+        xmlns:local="clr-namespace:TruckingAdvisor.UI"
         Title="TruckingAdvisor — ATS Telemetry, Driving Coach &amp; AI CB Radio"
         Icon="Assets/TruckingAdvisor.ico"
         Width="1380" Height="880" MinWidth="900" MinHeight="600" ResizeMode="CanResize"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <local:TripFactsConverter x:Key="TripFacts"/>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
             <Setter Property="CornerRadius" Value="8"/>
@@ -91,6 +93,9 @@
                                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
                                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
                                     <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Click="BtnCheckUpdates_Click"/>
+                                    <Separator Margin="0,4" Background="{DynamicResource ButtonBrush}"/>
+                                    <Button x:Name="BtnRecord" Content="Record a Session" Click="BtnRecord_Click" ToolTip="Save telemetry to a file for a bug report"/>
+                                    <Button x:Name="BtnDiagnostics" Content="Copy Diagnostics" Click="BtnDiagnostics_Click" ToolTip="Copy version, status and the recent log for a bug report"/>
                                 </StackPanel>
                             </Border>
                         </Popup>
@@ -113,6 +118,44 @@
                 </Style>
             </Border.Style>
             <TextBlock Text="DEMO MODE — these numbers are generated for testing and are not from American Truck Simulator. Demo trips are never saved." FontWeight="Bold"/>
+        </Border>
+
+        <!-- Getting started: hides itself once every step is done, or when closed -->
+        <Border CornerRadius="8" Padding="14,8" Margin="0,0,0,10" Background="{DynamicResource CardBrush}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowSetupChecklist}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="✕" Padding="8,2" VerticalAlignment="Top" Click="BtnDismissSetup_Click" ToolTip="Hide the checklist"/>
+                <TextBlock DockPanel.Dock="Top" Text="GETTING STARTED" Style="{StaticResource Label}" FontWeight="Bold" Margin="0,0,0,4"/>
+                <ItemsControl ItemsSource="{Binding SetupSteps}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,18,2" ToolTip="{Binding Hint}">
+                                <TextBlock x:Name="M" Text="{Binding Mark}" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="T" Text="{Binding Text}" Foreground="{DynamicResource TextBrush}"/>
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Done}" Value="True">
+                                    <Setter TargetName="M" Property="Foreground" Value="{DynamicResource GoodBrush}"/>
+                                    <Setter TargetName="T" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    <Setter TargetName="T" Property="TextDecorations" Value="Strikethrough"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
         </Border>
 
         <!-- Update banner: only when a new version is downloaded and verified. Never spoken, never interrupts. -->
@@ -187,7 +230,7 @@
                     <UniformGrid x:Name="WGauges" Columns="4" Margin="0,0,0,10">
                         <Border x:Name="GSpeed" Style="{StaticResource Card}" Margin="0,0,6,0">
                             <StackPanel>
-                                <c:RadialGauge Title="SPEED" Unit="MPH" Maximum="100" MajorStep="20"
+                                <c:RadialGauge Title="SPEED" Unit="{Binding SpeedUnitText}" Maximum="{Binding SpeedGaugeMax}" MajorStep="20"
                                                Value="{Binding SpeedValue, Mode=OneWay}" Marker="{Binding SpeedLimitValue, Mode=OneWay}"
                                                ValueText="{Binding SpeedText, Mode=OneWay}" IsAlert="{Binding IsSpeeding, Mode=OneWay}"
                                                ValueBrush="{DynamicResource AccentBrush}" AlertBrush="{DynamicResource BadBrush}"
@@ -451,7 +494,7 @@
                                 </Border>
                                 <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="MILES" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMilesLabel}" Style="{StaticResource Label}"/>
                                         <TextBlock Text="{Binding StatMiles, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
                                     </StackPanel>
                                 </Border>
@@ -469,7 +512,7 @@
                                 </Border>
                                 <Border Style="{StaticResource Card}" Margin="0,0,8,8" Background="{DynamicResource BgBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="LIFETIME MPG" Style="{StaticResource Label}"/>
+                                        <TextBlock Text="{Binding StatMpgLabel}" Style="{StaticResource Label}"/>
                                         <TextBlock Text="{Binding StatMpg, Mode=OneWay}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                     </StackPanel>
                                 </Border>
@@ -617,13 +660,13 @@
                         <c:TrendChart Title="Driver score (0-100)" Values="{Binding ScoreTrend}" Height="200" LineBrush="{DynamicResource GoodBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="Fuel economy (MPG)" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MpgTrendTitle}" Values="{Binding MpgTrend}" Format="F1" Height="200" LineBrush="{DynamicResource AccentBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,0,6,10">
-                        <c:TrendChart Title="Coaching events per 100 miles" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding IncidentTrendTitle}" Values="{Binding IncidentTrend}" Format="F1" Height="200" LineBrush="{DynamicResource BadBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="6,0,0,10">
-                        <c:TrendChart Title="Trip distance (miles)" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}"/>
+                        <c:TrendChart Title="{Binding MilesTrendTitle}" Values="{Binding MilesTrend}" Height="200" LineBrush="{DynamicResource MutedBrush}" TextBrush="{DynamicResource MutedBrush}"/>
                     </Border>
                 </UniformGrid>
             </ScrollViewer>
@@ -648,12 +691,37 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Margin="0,3">
-                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding DistanceMiles, Mode=OneWay, StringFormat={}{0:F0} mi}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay}" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
+                                <Run Text="{Binding StartedAt, Mode=OneWay, StringFormat=yyyy-MM-dd}"/><Run Text="  "/><Run Text="{Binding Cargo, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="  "/><Run Text="{Binding Origin, Mode=OneWay}"/><Run Text=" -> "/><Run Text="{Binding Destination, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding Mode=OneWay, Converter={StaticResource TripFacts}}"/><Run Text="  •  score "/><Run Text="{Binding ScoreBreakdown.FinalScore, Mode=OneWay}" Foreground="{DynamicResource GoodBrush}"/><Run Text="  •  "/><Run Text="{Binding State, Mode=OneWay}"/>
                             </TextBlock>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
+        </TabItem>
+
+        <!-- Map: draws itself from the roads you drive (each game separately) -->
+        <TabItem Header="Map">
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="−" Click="BtnMapZoomOut_Click" Style="{StaticResource TopButton}" ToolTip="Zoom out"/>
+                            <Button Content="+" Click="BtnMapZoomIn_Click" Style="{StaticResource TopButton}" ToolTip="Zoom in"/>
+                            <Button Content="Follow truck" Click="BtnMapFollow_Click" Style="{StaticResource TopButton}"/>
+                            <Button Content="Show everything" Click="BtnMapAll_Click" Style="{StaticResource TopButton}"/>
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Map.Summary}" FontWeight="SemiBold"/>
+                            <TextBlock Style="{StaticResource Label}" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Built from your own driving: every road you drive is added, in any DLC region or map mod. Cities appear once you've picked up or delivered there. Nothing is taken from the game's files."/>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border Background="{DynamicResource BgBrush}" CornerRadius="6">
+                        <c:MapView x:Name="BigMap" Snapshot="{Binding Map}" RoadBrush="{DynamicResource MutedBrush}" AccentBrush="{DynamicResource AccentBrush}"
+                                   TextBrush="{DynamicResource TextBrush}" MutedBrush="{DynamicResource MutedBrush}" GoodBrush="{DynamicResource GoodBrush}"/>
+                    </Border>
+                </DockPanel>
+            </Border>
         </TabItem>
         </TabControl>
     </Grid>

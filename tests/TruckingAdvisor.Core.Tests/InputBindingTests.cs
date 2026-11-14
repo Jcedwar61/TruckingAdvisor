@@ -168,3 +168,34 @@ public class InputBindingTests
         Assert.Equal("G29 Racing Wheel: D-pad Left", Wheel(InputBinding.PovBase + 3).Display);
     }
 }
+
+/// <summary>Units is a global setting, so these run one at a time and always switch back to imperial.</summary>
+[Collection("Units")]
+public class UnitsTests
+{
+    [Fact]
+    public void Metric_ConvertsEveryKind_AndAutoFollowsTheGame()
+    {
+        try
+        {
+            TruckingAdvisor.Shared.Units.Metric = true;
+            Assert.Equal(100, TruckingAdvisor.Shared.Units.Speed(62.137), 1);
+            Assert.Equal("161 km", TruckingAdvisor.Shared.Units.DistText(100));
+            Assert.Equal(39.2, TruckingAdvisor.Shared.Units.Economy(6.0), 1); // L/100 km
+            Assert.EndsWith("L/100 km", TruckingAdvisor.Shared.Units.EconomyText(6.0));
+            Assert.EndsWith(" t", TruckingAdvisor.Shared.Units.WeightText(40000)); // 18.1 t
+            Assert.Equal("90°C", TruckingAdvisor.Shared.Units.TempText(194));
+            Assert.EndsWith("bar", TruckingAdvisor.Shared.Units.PressureText(118));
+            Assert.StartsWith("€", TruckingAdvisor.Shared.Units.Money(12400, 1));
+        }
+        finally { TruckingAdvisor.Shared.Units.Metric = false; }
+
+        Assert.Equal("100 mi", TruckingAdvisor.Shared.Units.DistText(100));
+        Assert.StartsWith("$", TruckingAdvisor.Shared.Units.Money(12400, 2));
+        Assert.StartsWith("-$", TruckingAdvisor.Shared.Units.Money(-50, 2));
+        Assert.True(TruckingAdvisor.Shared.Units.Resolve(TruckingAdvisor.Shared.UnitPreference.Auto, 1));   // ETS2
+        Assert.False(TruckingAdvisor.Shared.Units.Resolve(TruckingAdvisor.Shared.UnitPreference.Auto, 2));  // ATS
+        Assert.False(TruckingAdvisor.Shared.Units.Resolve(TruckingAdvisor.Shared.UnitPreference.Imperial, 1));
+        Assert.True(TruckingAdvisor.Shared.Units.Resolve(TruckingAdvisor.Shared.UnitPreference.Metric, 2));
+    }
+}

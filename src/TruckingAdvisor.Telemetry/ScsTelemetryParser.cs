@@ -119,6 +119,23 @@ public static class ScsTelemetryParser
             SpecialJob = Bool(m, L.SpecialJob),
             JobDeliveredFlag = Bool(m, L.JobDelivered),
             JobCancelledFlag = Bool(m, L.JobCancelled),
+            FinedFlag = Bool(m, L.Fined),
+            TollgateFlag = Bool(m, L.Tollgate),
+            FerryFlag = Bool(m, L.Ferry),
+            TrainFlag = Bool(m, L.Train),
+            FineAmount = I64(m, L.FineAmount),
+            FineOffence = Str(m, L.FineOffence, L.FineOffenceSize),
+            TollAmount = I64(m, L.TollgatePayAmount),
+            FerryAmount = I64(m, L.FerryPayAmount),
+            FerryRoute = Route(Str(m, L.FerrySourceName), Str(m, L.FerryTargetName)),
+            TrainAmount = I64(m, L.TrainPayAmount),
+            TrainRoute = Route(Str(m, L.TrainSourceName), Str(m, L.TrainTargetName)),
+            DeliveredRevenue = I64(m, L.JobDeliveredRevenue),
+            DeliveredEarnedXp = I32(m, L.JobDeliveredEarnedXp),
+            DeliveredDistanceMiles = F32(m, L.JobDeliveredDistanceKm) * KmToMiles,
+            DeliveredCargoDamage = Clamp01(F32(m, L.JobDeliveredCargoDamage)),
+            DeliveredWithAutoPark = Bool(m, L.JobDeliveredAutoparkUsed),
+            CancelledPenalty = I64(m, L.JobCancelledPenalty),
 
             WorldX = F64(m, L.CoordinateX),
             WorldY = F64(m, L.CoordinateY),
@@ -136,6 +153,9 @@ public static class ScsTelemetryParser
     private static bool Bool(ReadOnlySpan<byte> m, int o) => m[o] != 0;
     private static uint U32(ReadOnlySpan<byte> m, int o) => BinaryPrimitives.ReadUInt32LittleEndian(m.Slice(o, 4));
     private static int I32(ReadOnlySpan<byte> m, int o) => BinaryPrimitives.ReadInt32LittleEndian(m.Slice(o, 4));
+    private static long I64(ReadOnlySpan<byte> m, int o) => BinaryPrimitives.ReadInt64LittleEndian(m.Slice(o, 8));
+    private static string Route(string from, string to) =>
+        from.Length > 0 && to.Length > 0 ? $"{from} to {to}" : from.Length > 0 ? from : to;
     private static ulong U64(ReadOnlySpan<byte> m, int o) => BinaryPrimitives.ReadUInt64LittleEndian(m.Slice(o, 8));
     private static float F32(ReadOnlySpan<byte> m, int o) => Finite(BinaryPrimitives.ReadSingleLittleEndian(m.Slice(o, 4)));
     private static double F64(ReadOnlySpan<byte> m, int o)
@@ -146,9 +166,9 @@ public static class ScsTelemetryParser
     private static float Finite(float v) => float.IsFinite(v) ? v : 0f;
     private static float Clamp01(float v) => Math.Clamp(v, 0f, 1f);
 
-    private static string Str(ReadOnlySpan<byte> m, int o)
+    private static string Str(ReadOnlySpan<byte> m, int o, int size = L.StringSize)
     {
-        var bytes = m.Slice(o, L.StringSize);
+        var bytes = m.Slice(o, size);
         int nul = bytes.IndexOf((byte)0);
         if (nul >= 0) bytes = bytes[..nul];
         return Encoding.UTF8.GetString(bytes).Trim();

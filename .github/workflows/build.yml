@@ -23,7 +23,7 @@ jobs:
       id-token: write       # only used for release attestation on tags
       attestations: write
     env:
-      VERSION: 2.9.0
+      VERSION: 3.0.0
     steps:
       - uses: actions/checkout@v4
 
@@ -89,6 +89,22 @@ jobs:
           Start-Sleep -Seconds 5   # the NSIS uninstaller finishes from a temp copy
           if (Test-Path "$dir\TruckingAdvisor.exe") { throw "Uninstaller left the app behind" }
 
+      - name: Telemetry plugin checksum (pinned value must match the official release)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $rel = gh api repos/RenCloud/scs-sdk-plugin/releases/tags/V.1.12.1 | ConvertFrom-Json
+          $asset = $rel.assets | Where-Object { $_.name -match '\.(zip|dll)$' } | Select-Object -First 1
+          if (-not $asset) { throw "No plugin asset found on the V.1.12.1 release" }
+          $file = Join-Path $env:RUNNER_TEMP $asset.name
+          Invoke-WebRequest $asset.browser_download_url -OutFile $file
+          $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          "$sha  $($asset.name)" | Set-Content "publish\screenshots\plugin-sha256.txt"
+          $pinned = (Select-String -Path src\TruckingAdvisor.Telemetry\GitHubPluginInstallerService.cs -Pattern 'ExpectedAssetSha256: "([0-9a-f]*)"').Matches[0].Groups[1].Value
+          Write-Host "Official asset $($asset.name): $sha (pinned: '$pinned')"
+          if ($pinned -and $pinned -ne $sha) { throw "Pinned plugin checksum does not match the official release asset" }
+
       - name: Checksums
         shell: pwsh
         run: |
@@ -106,7 +122,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: publish/screenshots/*.png
+          path: |
+            publish/screenshots/*.png
+            publish/screenshots/*.txt
 
       - name: Attest build provenance (release tags only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -123,7 +141,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: 2.9.0
+      VERSION: 3.0.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

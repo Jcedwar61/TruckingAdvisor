@@ -1,4 +1,6 @@
+using TruckingAdvisor.Shared;
 using System.IO.MemoryMappedFiles;
+using TruckingAdvisor.Shared.Diagnostics;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Interfaces;
 using TruckingAdvisor.Shared.Models;
@@ -33,6 +35,9 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
     private DateTimeOffset _lastSimTimeChange = DateTimeOffset.MinValue;
     private readonly DerivedTelemetryCalculator _derived = new();
     private DemoTelemetryGenerator? _demo;
+    private readonly string? _replayFile;
+    private TelemetryRecorder? _recorder;
+    private int _recordSkip;
 
     public event EventHandler<AtsTelemetrySnapshot>? TelemetryUpdated;
     public event EventHandler<ConnectionState>? ConnectionStateChanged;
@@ -43,17 +48,73 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
     /// <summary>Human-readable reason for the current state (shown in the UI).</summary>
     public string StatusDetail { get; private set; } = "Not started";
 
-    public AtsMemoryMappedTelemetryProvider(string mapName = DefaultMapName, bool enableDemoMode = false)
+    /// <param name="replayFile">A session recording to play back instead of reading the game (for reproducing bugs).</param>
+    public AtsMemoryMappedTelemetryProvider(string mapName = DefaultMapName, bool enableDemoMode = false, string? replayFile = null)
     {
         _mapName = mapName;
         _enableDemoMode = enableDemoMode;
+        _replayFile = replayFile;
+    }
+
+    // ---- Session recording ----
+
+    public bool IsRecording => _recorder is { Full: false };
+    public string? RecordingPath => _recorder?.Path;
+    public int RecordedFrames => _recorder?.Frames ?? 0;
+
+    /// <summary>Saves raw telemetry (about 5 frames a second, compressed) until stopped or 200 MB.</summary>
+    public void StartRecording(string path)
+    {
+        StopRecording();
+        _recorder = new TelemetryRecorder(path);
+        AppLog.Info($"Session recording started: {path}");
+    }
+
+    public string? StopRecording()
+    {
+        var r = Interlocked.Exchange(ref _recorder, null);
+        if (r is null) return null;
+        r.Dispose();
+        AppLog.Info($"Session recording stopped: {r.Frames} frames");
+        return r.Path;
+    }
+
+    private async Task ReplayLoopAsync(string file, CancellationToken ct)
+    {
+        UpdateState(ConnectionState.Connecting, "Loading recording...");
+        DateTimeOffset? previous = null;
+        try
+        {
+            foreach (var (time, block) in TelemetryRecorder.Read(file))
+            {
+                if (ct.IsCancellationRequested) return;
+                if (previous is { } p)
+                {
+                    var gap = time - p;
+                    await Task.Delay(gap < TimeSpan.Zero ? TimeSpan.Zero : gap > TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : gap, ct);
+                }
+                previous = time;
+                if (ScsTelemetryParser.TryParse(block, DateTimeOffset.UtcNow, out var snapshot) != ParseResult.Ok) continue;
+                UpdateState(snapshot.ConnectionState, "REPLAY of a recorded session");
+                Publish(_derived.Enrich(snapshot, _previousSnapshot));
+            }
+            UpdateState(ConnectionState.Disconnected, "Replay finished");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            AppLog.Error("Replay failed", ex);
+            UpdateState(ConnectionState.Disconnected, $"Could not replay the recording: {ex.Message}");
+        }
     }
 
     public void Start()
     {
         if (_pollingTask is { IsCompleted: false }) return;
         _cts = new CancellationTokenSource();
-        _pollingTask = Task.Run(() => PollLoopAsync(_cts.Token));
+        _pollingTask = _replayFile is not null
+            ? Task.Run(() => ReplayLoopAsync(_replayFile, _cts.Token))
+            : Task.Run(() => PollLoopAsync(_cts.Token));
     }
 
     public void Stop()
@@ -98,6 +159,8 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
         }
     }
 
+    private DateTimeOffset _lastHandlerErrorLogged = DateTimeOffset.MinValue;
+
     private void Publish(AtsTelemetrySnapshot snapshot)
     {
         _previousSnapshot = snapshot;
@@ -107,7 +170,16 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
         foreach (EventHandler<AtsTelemetrySnapshot> handler in handlers.GetInvocationList())
         {
             // One faulty subscriber must not stop telemetry for the others.
-            try { handler(this, snapshot); } catch { /* subscriber bug; keep polling */ }
+            try { handler(this, snapshot); }
+            catch (Exception ex)
+            {
+                // Subscriber bug: keep polling, but leave a trace (once a minute at most).
+                if ((DateTimeOffset.UtcNow - _lastHandlerErrorLogged).TotalSeconds > 60)
+                {
+                    _lastHandlerErrorLogged = DateTimeOffset.UtcNow;
+                    AppLog.Error("A telemetry handler failed", ex);
+                }
+            }
         }
     }
 
@@ -137,6 +209,11 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (_recorder is { } recorder && ++_recordSkip % 4 == 0)
+        {
+            try { recorder.Write(now, _buffer); }
+            catch (Exception ex) { AppLog.Error("Session recording failed", ex); StopRecording(); }
+        }
         switch (ScsTelemetryParser.TryParse(_buffer, now, out snapshot))
         {
             case ParseResult.Ok:
@@ -195,6 +272,7 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
 
     private void UpdateState(ConnectionState newState, string detail)
     {
+        if (StatusDetail != detail) AppLog.Info($"Telemetry: {detail}");
         StatusDetail = detail;
         if (CurrentState == newState) return;
         CurrentState = newState;
@@ -203,6 +281,7 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
 
     public void Dispose()
     {
+        StopRecording();
         Stop();
         _cts?.Dispose();
     }
@@ -276,6 +355,7 @@ public sealed class DerivedTelemetryCalculator
 /// </summary>
 public sealed class DemoTelemetryGenerator
 {
+
     private readonly DateTimeOffset _start = DateTimeOffset.UtcNow;
 
     public AtsTelemetrySnapshot Next(DateTimeOffset now)
@@ -318,7 +398,9 @@ public sealed class DemoTelemetryGenerator
             NavigationDistanceRemainingMiles = remaining,
             NavigationTimeRemainingMinutes = remaining / 59f * 60f,
             OdometerMiles = 1000f + miles,
-            WorldX = seconds * 29.0,
+            WorldX = DemoRoute.X(seconds),
+            WorldZ = DemoRoute.Z(seconds),
+            HeadingDegrees = DemoRoute.Heading(seconds),
             GameTimeMinutes = 23 * 60 + 45 + (uint)(seconds / 3.0),
             TimeScale = 19f,
             NextRestStopGameMinutes = 310

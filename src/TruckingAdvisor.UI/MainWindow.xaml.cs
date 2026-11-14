@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -57,7 +58,9 @@ public partial class MainWindow : Window
         bool demo = args.Contains("--demo", StringComparer.OrdinalIgnoreCase);
         int shot = Array.FindIndex(args, a => a.Equals("--screenshot", StringComparison.OrdinalIgnoreCase));
         if (shot >= 0 && shot + 1 < args.Length) _screenshotDir = args[shot + 1];
-        _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo);
+        int replay = Array.FindIndex(args, a => a.Equals("--replay", StringComparison.OrdinalIgnoreCase));
+        string? replayFile = replay >= 0 && replay + 1 < args.Length ? args[replay + 1] : null;
+        _telemetry = new AtsMemoryMappedTelemetryProvider(enableDemoMode: demo, replayFile: replayFile);
 
         _aiSettings = AiSettings.Load();
         _openAi = new OpenAiClientService(_aiSettings, new AiUsageTracker(AiUsageTracker.DefaultPath));
@@ -82,6 +85,7 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        _viewModel.IsReplay = replayFile is not null;
         // Keep the newest radio message in view, like a chat app.
         _viewModel.RadioMessages.CollectionChanged += (_, _) =>
         {
@@ -151,7 +155,7 @@ public partial class MainWindow : Window
             _cbRadio.BeginPushToTalk();
             await Task.WhenAny(_cbRadio.EndPushToTalkAsync("Breaker one-nine, Big Red, you got your ears on?"), Task.Delay(5000));
             var root = (FrameworkElement)Content;
-            string[] names = { "dashboard", "career", "contacts", "statistics", "trips" };
+            string[] names = { "dashboard", "career", "contacts", "statistics", "trips", "map" };
             for (int i = 0; i < Tabs.Items.Count && i < names.Length; i++)
             {
                 Tabs.SelectedIndex = i;
@@ -247,10 +251,15 @@ public partial class MainWindow : Window
         catch (Exception ex) { games = Array.Empty<GameInstall>(); Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = $"Game search failed: {ex.Message}"); return; }
 
         string text = games.Count == 0
-            ? "American Truck Simulator not found. Use \"Install Telemetry Plugin\" to pick the game folder."
+            ? "ATS / ETS2 not found. Use More > Install Telemetry Plugin to pick the game folder."
             : string.Join("   ", games.Select(g =>
                 $"{g.Name}: {g.InstallFolder} - plugin {(File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)) ? "installed" : "NOT installed")}"));
-        Dispatcher.BeginInvoke(() => _viewModel.GameStatusText = text);
+        bool pluginOk = games.Any(g => File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)));
+        Dispatcher.BeginInvoke(() =>
+        {
+            _viewModel.GameStatusText = text;
+            _viewModel.SetSetupStatus(gameFound: games.Count > 0, pluginInstalled: pluginOk);
+        });
 
         // First run: the game is there but can't send data yet. Offer to fix it once.
         var missing = games.FirstOrDefault(g => !File.Exists(Path.Combine(g.PluginFolder, GitHubPluginInstallerService.RenCloudPlugin.TargetDllName)));
@@ -371,9 +380,9 @@ public partial class MainWindow : Window
     private static string FuelReport(AtsTelemetrySnapshot s)
     {
         if (!s.HasFuelCapacity) return "Fuel data isn't available right now.";
-        string range = s.EstimatedRangeMiles > 0 ? $" About {s.EstimatedRangeMiles:F0} miles of range." : string.Empty;
-        string mpg = s.HasFuelEconomy ? $" Averaging {s.AverageMpg:F1} miles per gallon." : string.Empty;
-        return $"Fuel at {s.FuelPercent:F0} percent, {s.FuelGallons:F0} gallons.{range}{mpg}";
+        string range = s.EstimatedRangeMiles > 0 ? $" About {Units.Dist(s.EstimatedRangeMiles):F0} {Units.DistWord} of range." : string.Empty;
+        string mpg = s.HasFuelEconomy ? $" Averaging {Units.Economy(s.AverageMpg):F1} {Units.EconomySpoken}." : string.Empty;
+        return $"Fuel at {s.FuelPercent:F0} percent, {Units.Vol(s.FuelGallons):F0} {Units.VolWord}.{range}{mpg}";
     }
 
     // ---- Buttons ----
@@ -411,6 +420,66 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BtnMapZoomIn_Click(object sender, RoutedEventArgs e) => BigMap.ZoomBy(1.5);
+    private void BtnMapZoomOut_Click(object sender, RoutedEventArgs e) => BigMap.ZoomBy(1 / 1.5);
+    private void BtnMapFollow_Click(object sender, RoutedEventArgs e) => BigMap.FollowTruck();
+    private void BtnMapAll_Click(object sender, RoutedEventArgs e) => BigMap.ShowAll();
+
+    // ---- Diagnostics ----
+
+    private static string RecordingsDir => Path.Combine(AppDataDir, "recordings");
+
+    /// <summary>Records raw telemetry to a file that can be sent with a bug report and replayed exactly.</summary>
+    private void BtnRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (_telemetry.IsRecording)
+        {
+            var path = _telemetry.StopRecording();
+            BtnRecord.Content = "Record a Session";
+            if (path is not null)
+            {
+                ShowNotice($"Recording saved: {Path.GetFileName(path)}");
+                try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true }); } catch { }
+            }
+            return;
+        }
+        if (MessageBox.Show(this,
+                "Record what the game's telemetry plugin reports (speed, truck, cargo, cities, positions...) to a file, to attach to a bug report.\n\n" +
+                "It holds no personal data and no audio. Stop it from the same menu; it also stops on its own at 200 MB.",
+                "Record a session", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK) return;
+        string file = Path.Combine(RecordingsDir, $"session-{DateTime.Now:yyyyMMdd-HHmmss}.tarec");
+        try
+        {
+            _telemetry.StartRecording(file);
+            BtnRecord.Content = "Stop Recording";
+            ShowNotice("Recording the session. More > Stop Recording when done.");
+        }
+        catch (Exception ex) { ShowNotice($"Couldn't start recording: {ex.Message}"); }
+    }
+
+    /// <summary>Version, Windows, connection state, settings that matter and the recent log, with personal details removed.</summary>
+    private void BtnDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var s = _telemetry.LatestSnapshot;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"TruckingAdvisor {AppVersion.ToString(3)} on {Environment.OSVersion.VersionString} ({(Environment.Is64BitProcess ? "64" : "32")}-bit)");
+        sb.AppendLine($"Telemetry: {_telemetry.CurrentState} - {_telemetry.StatusDetail}");
+        sb.AppendLine($"Game: {(s.GameId == 1 ? "ETS2" : s.GameId == 2 ? "ATS" : "unknown")}, plugin revision {s.PluginRevision}, demo {s.IsDemoData}");
+        sb.AppendLine($"AI: {(_aiSettings.GlobalAiEnabled ? "on" : "off")}, voice {_aiSettings.VoicePipeline}, mic {(_aiSettings.MicrophoneEnabled ? "on" : "off")}, units {_aiSettings.Units}");
+        sb.AppendLine($"Controllers: {string.Join(", ", _controllers?.DeviceNames ?? Array.Empty<string>())}");
+        sb.AppendLine();
+        sb.AppendLine("Recent log:");
+        foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(line);
+        try
+        {
+            Clipboard.SetText(TruckingAdvisor.Shared.Diagnostics.AppLog.Scrub(sb.ToString()));
+            ShowNotice("Diagnostics copied to the clipboard (no keys, user name or personal paths). Paste them into a bug report.");
+        }
+        catch (Exception ex) { ShowNotice($"Couldn't copy diagnostics: {ex.Message}"); }
+    }
+
+    private void BtnDismissSetup_Click(object sender, RoutedEventArgs e) => _viewModel.DismissSetupChecklist();
+
     private void BtnQuiet_Click(object sender, RoutedEventArgs e) => _viewModel.ToggleQuiet();
 
     private void BtnDismissBanner_Click(object sender, RoutedEventArgs e) => _viewModel.DismissBanner();
@@ -433,6 +502,7 @@ public partial class MainWindow : Window
         {
             _db.SaveCompany(_company);
             ApplyAudioSettings();
+            _viewModel.RefreshUnits();
         }
     }
 

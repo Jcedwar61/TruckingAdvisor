@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -30,10 +31,10 @@ public static class ReportCard
             p.Children.Add(T(value, 22, "#F8FAFC", bold: true));
             stats.Children.Add(p);
         }
-        Stat("Distance", $"{t.DistanceMiles.ToString("N0", inv)} mi");
+        Stat("Distance", Units.DistText(t.DistanceMiles));
         Stat("Driving time", $"{(int)t.DrivingDuration.TotalHours}h {t.DrivingDuration.Minutes:D2}m");
-        Stat("Fuel economy", t.AverageMpg > 0 ? $"{t.AverageMpg.ToString("F1", inv)} MPG" : "--");
-        Stat("Avg / max speed", $"{t.AverageSpeedMph:F0} / {t.MaxSpeedMph:F0} mph");
+        Stat("Fuel economy", t.AverageMpg > 0 ? Units.EconomyText(t.AverageMpg) : "--");
+        Stat("Avg / max speed", $"{Units.Speed(t.AverageSpeedMph):F0} / {Units.Speed(t.MaxSpeedMph):F0} {Units.SpeedUnit}");
         Stat("Speeding / hard brakes", $"{t.SpeedingIncidents} / {t.HarshBrakingIncidents}");
         Stat("Damage truck / trailer", $"{t.AddedTruckDamagePercent:F1}% / {t.AddedTrailerDamagePercent:F1}%");
 

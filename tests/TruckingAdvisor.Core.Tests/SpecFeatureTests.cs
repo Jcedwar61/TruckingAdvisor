@@ -363,7 +363,7 @@ public sealed class SpecFeatureTests
             Destination = i < 3 ? "Denver" : $"City {i}"
         }).ToList();
         var insights = InsightEngine.Generate(trips, career, "", T0.AddHours(1));
-        Assert.Contains(insights, x => x.Contains("up from 6.0 MPG"));
+        Assert.Contains(insights, x => x.Contains("improved from 6.0 MPG"));
         Assert.Contains(insights, x => x.Contains("3 deliveries to Denver"));
         Assert.Contains(insights, x => x.Contains("without damaging"));
     }

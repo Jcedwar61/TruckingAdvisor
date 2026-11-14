@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Globalization;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
@@ -61,10 +62,17 @@ public sealed class DispatcherService
         }
         if (trip.StartedMidDelivery) return; // no "new load" briefing for a job already underway
         var facts = new List<string> { $"New load assigned: {Or(trip.Cargo, "freight")}" };
-        if (trip.CargoWeightLbs > 0) facts.Add($"about {trip.CargoWeightLbs:N0} lbs");
+        if (trip.CargoWeightLbs > 0) facts.Add($"about {Units.WeightText(trip.CargoWeightLbs)}");
         if (!string.IsNullOrEmpty(trip.Destination)) facts.Add($"from {Or(trip.Origin, "the pickup")} to {trip.Destination}");
-        if (trip.PlannedDistanceMiles > 0) facts.Add($"{trip.PlannedDistanceMiles:N0} miles planned");
+        if (trip.PlannedDistanceMiles > 0) facts.Add($"{Units.Dist(trip.PlannedDistanceMiles):N0} {Units.DistWord} planned");
         Queue("briefing", string.Join(", ", facts) + ". Wish them a safe run.", important: false);
+    }
+
+    /// <summary>A sizeable fine during a load: dispatch may mention it once per trip (routine call, so caps and quiet periods apply).</summary>
+    public void OnFine(long amount, string offence, uint gameId)
+    {
+        if (amount < 500) return;
+        Once("fine", $"The driver was just fined {Units.Money(amount, gameId)} for {offence}. React briefly in character: sympathetic, a little wry, no lecture.", false);
     }
 
     public void OnTripFinished(DeliveryTripRecord trip)
@@ -73,7 +81,10 @@ public sealed class DispatcherService
         string facts = trip.State == DeliveryState.Completed
             ? $"Load delivered to {dest}. TruckingAdvisor driver score {trip.ScoreBreakdown.FinalScore} ({trip.ScoreBreakdown.RatingLabel})" +
               (trip.AddedTruckDamagePercent < 0.5f && trip.AddedTrailerDamagePercent < 0.5f ? ", no damage" : "") +
-              (trip.DeliveredOnTime == false ? ", but it arrived after the deadline" : "") + ". Thank them."
+              (trip.DeliveredOnTime == false ? ", but it arrived after the deadline" : "") +
+              (trip.PaidRevenue > 0 ? $". The game paid {Units.Money(trip.PaidRevenue, trip.GameId)} for it" : "") +
+              (trip.Fines > 0 ? $", and the driver picked up {Units.Money(trip.Fines, trip.GameId)} in fines on the way ({string.Join(", ", trip.FineOffences.Distinct())}); mention it lightly, without lecturing" : "") +
+              ". Thank them."
             : $"The job to {dest} ended without a delivery. Acknowledge it briefly and kindly.";
         lock (_sync)
         {
@@ -94,14 +105,14 @@ public sealed class DispatcherService
 
             // Approaching the destination.
             if (remaining is > 0 and <= 15)
-                Once("approaching", $"The driver is about {remaining:F0} miles from {dest}. Encourage them on the final stretch.", false);
+                Once("approaching", $"The driver is about {Units.Dist(remaining):F0} {Units.DistWord} from {dest}. Encourage them on the final stretch.", false);
 
             // Low fuel relative to the distance left.
             if (s.HasFuelCapacity && s.FuelPercent <= 20 && remaining > 0 &&
                 (s.EstimatedRangeMiles <= 0 || s.EstimatedRangeMiles < remaining * 1.1f))
             {
-                string range = s.EstimatedRangeMiles > 0 ? $", about {s.EstimatedRangeMiles:F0} miles of range" : "";
-                Once("fuel", $"Fuel is at {s.FuelPercent:F0}%{range}, with {remaining:F0} miles to {dest}. Suggest planning a fuel stop.", false);
+                string range = s.EstimatedRangeMiles > 0 ? $", about {Units.Dist(s.EstimatedRangeMiles):F0} {Units.DistWord} of range" : "";
+                Once("fuel", $"Fuel is at {s.FuelPercent:F0}%{range}, with {Units.Dist(remaining):F0} {Units.DistWord} to {dest}. Suggest planning a fuel stop.", false);
             }
 
             // Rest (re-arms after the driver has rested).
@@ -139,7 +150,7 @@ public sealed class DispatcherService
                 string eta = s.NavigationTimeRemainingMinutes > 0
                     ? $", about {(int)(s.NavigationTimeRemainingMinutes / 60)}h {(int)s.NavigationTimeRemainingMinutes % 60:D2}m by the navigation estimate"
                     : "";
-                string left = remaining > 0 ? $"{remaining:F0} miles left to {dest}{eta}" : $"still headed to {dest}";
+                string left = remaining > 0 ? $"{Units.Dist(remaining):F0} {Units.DistWord} left to {dest}{eta}" : $"still headed to {dest}";
                 Queue("checkin", $"Routine check-in: {left}. Ask how the truck is running.", false);
                 lock (_sync) _lastContact = now; // even if it ends up dropped, don't nag every second
             }

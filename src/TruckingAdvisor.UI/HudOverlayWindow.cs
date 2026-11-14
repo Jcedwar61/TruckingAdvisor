@@ -41,6 +41,7 @@ public sealed class HudOverlayWindow : Window
                 "Location" => Line("LocationText", 12, "#94A3B8"),
                 "Grade" => Line("GradeAheadText", 12, "#EF4444"),
                 "Radio" => Line("RadioStateText", 12, "#94A3B8"),
+                "Map" => MiniMap(),
                 _ => null
             };
             if (line is not null) _panel.Children.Add(line);
@@ -62,10 +63,20 @@ public sealed class HudOverlayWindow : Window
         trigger.Setters.Add(new Setter(TextBlock.ForegroundProperty, B("#EF4444")));
         style.Triggers.Add(trigger);
         speed.Style = style;
-        var unit = new TextBlock { Text = " MPH", FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
+        var unit = new TextBlock { FontSize = 13, Foreground = B("#94A3B8"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 8) };
+        unit.SetBinding(TextBlock.TextProperty, new Binding("SpeedUnitText") { StringFormat = " {0}" });
+        // Not only colour: an "OVER" badge appears while speeding (readable for colour-blind drivers).
+        var over = new Border
+        {
+            Background = B("#EF4444"), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 0, 4, 0),
+            Margin = new Thickness(6, 0, 0, 10), VerticalAlignment = VerticalAlignment.Bottom,
+            Child = new TextBlock { Text = "OVER", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Brushes.White }
+        };
+        over.SetBinding(UIElement.VisibilityProperty, new Binding("IsSpeeding") { Converter = new BooleanToVisibilityConverter() });
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(speed);
         row.Children.Add(unit);
+        row.Children.Add(over);
         return row;
     }
 
@@ -101,6 +112,24 @@ public sealed class HudOverlayWindow : Window
         grid.Children.Add(sign);
         grid.Children.Add(SpeedLine());
         return grid;
+    }
+
+    /// <summary>Mini-map that follows the truck (roads you've driven, cities, destination).</summary>
+    private static UIElement MiniMap()
+    {
+        var map = new TruckingAdvisor.UI.Controls.MapView
+        {
+            Compact = true,
+            Height = 150,
+            Margin = new Thickness(0, 6, 0, 2),
+            RoadBrush = B("#64748B"),
+            AccentBrush = B("#F59E0B"),
+            TextBrush = B("#F8FAFC"),
+            GoodBrush = B("#10B981"),
+            IsHitTestVisible = false
+        };
+        map.SetBinding(TruckingAdvisor.UI.Controls.MapView.SnapshotProperty, new Binding("Map"));
+        return new Border { CornerRadius = new CornerRadius(6), Background = B("#0F172A"), ClipToBounds = true, Child = map, Margin = new Thickness(0, 4, 0, 0) };
     }
 
     /// <summary>Fuel text with a thin bar underneath (amber; red under 15%).</summary>

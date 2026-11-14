@@ -1,3 +1,4 @@
+using TruckingAdvisor.Shared;
 using System.Collections.ObjectModel;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
@@ -29,7 +30,7 @@ public sealed partial class MainDashboardViewModel
     }
 
     /// <summary>Number on the HUD's speed-limit sign ("--" when the game reports no limit).</summary>
-    public string SpeedLimitNumber => HasData && _current.SpeedLimitMph > 0 ? $"{_current.SpeedLimitMph:F0}" : "--";
+    public string SpeedLimitNumber => HasData && _current.SpeedLimitMph > 0 ? $"{Units.Speed(_current.SpeedLimitMph):F0}" : "--";
 
     /// <summary>Runs a voice-command function from a bound key or button (volume, distance report, ...).</summary>
     public void RunCommand(TruckingAdvisor.AI.VoiceCommandKind kind) => HandleVoiceCommand(new TruckingAdvisor.AI.VoiceCommand(kind));
@@ -91,8 +92,12 @@ public sealed partial class MainDashboardViewModel
         if (trip.State == DeliveryState.Completed)
         {
             BannerTitle = $"Delivered: {trip.Cargo} to {Fallback(trip.Destination, "destination")} — score {trip.ScoreBreakdown.FinalScore} ({trip.ScoreBreakdown.RatingLabel})";
-            var parts = new List<string> { $"{trip.DistanceMiles:F0} mi" };
-            if (trip.AverageMpg > 0) parts.Add($"{trip.AverageMpg:F1} MPG");
+            var parts = new List<string> { Units.DistText(trip.DistanceMiles) };
+            if (trip.AverageMpg > 0) parts.Add(Units.EconomyText(trip.AverageMpg));
+            if (trip.PaidRevenue > 0)
+                parts.Add(trip.HasCosts
+                    ? $"paid {Units.Money(trip.PaidRevenue, trip.GameId)}, net {Units.Money(trip.NetIncome, trip.GameId)} after fines and tolls"
+                    : $"paid {Units.Money(trip.PaidRevenue, trip.GameId)}");
             if (levelsGained > 0) parts.Add($"career level {Career.Level}");
             parts.AddRange(achievements.Select(a => $"🏆 {a}"));
             BannerDetail = string.Join("  ·  ", parts);
