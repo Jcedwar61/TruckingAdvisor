@@ -1,7 +1,13 @@
 # Changelog - TruckingAdvisor
 
-## [v3.6.1] - 2026-11-14
+## [v3.6.2] - 2026-11-14
 
+### Fixed
+- **"An ItemsControl is inconsistent with its items source" on the radio.** The transcript scrolled itself from inside its own CollectionChanged handler. `ScrollIntoView` forces a layout, and forcing it between a line being added and the oldest being trimmed left the list's container generator out of step with the collection (the inner exception reported two events for three items). The scroll is queued now, at most one at a time.
+- **The radio could stay stuck on "RECEIVING" for good**, after which every unprompted line was silently dropped, because chatter waits for an idle radio. Two things caused it: the screenshot pass abandoned its typed call after five seconds while the call kept holding the radio, and a slow render or a stalled request had no time limit at all. Calls now have a 45-second watchdog that puts the radio back on the hook, and the capture waits for its line.
+- **Unprompted radio traffic never happened in demo mode.** The slow tick and the parked check bailed out unless the telemetry was live, and demo data is not, so truckers only ever spoke when the capture typed at them.
+
+## [v3.6.1] - 2026-11-14
 ### Fixed
 - **The error pop-up when the radio talked.** The radio transcript and the demo history added rows to bound lists from the telemetry and radio threads, which left the WPF list "inconsistent with its items source"; the pop-up then repeated for every line. Rows now always land on the UI thread, with regression tests that drive a real ListBox.
 - The pop-up showed the exception text with a literal `\n` in it and pointed at an inner exception that was never logged. The whole chain is written to the log now and the message reads as a sentence.

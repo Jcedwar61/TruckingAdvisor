@@ -132,11 +132,11 @@ public partial class MainWindow : Window
                 LstContacts.SelectedItem = _viewModel.Contacts.FirstOrDefault(x => x.Id == _selectedContactId);
         });
         _viewModel.IsReplay = replayFile is not null;
-        // Keep the newest radio message in view, like a chat app.
-        _viewModel.RadioMessages.CollectionChanged += (_, _) =>
-        {
-            if (_viewModel.RadioMessages.Count > 0) RadioList.ScrollIntoView(_viewModel.RadioMessages[^1]);
-        };
+        // Keep the newest radio message in view, like a chat app. The scroll is posted rather than run from
+        // the event: ScrollIntoView forces a layout, and doing that between a line being added and the
+        // oldest being trimmed leaves the list's container generator out of step with the collection
+        // ("An ItemsControl is inconsistent with its items source"). At most one scroll is queued.
+        _viewModel.RadioMessages.CollectionChanged += (_, _) => QueueRadioScroll();
         _viewModel.AttachDispatcher(new DispatcherService(_aiSettings, (facts, important, ct) => _cbRadio.SendDispatchMessageAsync(facts, important, ct)));
         _viewModel.MuteRequested += (_, mute) => { _sink.Muted = mute; if (mute) _audio.StopAll(); };
         _viewModel.HandleChangeProposed += (_, handle) =>
@@ -217,9 +217,11 @@ public partial class MainWindow : Window
         {
             Directory.CreateDirectory(dir);
             await Task.Delay(4000); // let telemetry/demo data fill the gauges
-            // One typed call so the radio shows chat bubbles (offline replies; never blocks the capture).
+            // One typed call so the radio shows chat bubbles (offline replies). It's waited on rather than
+            // abandoned, otherwise the radio stays keyed and the transcript never grows past two lines.
             _cbRadio.BeginPushToTalk();
-            await Task.WhenAny(_cbRadio.EndPushToTalkAsync("Breaker one-nine, Big Red, you got your ears on?"), Task.Delay(5000));
+            try { await _cbRadio.EndPushToTalkAsync("Breaker one-nine, Big Red, you got your ears on?").WaitAsync(TimeSpan.FromSeconds(20)); }
+            catch (TimeoutException) { _cbRadio.BeginPushToTalk(); }
             var root = (FrameworkElement)Content;
             string[] names = { "dashboard", "career", "contacts", "statistics", "trips", "map" };
             for (int i = 0; i < Tabs.Items.Count && i < names.Length; i++)
@@ -648,6 +650,22 @@ public partial class MainWindow : Window
     private void BtnGuide_Click(object sender, RoutedEventArgs e) => GuideWindow.ShowGuide(this, _bindings);
 
     /// <summary>Errors after the first are shown here instead of as more message boxes.</summary>
+    private bool _radioScrollQueued;
+
+    private void QueueRadioScroll()
+    {
+        if (_radioScrollQueued) return;
+        _radioScrollQueued = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+        {
+            try
+            {
+                if (_viewModel.RadioMessages.Count > 0) RadioList.ScrollIntoView(_viewModel.RadioMessages[^1]);
+            }
+            finally { _radioScrollQueued = false; }
+        });
+    }
+
     public void ShowErrorNotice(string message) => ShowNotice($"Something went wrong ({message}). Details are in the log: More > Copy Diagnostics.");
 
     private string? _selectedContactId;

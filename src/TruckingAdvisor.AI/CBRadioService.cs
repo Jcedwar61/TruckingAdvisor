@@ -32,6 +32,8 @@ public sealed class CBRadioService : ICBRadioService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<RadioTurn> _recent = new();
     private CancellationTokenSource _chatterCts = new();
+    /// <summary>Cancelled when the radio is disposed, so pending watchdogs stop.</summary>
+    private readonly CancellationTokenSource _watchdogCts = new();
     private readonly object _stateLock = new();
     /// <summary>Bumped on every player key-up; older exchanges and chatter must not touch newer state.</summary>
     private int _txVersion;
@@ -127,6 +129,7 @@ public sealed class CBRadioService : ICBRadioService
             _txVersion++;
             _audio.IsRadioChannelBusy = true;
             SetState(CBRadioState.PlayerTransmitting);
+            ArmWatchdog(_txVersion);
         }
     }
 
@@ -280,6 +283,7 @@ public sealed class CBRadioService : ICBRadioService
             var trucker = MaybeMeetNewTrucker() ?? PickRandomTrucker();
             string situation = DescribeEncounter(snapshot, trucker, ParkedFor, _random);
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return;
+            ArmWatchdog(version);
             string line = await GenerateAsync(
                 TruckerPrompt(trucker, snapshot, ActiveChannel),
                 $"(No one has spoken to you. Make one unprompted CB call to the channel. It's your call: {situation}. " +
@@ -681,6 +685,13 @@ public sealed class CBRadioService : ICBRadioService
     }
 
     /// <summary>Goes idle only if no newer transmission has started since <paramref name="version"/>.</summary>
+    /// <summary>
+    /// How long a call may hold the radio before it is released. Rendering a long line on a slow machine, or a
+    /// stalled network request, can outlast this; without it the radio stays "receiving" for good and every
+    /// unprompted line is dropped, because chatter waits for an idle radio.
+    /// </summary>
+    public TimeSpan CallWatchdog { get; set; } = TimeSpan.FromSeconds(45);
+
     private void ReturnToIdleIfCurrent(int version)
     {
         lock (_stateLock)
@@ -689,6 +700,28 @@ public sealed class CBRadioService : ICBRadioService
             _audio.IsRadioChannelBusy = false;
             SetState(CBRadioState.RadioIdle);
         }
+    }
+
+    /// <summary>Releases the radio if <paramref name="version"/> is still the current call after the watchdog.</summary>
+    private void ArmWatchdog(int version)
+    {
+        if (CallWatchdog <= TimeSpan.Zero) return;
+        var token = _watchdogCts;
+        _ = Task.Delay(CallWatchdog, token.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            bool released = false;
+            lock (_stateLock)
+            {
+                if (version == _txVersion && CurrentState != CBRadioState.RadioIdle)
+                {
+                    _audio.IsRadioChannelBusy = false;
+                    SetState(CBRadioState.RadioIdle);
+                    released = true;
+                }
+            }
+            if (released) Notice?.Invoke(this, "The radio was still busy, so it was put back on the hook.");
+        }, TaskScheduler.Default);
     }
 
     private void ReturnToIdle()

@@ -290,10 +290,11 @@ public sealed class ViewModelThreadingTests
 
     internal sealed class FakeAudio : IAudioPriorityManager
     {
+        public readonly List<AudioItem> Items = new();
         public bool IsRadioChannelBusy { get; set; }
         public void EnqueueAnnouncement(string text, AudioPriority priority, string voiceProfile = "advisor", bool applyCbEffects = false) { }
-        public void Enqueue(AudioItem item) { }
-        public Task EnqueueAndWaitAsync(AudioItem item, CancellationToken ct = default) => Task.CompletedTask;
+        public void Enqueue(AudioItem item) { lock (Items) Items.Add(item); }
+        public Task EnqueueAndWaitAsync(AudioItem item, CancellationToken ct = default) { lock (Items) Items.Add(item); return Task.CompletedTask; }
         public void SetChannelVolume(string channel, float volume0To1) { }
         public void StopAll() { }
     }
@@ -489,5 +490,103 @@ public sealed class RadioListLayoutTests
         });
         Dispatcher.PushFrame(frame);
         Assert.Empty(errors);
+    }
+}
+/// <summary>
+/// The radio's real shape: one logical line does Add then trims the oldest, and the CollectionChanged
+/// handler keeps the newest in view. The handler runs between the two, so a ScrollIntoView there forces a
+/// layout while the trim is still coming, and the list ends up "inconsistent with its items source".
+/// </summary>
+public sealed class RadioTrimTests
+{
+    private static void RunOnSta(Action<Dispatcher, Action<Action>> body)
+    {
+        Exception? failure = null;
+        var ready = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var d = Dispatcher.CurrentDispatcher;
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(d));
+                ready.Set();
+                Dispatcher.Run();
+            }
+            catch (Exception ex) { failure = ex; }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        ready.Wait(TimeSpan.FromSeconds(10));
+        var dispatcher = Dispatcher.FromThread(thread)!;
+        body(dispatcher, a => dispatcher.Invoke(a));
+        dispatcher.InvokeShutdown();
+        thread.Join(TimeSpan.FromSeconds(5));
+        if (failure is not null) throw failure;
+    }
+
+    [Fact]
+    public void AddThenTrim_WithScrollInTheHandler_KeepsTheListConsistent()
+    {
+        var errors = new List<Exception>();
+        RunOnSta((_, ui) => ui(() =>
+        {
+            var items = new ObservableCollection<string>();
+            var list = new ListBox { ItemsSource = items, Height = 200, Width = 300 };
+            list.Measure(new System.Windows.Size(300, 200));
+            list.Arrange(new System.Windows.Rect(0, 0, 300, 200));
+            list.UpdateLayout();
+            // Exactly what the window does now: queue one scroll instead of scrolling inside the event.
+            bool queued = false;
+            items.CollectionChanged += (_, _) =>
+            {
+                if (queued) return;
+                queued = true;
+                list.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                {
+                    queued = false;
+                    if (items.Count > 0) list.ScrollIntoView(items[^1]);
+                });
+            };
+            try
+            {
+                for (int i = 0; i < 20; i++)
+                {
+                    items.Add($"line {i}");
+                    while (items.Count > 20) items.RemoveAt(0);
+                }
+            }
+            catch (Exception ex) { errors.Add(ex); }
+        }));
+        Assert.Empty(errors);
+    }
+}
+
+/// <summary>
+/// The screenshot pass starts a typed call and waits at most five seconds for the answer. If that call
+/// never finishes, the radio must not stay stuck "receiving", or every later unprompted line is dropped.
+/// </summary>
+public sealed class RadioRecoveryTests
+{
+    [Fact]
+    public async Task ABusyRadio_StillAcceptsChatterAfterThePlayerCallEnds()
+    {
+        var audio = new ViewModelThreadingTests.FakeAudio();
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile { PlayerHandle = "Ghost" },
+            audio, () => new AtsTelemetrySnapshot(), new AiSettings { RadioActivity = RadioActivitySetting.Busy },
+            llm: null, random: new Random(5))
+        { ReplyPause = (0, 0) };
+
+        var st = radio.CurrentState; var ch = radio.ActiveChannel;
+        await radio.TriggerDynamicEncounterAsync(new AtsTelemetrySnapshot());
+        Assert.True(audio.Items.Count > 0, "before=" + st + "/" + ch + " after=" + radio.CurrentState + " chatter alone: state=" + radio.CurrentState + " roster=" + PersonalityCatalog.CreateDefaultRoster().Count + " items=" + audio.Items.Count);
+        radio.BeginPushToTalk();
+        await radio.EndPushToTalkAsync("Big Red, you out there?");
+
+        Assert.Equal(CBRadioState.RadioIdle, radio.CurrentState);
+        Assert.False(audio.IsRadioChannelBusy);
+
+        Assert.Equal(CBRadioState.RadioIdle, radio.CurrentState);
+        await radio.TriggerDynamicEncounterAsync(new AtsTelemetrySnapshot());
+        Assert.True(audio.Items.Count > 0, $"state={radio.CurrentState} busy={audio.IsRadioChannelBusy} channel={radio.ActiveChannel}");
     }
 }
