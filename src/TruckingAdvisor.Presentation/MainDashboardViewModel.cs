@@ -33,6 +33,8 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     private readonly TruckingAdvisorDatabase? _db;
     private readonly AiSettings _aiSettings;
     private readonly Action<Action> _postToUi;
+    /// <summary>The thread that built the view model (the UI thread); collections bound to WPF may only change on it.</summary>
+    private readonly int _uiThreadId = Environment.CurrentManagedThreadId;
     private readonly Random _random = new();
     private readonly CancellationTokenSource _cts = new();
 

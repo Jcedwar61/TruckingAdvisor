@@ -1,7 +1,13 @@
 # Changelog - TruckingAdvisor
 
-## [v3.6.0] - 2026-11-14
+## [v3.6.1] - 2026-11-14
 
+### Fixed
+- **The error pop-up when the radio talked.** The radio transcript and the demo history added rows to bound lists from the telemetry and radio threads, which left the WPF list "inconsistent with its items source"; the pop-up then repeated for every line. Rows now always land on the UI thread, with regression tests that drive a real ListBox.
+- The pop-up showed the exception text with a literal `\n` in it and pointed at an inner exception that was never logged. The whole chain is written to the log now and the message reads as a sentence.
+- **The User Guide and Controls windows were cut off.** A VisualBrush anchors on the element's outer edge, so the screenshot helper lost a margin's worth off the top and left and pushed the far edges out of frame; the Controls rows also overran the window width. Both read properly now.
+
+## [v3.6.0] - 2026-11-14
 ### Cast and conversations
 - **A full crew of regulars: fifteen of them.** Carolina Chrome, Bayou Belle, Glacier Gus, Texas Slim, Prairie Rose, Cajun Coyote, Flatbed Frank, Mama Bear, Vinegar Val and Dusty Dakota join the five originals, each with a backstory, a truck, a home patch of highway, opinions and their own way of talking. They talk like truckers: some swearing, no formality, never at you.
 - **Anyone will start a conversation on their own now**, about whatever is on their mind: their own topics first, then truck-stop talk, plus a nudge when you are parked, low on fuel, heavy or running at night. The old five-trucker assumption is gone, including in the hourly cap and the newcomer roll.

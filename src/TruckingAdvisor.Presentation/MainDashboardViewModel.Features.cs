@@ -302,8 +302,14 @@ public sealed partial class MainDashboardViewModel
         var trips = DemoHistory.BuildTrips(DateTimeOffset.UtcNow);
         DemoHistory.Apply(trips, Company, Career);
         lock (_tripsLock) _allTrips.AddRange(trips);
-        foreach (var t in trips.OrderByDescending(t => t.StartedAt)) TripHistory.Add(t);
-        _postToUi(() => RefreshCareerViews(ComputeInsights()));
+        // This runs on the telemetry thread, but TripHistory feeds a ListBox: adding to it from here
+        // leaves the list's item container generator out of step with the source.
+        var ordered = trips.OrderByDescending(t => t.StartedAt).ToList();
+        _postToUi(() =>
+        {
+            foreach (var t in ordered) TripHistory.Add(t);
+            RefreshCareerViews(ComputeInsights());
+        });
     }
 
     private string? CoDriverPhrase(DrivingIncident incident)

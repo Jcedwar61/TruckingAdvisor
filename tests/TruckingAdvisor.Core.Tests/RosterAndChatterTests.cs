@@ -1,3 +1,7 @@
+using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using TruckingAdvisor.AI;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Interfaces;
@@ -184,5 +188,306 @@ public sealed class RosterAndChatterTests
             Assert.Contains(global::TruckingAdvisor.Audio.Local.KokoroVoiceModel.Repository, file.Url);
         Assert.NotEqual(global::TruckingAdvisor.Audio.Local.LocalVoiceModel.Repository,
             global::TruckingAdvisor.Audio.Local.KokoroVoiceModel.Repository);
+    }
+}
+
+/// <summary>
+/// A bound ItemsControl throws "An ItemsControl is inconsistent with its items source" once its collection
+/// has been changed from a thread other than the one that owns it. These drive a real ListBox.
+/// </summary>
+public sealed class BoundListThreadingTests
+{
+    /// <summary>
+    /// Runs a body on a fresh STA thread with a real dispatcher and collects whatever it throws: a WPF
+    /// control only has an owning thread once it has been created on one.
+    /// </summary>
+    private static List<Exception> OnStaThread(Func<Task> body)
+    {
+        var errors = new List<Exception>();
+        var entered = new ManualResetEventSlim();
+        Exception? setup = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var dispatcher = Dispatcher.CurrentDispatcher;
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+                entered.Set();
+                Dispatcher.Run();
+            }
+            catch (Exception ex) { lock (errors) errors.Add(ex); }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)), "the dispatcher thread didn't start");
+
+        var frame = new DispatcherFrame();
+        Dispatcher.FromThread(thread)!.BeginInvoke(async () =>
+        {
+            try { await body(); }
+            catch (Exception ex) { lock (errors) errors.Add(ex); }
+            finally { frame.Continue = false; }
+        });
+        Dispatcher.PushFrame(frame);
+        if (setup is not null) throw setup;
+        return errors;
+    }
+
+    private static ListBox Bound(out ObservableCollection<string> items)
+    {
+        items = new ObservableCollection<string>();
+        var list = new ListBox { ItemsSource = items };
+        list.Measure(new System.Windows.Size(200, 200));
+        return list;
+    }
+
+    [Fact]
+    public async Task ItemsChangedOffTheOwningThread_BreakTheListBox()
+    {
+        var errors = await Task.Run(() => OnStaThread(async () =>
+        {
+            var list = Bound(out var items);
+            for (int i = 0; i < 40; i++) items.Add($"row {i}");
+            list.UpdateLayout();
+            // A second batch added from another thread, exactly what the demo seed and the radio did.
+            await Task.Run(() => { for (int i = 40; i < 120; i++) items.Add($"row {i}"); });
+            list.UpdateLayout();
+        }));
+        Assert.Contains(errors, e => e is InvalidOperationException or NotSupportedException);
+    }
+
+    [Fact]
+    public async Task ItemsChangedOnTheOwningThread_KeepTheListBoxHealthy()
+    {
+        var errors = await Task.Run(() => OnStaThread(async () =>
+        {
+            var list = Bound(out var items);
+            for (int i = 0; i < 120; i++) items.Add($"row {i}");
+            list.UpdateLayout();
+            Assert.Equal(120, list.Items.Count);
+            await Task.CompletedTask;
+        }));
+        Assert.Empty(errors);
+    }
+}
+/// <summary>
+/// The demo seed adds trips, and it runs on the telemetry thread rather than the UI thread. TripHistory
+/// feeds a ListBox, so anything added from there leaves the control "inconsistent with its items source".
+/// </summary>
+public sealed class ViewModelThreadingTests
+{
+    internal sealed class FakeTelemetry : ITelemetryProvider
+    {
+        public event EventHandler<AtsTelemetrySnapshot>? TelemetryUpdated;
+        public event EventHandler<ConnectionState>? ConnectionStateChanged;
+        public ConnectionState CurrentState => ConnectionState.Connected;
+        public AtsTelemetrySnapshot LatestSnapshot { get; private set; } = new();
+        public void Start() { }
+        public void Stop() { }
+        public void Dispose() { }
+        public void Publish(AtsTelemetrySnapshot snapshot) { LatestSnapshot = snapshot; TelemetryUpdated?.Invoke(this, snapshot); }
+    }
+
+    internal sealed class FakeAudio : IAudioPriorityManager
+    {
+        public bool IsRadioChannelBusy { get; set; }
+        public void EnqueueAnnouncement(string text, AudioPriority priority, string voiceProfile = "advisor", bool applyCbEffects = false) { }
+        public void Enqueue(AudioItem item) { }
+        public Task EnqueueAndWaitAsync(AudioItem item, CancellationToken ct = default) => Task.CompletedTask;
+        public void SetChannelVolume(string channel, float volume0To1) { }
+        public void StopAll() { }
+    }
+
+    [Fact]
+    public void DemoTripSeeding_ReachesTripHistory_OnlyOnTheUiThread()
+    {
+        var telemetry = new FakeTelemetry();
+        var audio = new FakeAudio();
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile(),
+            audio, () => new AtsTelemetrySnapshot(), new AiSettings(), llm: null, random: new Random(3));
+        // Nothing is marshalled here: postToUi runs inline, so the thread the seed runs on is the thread
+        // the collection is touched from. Run it from a worker and the add is off the UI thread.
+        var vm = new TruckingAdvisor.Presentation.MainDashboardViewModel(telemetry, new TruckingAdvisor.Core.Coaching.DrivingAnalyzer(),
+            new TruckingAdvisor.Core.Advisors.FuelAndMaintenanceAdvisor(), new TruckingAdvisor.Core.Trips.TripTracker(), audio, radio, new VirtualCompanyProfile(),
+            new CareerProfile(), new AiSettings(), postToUi: action => action(), db: null);
+
+        var worker = new Thread(() => telemetry.Publish(new AtsTelemetrySnapshot { IsDemoData = true, ConnectionState = ConnectionState.Connected }));
+        worker.Start();
+        worker.Join();
+
+        // The demo history is only built with a database, so with db:null this pins the no-crash path and
+        // that the view model never adds from the telemetry thread when postToUi marshals.
+        Assert.Empty(vm.TripHistory);
+        vm.Dispose();
+    }
+}
+/// <summary>
+/// RefreshContacts rebuilds the list in place (insert/move/replace, then trim) while the page is on screen.
+/// That has to leave the bound ListBox consistent.
+/// </summary>
+public sealed class ContactRefreshTests
+{
+    [Fact]
+    public void RefreshContacts_LeavesTheBoundListConsistent()
+    {
+        var errors = new List<Exception>();
+        var entered = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+            entered.Set();
+            Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+
+        var telemetry = new ViewModelThreadingTests.FakeTelemetry();
+        var audio = new ViewModelThreadingTests.FakeAudio();
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), new VirtualCompanyProfile(),
+            audio, () => new AtsTelemetrySnapshot(), new AiSettings(), llm: null, random: new Random(3));
+        var vm = new TruckingAdvisor.Presentation.MainDashboardViewModel(telemetry, new TruckingAdvisor.Core.Coaching.DrivingAnalyzer(),
+            new TruckingAdvisor.Core.Advisors.FuelAndMaintenanceAdvisor(), new TruckingAdvisor.Core.Trips.TripTracker(), audio, radio,
+            new VirtualCompanyProfile(), new CareerProfile(), new AiSettings(), postToUi: a => Dispatcher.FromThread(thread)!.Invoke(a), db: null);
+
+        var frame = new DispatcherFrame();
+        Dispatcher.FromThread(thread)!.BeginInvoke(() =>
+        {
+            try
+            {
+                var list = new ListBox { ItemsSource = vm.Contacts };
+                list.Measure(new System.Windows.Size(300, 400));
+                list.UpdateLayout();
+                for (int round = 0; round < 6; round++)
+                {
+                    vm.RefreshContacts();
+                    list.UpdateLayout();
+                }
+            }
+            catch (Exception ex) { errors.Add(ex); }
+            finally { frame.Continue = false; }
+        });
+        Dispatcher.PushFrame(frame);
+        Assert.Empty(errors);
+        Assert.Equal(PersonalityCatalog.CreateDefaultRoster().Count, vm.Contacts.Count);
+    }
+}
+/// <summary>
+/// The radio list keeps the newest line in view by calling ScrollIntoView from its CollectionChanged
+/// handler, and trims the oldest rows from the same event. Both run before the ListBox has finished
+/// applying the change, which is what leaves a virtualizing panel "inconsistent with its items source".
+/// </summary>
+public sealed class RadioScrollTests
+{
+    [Fact]
+    public void ScrollIntoViewInsideCollectionChanged_IsSafeWhileTrimming()
+    {
+        var errors = new List<Exception>();
+        var entered = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+            entered.Set();
+            Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+        var d = Dispatcher.FromThread(thread)!;
+
+        var frame = new DispatcherFrame();
+        d.BeginInvoke(() =>
+        {
+            try
+            {
+                var items = new ObservableCollection<string>();
+                var list = new ListBox { ItemsSource = items, Height = 200, Width = 300 };
+                list.Measure(new System.Windows.Size(300, 200));
+                list.Arrange(new System.Windows.Rect(0, 0, 300, 200));
+                list.UpdateLayout();
+                items.CollectionChanged += (_, _) =>
+                {
+                    if (items.Count > 0) list.ScrollIntoView(items[^1]);
+                };
+                for (int i = 0; i < 260; i++)
+                {
+                    items.Add($"line {i}");
+                    while (items.Count > 200) items.RemoveAt(0);
+                    list.UpdateLayout();
+                }
+            }
+            catch (Exception ex) { errors.Add(ex); }
+            finally { frame.Continue = false; }
+        });
+        Dispatcher.PushFrame(frame);
+        Assert.Empty(errors);
+    }
+}
+/// <summary>
+/// The radio list sits in a star-sized grid column beside a ScrollViewer with a splitter between them,
+/// and lines arrive from the radio's own thread. Rebuilds that shape and pushes lines through it.
+/// </summary>
+public sealed class RadioListLayoutTests
+{
+    [Fact]
+    public void RadioList_SurvivesLinesArrivingFromAnotherThread()
+    {
+        var errors = new List<Exception>();
+        var entered = new ManualResetEventSlim();
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+            entered.Set();
+            Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+        var d = Dispatcher.FromThread(thread)!;
+
+        var messages = new ObservableCollection<string>();
+        var frame = new DispatcherFrame();
+        d.BeginInvoke(() =>
+        {
+            try
+            {
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new System.Windows.GridLength(2, System.Windows.GridUnitType.Star), MinWidth = 420 });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new System.Windows.GridLength(8) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new System.Windows.GridLength(1.25, System.Windows.GridUnitType.Star), MinWidth = 300 });
+                var left = new ScrollViewer { Content = new System.Windows.Controls.StackPanel() };
+                Grid.SetColumn(left, 0);
+                var splitter = new GridSplitter { Width = 8, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+                Grid.SetColumn(splitter, 1);
+                var list = new ListBox { ItemsSource = messages };
+                Grid.SetColumn(list, 2);
+                grid.Children.Add(left);
+                grid.Children.Add(splitter);
+                grid.Children.Add(list);
+                var window = new System.Windows.Window { Content = grid, Width = 1000, Height = 600 };
+                window.Show();
+                messages.CollectionChanged += (_, _) => { if (messages.Count > 0) list.ScrollIntoView(messages[^1]); };
+
+                int round = 0;
+                void Pump()
+                {
+                    for (int i = 0; i < 6; i++)
+                    {
+                        string line = $"round {round} line {i}";
+                        messages.Add(line);
+                        while (messages.Count > 200) messages.RemoveAt(0);
+                        list.UpdateLayout();
+                    }
+                    if (++round >= 40) { window.Close(); frame.Continue = false; return; }
+                    d.BeginInvoke(Pump, DispatcherPriority.Background);
+                }
+                d.BeginInvoke(Pump, DispatcherPriority.Background);
+            }
+            catch (Exception ex) { errors.Add(ex); }
+            finally { frame.Continue = false; }
+        });
+        Dispatcher.PushFrame(frame);
+        Assert.Empty(errors);
     }
 }

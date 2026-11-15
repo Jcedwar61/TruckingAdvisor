@@ -324,17 +324,29 @@ public partial class MainWindow : Window
 
     private static void SaveElementPng(FrameworkElement element, System.Windows.Media.Brush background, string path)
     {
+        // A VisualBrush anchors on the element's outer edge, so a margin would be cut out of the picture at
+        // the top and left and the far edges pushed out of frame. Take the margin off for the shot.
+        var margin = element.Margin;
+        if (margin != new Thickness(0))
+        {
+            element.Margin = new Thickness(0);
+            element.UpdateLayout();
+        }
         element.UpdateLayout();
         var size = new Size(Math.Max(1, element.ActualWidth), Math.Max(1, element.ActualHeight));
+        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         var visual = new System.Windows.Media.DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
             dc.DrawRectangle(background, null, new Rect(size));
             dc.DrawRectangle(new System.Windows.Media.VisualBrush(element), null, new Rect(size));
         }
-        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         bmp.Render(visual);
-        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        if (margin != new Thickness(0))
+        {
+            element.Margin = margin;
+            element.UpdateLayout();
+        }        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
         enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
         using var fs = File.Create(path);
         enc.Save(fs);

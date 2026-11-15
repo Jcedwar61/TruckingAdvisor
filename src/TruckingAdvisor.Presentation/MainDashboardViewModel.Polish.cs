@@ -25,8 +25,16 @@ public sealed partial class MainDashboardViewModel
     private void AddRadioMessage((string Speaker, string Handle, string Transcript, int Channel) e)
     {
         bool mine = string.Equals(e.Speaker, Company.DisplayHandle, StringComparison.OrdinalIgnoreCase);
-        RadioMessages.Add(new RadioMessage(e.Handle, e.Transcript, e.Channel, mine, e.Channel == 30 && !mine, DateTime.Now));
-        while (RadioMessages.Count > 200) RadioMessages.RemoveAt(0);
+        var message = new RadioMessage(e.Handle, e.Transcript, e.Channel, mine, e.Channel == 30 && !mine, DateTime.Now);
+        void Apply()
+        {
+            RadioMessages.Add(message);
+            while (RadioMessages.Count > 200) RadioMessages.RemoveAt(0);
+        }
+        // Callers are already on the UI thread (the transcript handler posts there); the self-test path
+        // isn't, and a message added off-thread leaves the ListBox in the "inconsistent" state.
+        if (_uiThreadId == Environment.CurrentManagedThreadId) Apply();
+        else _postToUi(Apply);
     }
 
     /// <summary>Number on the HUD's speed-limit sign ("--" when the game reports no limit).</summary>

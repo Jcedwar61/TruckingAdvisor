@@ -25,20 +25,24 @@ public partial class App : Application
         // Anything unexpected is written to the log. UI-thread errors are shown and the app keeps running.
         DispatcherUnhandledException += (_, ex) =>
         {
-            TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Unhandled UI error", ex.Exception);
+            // Log the whole chain: WPF's wording is "see the inner exception", and that's where the cause is.
+            for (Exception? inner = ex.Exception; inner is not null; inner = inner.InnerException)
+                TruckingAdvisor.Shared.Diagnostics.AppLog.Error(inner.InnerException is null ? "Unhandled UI error" : "  caused by", inner);
             ex.Handled = true;
             // At most one message box at a time and one a minute. A box keeps the window running, so a
             // repeating error would otherwise open box after box until the app runs out of stack.
             if (_showingError || DateTime.UtcNow - _lastErrorBox < TimeSpan.FromMinutes(1))
             {
-                (MainWindow as MainWindow)?.ShowErrorNotice(ex.Exception.Message);
+                (MainWindow as MainWindow)?.ShowErrorNotice(ex.Exception.GetBaseException().Message.Replace("\\n", " "));
                 return;
             }
             _showingError = true;
             _lastErrorBox = DateTime.UtcNow;
             try
             {
-                MessageBox.Show($"Something went wrong: {ex.Exception.Message}\n\nTruckingAdvisor keeps running. Details were written to the log " +
+                // WPF writes some of its messages with a literal \n in them; show it as a line break.
+                string reason = ex.Exception.GetBaseException().Message.Replace("\\n", Environment.NewLine);
+                MessageBox.Show($"Something went wrong: {reason}\n\nTruckingAdvisor keeps running. Details were written to the log " +
                                 "(More > Copy Diagnostics puts them on the clipboard for a bug report).",
                     "TruckingAdvisor", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
