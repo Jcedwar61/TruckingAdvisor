@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TruckingAdvisor CB Overlay</title>
+<!--
+  TruckingAdvisor stream overlay. Add as an OBS / Streamlabs "Browser Source" (1920 x 1080):
+    http://localhost:8789/overlay            commands panel + CB caller banner
+    http://localhost:8789/overlay/commands   commands panel only
+    http://localhost:8789/overlay/banner     caller banner only
+    http://localhost:8789/overlay/feed       recent radio lines only
+  Options (add to the URL):  ?pos=bl|br|tl|tr   ?mode=ticker   ?scale=1.25   ?accent=f59e0b   ?demo=1
+-->
+<style>
+  :root {
+    --accent: #f59e0b;
+    --accent-soft: rgba(245, 158, 11, .16);
+    --panel: rgba(12, 17, 27, .86);
+    --panel-edge: rgba(255, 255, 255, .09);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --ok: #22c55e;
+    --lcd-bg: #07140c;
+    --lcd: #6dff9d;
+    --lcd-dim: rgba(109, 255, 157, .28);
+    --scale: 1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", "Inter", system-ui, -apple-system, Roboto, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage { position: fixed; inset: 0; padding: 32px; }
+  .mono { font-family: "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace; }
+
+  /* ---------- Commands panel ---------- */
+  .panel {
+    position: absolute; width: 440px;
+    transform: scale(var(--scale));
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 16px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+    backdrop-filter: blur(6px);
+    overflow: hidden;
+    transition: opacity .4s ease;
+  }
+  .panel.bl { left: 32px; bottom: 32px; transform-origin: bottom left; }
+  .panel.br { right: 32px; bottom: 32px; transform-origin: bottom right; }
+  .panel.tl { left: 32px; top: 32px; transform-origin: top left; }
+  .panel.tr { right: 32px; top: 32px; transform-origin: top right; }
+  .panel-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 18px 14px;
+    background: linear-gradient(180deg, var(--accent-soft), transparent);
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .radio-icon {
+    flex: none; width: 40px; height: 40px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: var(--accent); color: #111827;
+  }
+  .head-text { flex: 1; min-width: 0; }
+  .title { font-weight: 800; font-size: 17px; letter-spacing: .06em; text-transform: uppercase; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .status {
+    flex: none; display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 11px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    background: rgba(34, 197, 94, .14); color: var(--ok);
+    font-variant-numeric: tabular-nums;
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+  .status.cool { background: var(--accent-soft); color: var(--accent); }
+  .status.air { background: rgba(239, 68, 68, .16); color: #f87171; }
+  .status.air .dot { animation: blink 1s steps(2, start) infinite; }
+  .status.off { background: rgba(148, 163, 184, .14); color: var(--muted); }
+  .status.off .dot { box-shadow: none; }
+
+  .cmds { list-style: none; margin: 0; padding: 8px 10px; }
+  .cmd { display: grid; grid-template-columns: 118px 1fr; gap: 4px 12px; padding: 10px 8px; border-radius: 10px; }
+  .cmd + .cmd { border-top: 1px solid rgba(255, 255, 255, .05); }
+  .cmd.flash { animation: flash 1.6s ease; }
+  .chip {
+    align-self: start; justify-self: start;
+    padding: 4px 9px; border-radius: 7px;
+    background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: 15px; white-space: nowrap;
+  }
+  .desc { font-size: 14px; line-height: 1.35; }
+  .example { grid-column: 2; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-foot {
+    padding: 12px 18px 14px; border-top: 1px solid var(--panel-edge);
+    font-size: 12.5px; color: var(--muted); display: grid; gap: 6px;
+  }
+  .foot-row { display: flex; align-items: center; gap: 8px; }
+  .foot-row svg { flex: none; color: var(--accent); }
+  .foot-row b { color: var(--text); font-weight: 600; }
+  .badge { padding: 2px 7px; border-radius: 6px; background: rgba(255, 255, 255, .08); color: var(--text); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+
+  /* ---------- Ticker (compact) ---------- */
+  .ticker {
+    position: absolute; display: flex; align-items: center; gap: 12px;
+    transform: scale(var(--scale));
+    padding: 10px 16px 10px 10px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .4); max-width: 760px;
+  }
+  .ticker.bl { left: 32px; bottom: 32px; transform-origin: bottom left; }
+  .ticker.br { right: 32px; bottom: 32px; transform-origin: bottom right; }
+  .ticker.tl { left: 32px; top: 32px; transform-origin: top left; }
+  .ticker.tr { right: 32px; top: 32px; transform-origin: top right; }
+  .ticker .radio-icon { width: 34px; height: 34px; border-radius: 50%; }
+  .ticker-body { min-width: 0; transition: opacity .35s ease, transform .35s ease; }
+  .ticker-body.out { opacity: 0; transform: translateY(6px); }
+  .ticker .chip { font-size: 14px; margin-right: 8px; }
+  .ticker .desc { font-size: 14px; white-space: nowrap; }
+
+  /* ---------- CB caller banner ---------- */
+  .banner-wrap { position: absolute; left: 50%; top: 32px; transform: translate(-50%, -160%) scale(var(--scale)); transform-origin: top center; transition: transform .55s cubic-bezier(.2, .9, .25, 1.15), opacity .4s; opacity: 0; }
+  .banner-wrap.show { transform: translate(-50%, 0) scale(var(--scale)); opacity: 1; }
+  .banner-wrap.bottom { top: auto; bottom: 32px; transform: translate(-50%, 160%) scale(var(--scale)); transform-origin: bottom center; }
+  .banner-wrap.bottom.show { transform: translate(-50%, 0) scale(var(--scale)); }
+  .radio {
+    width: 760px; display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: stretch;
+    padding: 14px; border-radius: 14px;
+    background: linear-gradient(180deg, #2a2f36, #15181d);
+    border: 1px solid rgba(255, 255, 255, .12);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .08);
+  }
+  .knob { width: 54px; display: grid; place-items: center; gap: 4px; align-content: center; }
+  .knob i { width: 40px; height: 40px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #4b5563, #111827 70%); box-shadow: 0 3px 8px rgba(0, 0, 0, .6), inset 0 0 0 3px #1f2937; position: relative; }
+  .knob i::after { content: ""; position: absolute; left: 50%; top: 5px; width: 3px; height: 11px; margin-left: -1.5px; border-radius: 2px; background: var(--accent); }
+  .knob span { font-size: 9px; letter-spacing: .14em; color: #6b7280; font-weight: 700; }
+  .lcd {
+    position: relative; min-width: 0; padding: 10px 14px; border-radius: 8px;
+    background: var(--lcd-bg); color: var(--lcd);
+    box-shadow: inset 0 0 0 1px rgba(109, 255, 157, .15), inset 0 0 26px rgba(0, 0, 0, .8);
+    text-shadow: 0 0 8px rgba(109, 255, 157, .55);
+    overflow: hidden;
+  }
+  .lcd::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .18) 0 1px, transparent 1px 3px); }
+  .lcd-top { display: flex; align-items: center; gap: 12px; font-size: 13px; letter-spacing: .12em; }
+  .lcd-ch { font-size: 30px; font-weight: 700; letter-spacing: .04em; line-height: 1; }
+  .rx { padding: 1px 6px; border: 1px solid currentColor; border-radius: 3px; font-weight: 700; }
+  .rx.live { animation: blink 1s steps(2, start) infinite; }
+  .lcd-src { margin-left: auto; color: var(--lcd-dim); text-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lcd-line { margin-top: 8px; font-size: 18px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .lcd-line .who { font-weight: 700; }
+  .lcd-line + .lcd-line { margin-top: 6px; }
+  .meter { width: 54px; display: flex; align-items: flex-end; justify-content: center; gap: 4px; padding-bottom: 8px; }
+  .meter b { width: 6px; border-radius: 2px; background: #374151; height: 10px; transition: height .12s, background .12s; }
+  .meter.live b { background: var(--accent); }
+
+  /* ---------- Feed ---------- */
+  .feed { position: absolute; left: 32px; top: 32px; width: 520px; display: grid; gap: 8px; transform: scale(var(--scale)); transform-origin: top left; }
+  .feed.br, .feed.bl { top: auto; bottom: 32px; transform-origin: bottom left; }
+  .feed.br { left: auto; right: 32px; transform-origin: bottom right; }
+  .feed-item { padding: 9px 13px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-edge); font-size: 14px; line-height: 1.35; animation: rise .4s ease; transition: opacity 1s; }
+  .feed-item .who { color: var(--accent); font-weight: 700; margin-right: 6px; }
+  .feed-item .ch { color: var(--muted); font-size: 11px; margin-right: 6px; }
+  .feed-item.viewer .who { color: #c4b5fd; }
+  .feed-item.old { opacity: 0; }
+
+  .hidden { display: none !important; }
+  @keyframes blink { to { opacity: .25; } }
+  @keyframes flash { 0%, 100% { background: transparent; } 20% { background: var(--accent-soft); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Commands panel -->
+  <section id="panel" class="panel bl hidden" aria-label="Chat commands">
+    <div class="panel-head">
+      <div class="radio-icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v10H4z"/><path d="M8 10 18 3"/><circle cx="9" cy="15" r="2"/><path d="M14 14h3M14 17h3"/></svg>
+      </div>
+      <div class="head-text">
+        <div class="title">Talk to the truckers</div>
+        <div class="subtitle" id="subtitle">Type in chat - answered live on CB channel 19</div>
+      </div>
+      <div class="status off" id="status"><span class="dot"></span><span id="statusText">Offline</span></div>
+    </div>
+    <ul class="cmds" id="cmds"></ul>
+    <div class="panel-foot" id="foot"></div>
+  </section>
+
+  <!-- Compact ticker -->
+  <section id="ticker" class="ticker bl hidden" aria-label="Chat commands">
+    <div class="radio-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v10H4z"/><path d="M8 10 18 3"/><circle cx="9" cy="15" r="2"/></svg>
+    </div>
+    <div class="ticker-body" id="tickerBody"></div>
+    <div class="status off" id="tickerStatus"><span class="dot"></span><span id="tickerStatusText">Offline</span></div>
+  </section>
+
+  <!-- CB caller banner -->
+  <section id="banner" class="banner-wrap hidden" aria-live="polite">
+    <div class="radio">
+      <div class="knob"><i></i><span>VOL</span></div>
+      <div class="lcd mono">
+        <div class="lcd-top">
+          <span class="lcd-ch" id="lcdCh">CH 19</span>
+          <span class="rx" id="lcdRx">RX</span>
+          <span class="lcd-src" id="lcdSrc"></span>
+        </div>
+        <div id="lcdLines"></div>
+      </div>
+      <div class="meter" id="meter"><b></b><b></b><b></b><b></b><b></b></div>
+    </div>
+  </section>
+
+  <!-- Recent radio lines -->
+  <section id="feed" class="feed hidden" aria-live="polite"></section>
+</div>
+
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const route = location.pathname.replace(/\/+$/, "").split("/").pop();
+  const show = new Set((q.get("show") || ({ commands: "commands", banner: "banner", feed: "feed" }[route] || "commands,banner")).split(","));
+  const pos = ["bl", "br", "tl", "tr"].includes(q.get("pos")) ? q.get("pos") : "bl";
+  const ticker = q.get("mode") === "ticker";
+  const demo = q.get("demo") === "1";
+  const scale = Math.min(3, Math.max(.4, parseFloat(q.get("scale") || "1") || 1));
+  const root = document.documentElement.style;
+  root.setProperty("--scale", scale);
+  const accent = (q.get("accent") || "").replace(/[^0-9a-f]/gi, "");
+  if (accent.length === 6) {
+    root.setProperty("--accent", "#" + accent);
+    const n = parseInt(accent, 16);
+    root.setProperty("--accent-soft", `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, .16)`);
+  }
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  let state = null;
+  let cooldownUntil = 0;
+  let onAir = false;
+
+  if (show.has("commands")) {
+    const el = ticker ? $("ticker") : $("panel");
+    el.classList.remove("hidden", "bl");
+    el.classList.add(pos);
+  }
+  if (show.has("banner")) {
+    $("banner").classList.remove("hidden");
+    if (q.get("bannerpos") === "bottom") $("banner").classList.add("bottom");
+  }
+  if (show.has("feed")) {
+    $("feed").classList.remove("hidden");
+    if (pos !== "tl") $("feed").classList.add(pos);
+  }
+
+  const ticket = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v8a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/></svg>';
+  const clock = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const truck = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h11v9H2zM13 10h4l3 3v3h-7z"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>';
+  const fmtSecs = s => s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`;
+  const fmtSpan = s => s >= 3600 && s % 3600 === 0 ? `${s / 3600} h` : s >= 60 && s % 60 === 0 ? `${s / 60} min` : s >= 60 ? fmtSecs(s) : `${s}s`;
+
+  function render() {
+    if (!state) return;
+    const ch = state.channel || 19;
+    $("subtitle").textContent = `Type in chat - answered live on CB channel ${ch}`;
+    if (!$("banner").classList.contains("show")) $("lcdCh").textContent = `CH ${ch}`;
+
+    const cmds = state.commands || [];
+    $("cmds").innerHTML = cmds.map(c => `
+      <li class="cmd" data-cmd="${esc(c.command)}">
+        <span class="chip mono">${esc(c.command)}</span>
+        <span class="desc">${esc(c.description)}</span>
+        <span class="example mono">${esc(c.example)}</span>
+      </li>`).join("");
+
+    const t = state.twitch || {};
+    const rows = [];
+    if (state.channelPoints && state.channelPoints.enabled && state.channelPoints.reward)
+      rows.push(`<div class="foot-row">${ticket}<span>Or redeem <b>${esc(state.channelPoints.reward)}</b> with your message - skips the line</span></div>`);
+    const limits = [];
+    if (t.globalCooldown > 0) limits.push(`One call every ${fmtSpan(t.globalCooldown)}`);
+    if (t.userCooldown > 0) limits.push(`${limits.length ? "" : "Wait "}${fmtSpan(t.userCooldown)} per viewer`);
+    if (limits.length || t.subsOnly)
+      rows.push(`<div class="foot-row">${clock}<span>${esc(limits.join(" · "))}</span>${t.subsOnly ? '<span class="badge">Subs only</span>' : ""}</div>`);
+    const members = (state.convoy && state.convoy.members) || [];
+    if (members.length)
+      rows.push(`<div class="foot-row">${truck}<span>Convoy on the channel: <b>${esc(members.join(", "))}</b></span></div>`);
+    $("foot").innerHTML = rows.join("");
+    $("foot").classList.toggle("hidden", rows.length === 0);
+
+    cooldownUntil = Date.now() + (t.cooldownRemaining || 0) * 1000;
+    tick();
+    if (ticker) startTicker();
+  }
+
+  function tick() {
+    if (!state) return;
+    const t = state.twitch || {};
+    let cls = "", text = "Open";
+    const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    if (!t.enabled || !t.connected) { cls = "off"; text = t.enabled ? "Connecting" : "Offline"; }
+    else if (onAir || state.radio === "rx") { cls = "air"; text = "On air"; }
+    else if (left > 0) { cls = "cool"; text = `Next call ${fmtSecs(left)}`; }
+    for (const [box, label] of [["status", "statusText"], ["tickerStatus", "tickerStatusText"]]) {
+      $(box).className = "status " + cls;
+      $(label).textContent = text;
+    }
+  }
+  setInterval(tick, 500);
+
+  let tickerIndex = 0, tickerTimer = null;
+  function startTicker() {
+    const cmds = (state && state.commands) || [];
+    const items = cmds.map(c => `<span class="chip mono">${esc(c.command)}</span><span class="desc">${esc(c.description)}</span>`);
+    if (state && state.channelPoints && state.channelPoints.enabled && state.channelPoints.reward)
+      items.push(`<span class="chip">Channel Points</span><span class="desc">Redeem “${esc(state.channelPoints.reward)}” with a message</span>`);
+    const showItem = () => {
+      if (!items.length) return;
+      const body = $("tickerBody");
+      body.classList.add("out");
+      setTimeout(() => { body.innerHTML = items[tickerIndex++ % items.length]; body.classList.remove("out"); }, 350);
+    };
+    if (!tickerTimer) { showItem(); tickerTimer = setInterval(showItem, 6000); }
+  }
+
+  // ---- Banner ----
+  let hideTimer = null, meterTimer = null;
+  function banner(lines, source, live, channel) {
+    if (!show.has("banner")) return;
+    if (channel) $("lcdCh").textContent = `CH ${channel}`;
+    $("lcdLines").innerHTML = lines.map(l => `<div class="lcd-line"><span class="who">${esc(l.who)}:</span> ${esc(l.text)}</div>`).join("");
+    $("lcdSrc").textContent = source || "";
+    $("lcdRx").classList.toggle("live", !!live);
+    $("banner").classList.add("show");
+    meter(true);
+    clearTimeout(hideTimer);
+    const words = lines.reduce((n, l) => n + String(l.text).split(/\s+/).length, 0);
+    hideTimer = setTimeout(() => { $("banner").classList.remove("show"); meter(false); onAir = false; tick(); }, Math.max(9000, words * 420 + 4000));
+  }
+  function meter(on) {
+    const bars = [...document.querySelectorAll("#meter b")];
+    $("meter").classList.toggle("live", on);
+    clearInterval(meterTimer);
+    if (!on) { bars.forEach(b => b.style.height = "10px"); return; }
+    meterTimer = setInterval(() => bars.forEach((b, i) => b.style.height = (10 + Math.random() * (14 + i * 7)) + "px"), 140);
+  }
+
+  let current = [];
+  function onLine(l, fromHistory) {
+    if (!fromHistory) {
+      if (l.kind === "caller") {
+        onAir = true; tick();
+        current = [{ who: l.handle || l.speaker, text: l.text }];
+        const src = l.source === "twitch" ? "TWITCH CHAT" : l.source === "convoy" ? "CONVOY" : "";
+        banner(current, src, true, l.channel);
+        flashCommand(l.command);
+      } else if (l.kind === "reply") {
+        current = current.slice(-1).concat([{ who: l.handle || l.speaker, text: l.text }]);
+        banner(current, "REPLY", true, l.channel);
+      }
+    }
+    feed(l, fromHistory);
+  }
+
+  function flashCommand(cmd) {
+    if (!cmd) return;
+    const li = document.querySelector(`.cmd[data-cmd="${CSS.escape(cmd)}"]`);
+    if (!li) return;
+    li.classList.remove("flash"); void li.offsetWidth; li.classList.add("flash");
+  }
+
+  function feed(l, fromHistory) {
+    if (!show.has("feed")) return;
+    const box = $("feed");
+    const div = document.createElement("div");
+    div.className = "feed-item" + (l.source === "twitch" && l.kind === "caller" ? " viewer" : "");
+    div.innerHTML = `<span class="ch mono">CH ${esc(l.channel)}</span><span class="who">${esc(l.handle || l.speaker)}</span>${esc(l.text)}`;
+    box.appendChild(div);
+    while (box.children.length > 5) box.removeChild(box.firstChild);
+    if (!fromHistory) setTimeout(() => div.classList.add("old"), 45000);
+  }
+
+  // ---- Data ----
+  function connect() {
+    const es = new EventSource("/events");
+    es.addEventListener("state", e => { state = JSON.parse(e.data); render(); });
+    es.addEventListener("line", e => onLine(JSON.parse(e.data), false));
+    es.addEventListener("history", e => onLine(JSON.parse(e.data), true));
+    es.onerror = () => { if (state) { state.twitch = Object.assign({}, state.twitch, { connected: false }); tick(); } };
+  }
+
+  if (demo) {
+    state = {
+      channel: 19, radio: "idle",
+      twitch: { enabled: true, connected: true, cooldownRemaining: 0, globalCooldown: 30, userCooldown: 120, subsOnly: false },
+      commands: [
+        { command: "!cb", description: "Key up on the CB - a trucker on the channel answers you", example: "!cb anybody got eyes on a bear?" },
+        { command: "!dispatch", description: "Radio the company dispatcher about the load, ETA or pay", example: "!dispatch are we going to make it on time?" },
+        { command: "!mechanic", description: "Ask the shop mechanic how the truck is holding up", example: "!mechanic how are the tires?" },
+        { command: "!safety", description: "Ask the safety officer about speed, rest and fuel", example: "!safety is the driver speeding?" }
+      ],
+      channelPoints: { enabled: true, reward: "Key Up on Channel 19" },
+      convoy: { active: true, members: ["Zay"] }
+    };
+    render();
+    setTimeout(() => onLine({ kind: "caller", source: "twitch", command: "!cb", handle: "RoadDog_77", text: "anybody got eyes on a bear up by Barstow?", channel: 19 }), 600);
+    setTimeout(() => onLine({ kind: "reply", handle: "Big Red", text: "Ten-four, Road Dog. Rolling 64 in a 65 out of Barstow - clean and green, no smokeys on my side.", channel: 19 }), 2600);
+  } else {
+    connect();
+  }
+})();
+</script>
+</body>
+</html>

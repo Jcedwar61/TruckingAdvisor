@@ -15,7 +15,7 @@ namespace TruckingAdvisor.AI;
 /// - Speech goes through the shared audio priority manager, so safety alerts always win.
 /// - Truckers are simulated radio voices; nothing here claims to detect real nearby vehicles.
 /// </summary>
-public sealed class CBRadioService : ICBRadioService
+public sealed partial class CBRadioService : ICBRadioService
 {
     public const int DispatchChannel = 30;
     public const int EmergencyChannel = 9;
@@ -99,9 +99,13 @@ public sealed class CBRadioService : ICBRadioService
 
     public void SwitchChannel(int channelNumber)
     {
-        if (channelNumber is < 1 or > 40) return;
+        if (channelNumber is < 1 or > 40 || channelNumber == ActiveChannel) return;
         ActiveChannel = channelNumber;
+        ChannelChanged?.Invoke(this, channelNumber);
     }
+
+    /// <summary>The radio was tuned to another channel (overlay and convoy follow it).</summary>
+    public event EventHandler<int>? ChannelChanged;
 
     /// <summary>Stops unprompted chatter that is still being prepared (used when a quiet period starts).</summary>
     public void CancelChatter()
@@ -224,6 +228,14 @@ public sealed class CBRadioService : ICBRadioService
 
             Say(playerHandle, playerHandle, playerText, channel);
             _audio.IsRadioChannelBusy = false;
+
+            // In a convoy, the line goes to the other drivers; one PC (the host) answers for everyone.
+            string? relayLineId = null;
+            if (Relay is { } relay && channel != DispatchChannel && channel != EmergencyChannel)
+            {
+                var decision = relay.OnPlayerLine(playerText, channel, out relayLineId);
+                if (decision != RelayDecision.AnswerLocally) return;
+            }
             TransitionTo(CBRadioState.GeneratingResponse);
 
             if (channel == DispatchChannel)
@@ -253,6 +265,7 @@ public sealed class CBRadioService : ICBRadioService
                 RelationshipManager.ApplyExchange(partner, playerText, reply, where, DateTimeOffset.UtcNow, MemoryLimit);
                 TruckerUpdated?.Invoke(this, partner);
                 if (rtWav is null) await PauseAsync(ct);
+                Relay?.OnReply(new RelayedReply(partner.FullName, partner.Handle, reply, partner.VoiceId, NeuralVoiceFor(partner.Handle), channel, relayLineId));
                 await SpeakAsync(partner.FullName, partner.Handle, reply, partner.VoiceId, AudioPriority.Normal, channel, ct, preparedWav: rtWav);
             }
         }
@@ -422,7 +435,7 @@ public sealed class CBRadioService : ICBRadioService
     private string DispatchSpeaker => $"{_company.DispatcherName} (Dispatch)";
 
     private string TruckerPrompt(TruckerPersonality trucker, AtsTelemetrySnapshot snapshot, int channel) =>
-        ContextBuilder.BuildTruckerSystemPrompt(trucker, _company, snapshot, RecentTurns(), channel, _settings.ConversationMode, Roster);
+        WithRelayContext(ContextBuilder.BuildTruckerSystemPrompt(trucker, _company, snapshot, RecentTurns(), channel, _settings.ConversationMode, Roster), channel);
 
     private int MemoryLimit => _settings.RememberConversations ? _settings.MaxMemoriesPerTrucker : 0;
 
@@ -509,7 +522,7 @@ public sealed class CBRadioService : ICBRadioService
         return (null, null);
     }
 
-    private async Task SpeakAsync(string speaker, string handle, string text, string voiceId, AudioPriority priority, int channel, CancellationToken ct, int? chatterVersion = null, byte[]? preparedWav = null)
+    private async Task SpeakAsync(string speaker, string handle, string text, string voiceId, AudioPriority priority, int channel, CancellationToken ct, int? chatterVersion = null, byte[]? preparedWav = null, string? neuralVoice = null)
     {
         ct.ThrowIfCancellationRequested();
         byte[]? wav = preparedWav;
@@ -529,7 +542,7 @@ public sealed class CBRadioService : ICBRadioService
         // Without OpenAI audio, the sink speaks Text with a Windows voice.
         await _audio.EnqueueAndWaitAsync(
             new AudioItem(text, priority, channel == DispatchChannel ? "dispatcher" : "cb", ApplyCbEffects: true, WavAudio: wav, VoiceId: voiceId,
-                NeuralVoice: NeuralVoiceFor(handle)), ct);
+                NeuralVoice: neuralVoice ?? NeuralVoiceFor(handle)), ct);
     }
 
     /// <summary>Each speaker keeps their own free neural voice.</summary>
@@ -537,6 +550,7 @@ public sealed class CBRadioService : ICBRadioService
     {
         if (handle == "Dispatch") return DispatchNeuralVoice;
         if (handle == "Channel 9") return "en-US-GuyNeural|-46%|-4Hz";
+        if (CrewMember.ByHandle(handle) is { } crew) return crew.NeuralVoice;
         TruckerPersonality? t;
         lock (_roster) t = _roster.FirstOrDefault(r => r.Handle == handle);
         return t is null ? PersonalityCatalog.NeuralVoicePool[0] : PersonalityCatalog.NeuralVoiceFor(t);

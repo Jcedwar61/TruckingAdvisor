@@ -1,5 +1,27 @@
 # Changelog - TruckingAdvisor
 
+## [v3.7.0] - 2026-11-18
+
+### Twitch chat on the CB
+- **Your Twitch chat can talk to the truckers.** Viewers type `!cb` (or `!ch19`, `!breaker`) and a message; it is read out in a caller voice, then one of the regulars answers on the radio, out loud. `!dispatch` reaches the dispatcher, and two new crew characters answer on the company channel: Hank at the shop (`!mechanic`) and Dana in safety (`!safety`).
+- **No Twitch login, token or app registration.** Chat is read anonymously over Twitch's secure chat connection and nothing is ever posted. It reconnects on its own.
+- **Channel Points.** A reward with "Require viewer to enter text" keys up on the CB and skips the cooldown; it can be limited to one reward id. The activity log shows the id when a reward is redeemed.
+- **Kept under control:** a cooldown between calls (30 s) and per viewer (2 min, mods and the broadcaster skip theirs), at most three calls waiting, optional subscribers-only, your own blocked words, and links, emoji and letter spam stripped before anything is spoken. Your push-to-talk always cuts in ahead of viewers. Viewer names are made speakable ("xX_RoadDog_99_Xx" is "Road Dog").
+- **Works without any AI.** With AI on, replies come from your AI (OpenAI or any OpenAI-compatible service, such as Groq or a local Ollama), told to stay in character and never follow instructions hidden in a viewer's message. With AI off, a built-in responder recognises what the viewer asked about (fuel, wear, speed and bears, load and ETA, rest hours, location) and answers with your live numbers. It never makes up a number when the game isn't connected. A reply from the AI containing a blocked word is replaced by the built-in one.
+
+### Stream overlay
+- **An OBS / Streamlabs Browser Source at `http://localhost:8789/overlay`** shows the chat commands with examples, a live "Next call" countdown, "On air" while a call plays, the Channel Points reward and who is in your convoy. A green-screen CB radio banner drops in with the viewer's message and the reply, on the channel it was said on.
+- Separate sources for the commands panel, the caller banner and a recent-lines feed (`/overlay/commands`, `/overlay/banner`, `/overlay/feed`); `?pos=`, `?mode=ticker`, `?scale=` and `?accent=` options; `?demo=1` to place it while offline. It listens on this PC only unless LAN access is ticked, and it never shows your convoy code.
+
+### Convoy CB
+- **Share the AI radio with friends who run TruckingAdvisor.** Everyone types the same convoy code. What anyone says on the CB (push-to-talk or typed) appears on every PC tuned to that channel, and one shared AI answers so you all hear the same reply, with each driver's own truck data ("how's *my* fuel?").
+- One PC answers for the AI: tick "This PC answers", or the app picks one. If two tick it, the app picks one of them. If the answering PC goes quiet, the asker's PC answers after 12 seconds and shares the reply. A line meant for a friend ("Zay, you see that?") gets no AI reply.
+- Twitch viewers' calls are heard by the whole convoy.
+- Messages are AES-GCM encrypted with a key made from the code, under a room name hashed from it, and travel through ntfy.sh (free, no account) or your own ntfy server. Presence is sent every 5 minutes to stay well inside ntfy.sh's free daily allowance.
+
+### Also
+- More > **Twitch, Overlay & Convoy** sets it all up, with a test call button and an activity log. A new User Guide page explains it.
+
 ## [v3.6.3] - 2026-11-17
 
 ### Changed

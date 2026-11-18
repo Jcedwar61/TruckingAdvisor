@@ -6,6 +6,10 @@
     <LangVersion>12.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The stream overlay page served to OBS by StreamOverlayServer. -->
+    <EmbeddedResource Include="Streaming\overlay.html" LogicalName="TruckingAdvisor.AI.Streaming.overlay.html" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <ProjectReference Include="..\TruckingAdvisor.Shared\TruckingAdvisor.Shared.csproj" />
   </ItemGroup>

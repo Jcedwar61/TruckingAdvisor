@@ -51,6 +51,8 @@ public partial class MainWindow : Window
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
     private readonly MainDashboardViewModel _viewModel;
     private HudOverlayWindow? _overlay;
+    /// <summary>Twitch chat, the OBS overlay and the convoy link.</summary>
+    private readonly TruckingAdvisor.AI.Streaming.StreamHub _streamHub;
     private HudChannelBar? _channelBar;
     private string? _lastAdvisory;
     /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
@@ -124,6 +126,8 @@ public partial class MainWindow : Window
             postToUi: action => Dispatcher.BeginInvoke(action),
             db: _db);
         DataContext = _viewModel;
+        _streamHub = new TruckingAdvisor.AI.Streaming.StreamHub(_cbRadio, _aiSettings, _company,
+            () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot);
         // Contacts are refreshed in place when a trucker answers; keep the one you're looking at selected.
         LstContacts.SelectionChanged += (_, _) => { if (LstContacts.SelectedItem is ContactView c) _selectedContactId = c.Id; };
         _viewModel.Contacts.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() =>
@@ -197,6 +201,11 @@ public partial class MainWindow : Window
         }
         _ = Task.Run(RefreshGameStatus);
         Loaded += (_, _) => ShowWelcomeIfFirstRun();
+        Loaded += async (_, _) =>
+        {
+            try { await _streamHub.ApplyAsync(); }
+            catch (Exception ex) { ShowNotice($"Twitch/convoy features couldn't start: {ex.Message}"); }
+        };
         StartUpdateChecks();
     }
 
@@ -249,6 +258,12 @@ public partial class MainWindow : Window
             await Task.Delay(600);
             if (controls.Content is FrameworkElement cw) SaveElementPng(cw, controls.Background, Path.Combine(dir, "controls.png"));
             controls.Close();
+            // Never saved: the screenshot run must not change the player's settings file.
+            var stream = new StreamWindow(_aiSettings, _streamHub, () => { }) { Owner = this, ShowActivated = false };
+            stream.Show();
+            await Task.Delay(600);
+            if (stream.Content is FrameworkElement sw) SaveElementPng(sw, stream.Background, Path.Combine(dir, "stream.png"));
+            stream.Close();
             GuideWindow.ShowGuide(this, _bindings, "CB radio");
             await Task.Delay(600);
             var guide = OwnedWindows.OfType<GuideWindow>().FirstOrDefault();
@@ -919,6 +934,12 @@ public partial class MainWindow : Window
 
     // ---- Layout & theme ----
 
+    private void BtnStream_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new StreamWindow(_aiSettings, _streamHub, () => _aiSettings.Save()) { Owner = this };
+        dlg.ShowDialog();
+    }
+
     private void BtnLayout_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new LayoutWindow(_aiSettings) { Owner = this };
@@ -1034,6 +1055,8 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         InstallUpdateOnExit();
+        // Leaves the convoy and closes the overlay; run off the UI thread so it can't wait on itself.
+        try { Task.Run(() => _streamHub.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(4)); } catch { }
         _keyboardHook.Dispose();
         _controllers?.Dispose();
         _mic.Dispose();
