@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using TruckingAdvisor.AI.Convoy;
+using TruckingAdvisor.Shared.Diagnostics;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
 
@@ -163,18 +164,25 @@ public sealed class StreamHub : IAsyncDisposable
 
     // ---- Twitch -> radio ----
 
+    /// <summary>Reports to the Stream window and to app.log (so a test on another PC can be diagnosed later).</summary>
+    private void Report(string line)
+    {
+        AppLog.Info($"Stream: {line}");
+        Activity?.Invoke(line);
+    }
+
     private void OnChatMessage(TwitchChatMessage message)
     {
         if (message.CustomRewardId is { } rewardId)
-            Activity?.Invoke($"{message.DisplayName} redeemed a Channel Points reward (reward id {rewardId}).");
+            Report($"{message.DisplayName} redeemed a Channel Points reward (reward id {rewardId}).");
         var call = _gate.TryAccept(message, out string? reason);
         if (call is null)
         {
-            if (reason is not "not a command") Activity?.Invoke($"Ignored {message.DisplayName}: {reason}.");
+            if (reason is not "not a command") Report($"Ignored {message.DisplayName}: {reason}.");
             return;
         }
-        if (!Enqueue(call)) Activity?.Invoke($"Ignored {message.DisplayName}: too many calls waiting.");
-        else Activity?.Invoke($"{message.DisplayName} is on the air: \"{call.Text}\"");
+        if (!Enqueue(call)) Report($"Ignored {message.DisplayName}: too many calls waiting.");
+        else Report($"{message.DisplayName} is on the air: \"{call.Text}\"");
         PushState();
     }
 
@@ -195,14 +203,26 @@ public sealed class StreamHub : IAsyncDisposable
         return Enqueue(new ViewerCall(displayName.ToLowerInvariant(), displayName, body, role, false));
     }
 
+    /// <summary>Longest one call may take (wait + reply + speech) before the next one gets its turn.</summary>
+    public TimeSpan CallTimeout { get; set; } = TimeSpan.FromMinutes(3);
+
     private async Task WorkerAsync(CancellationToken ct)
     {
         try
         {
             await foreach (var request in _calls.Reader.ReadAllAsync(ct))
             {
-                bool ok = await _radio.AnswerCallerAsync(request, ct);
-                if (!ok) Activity?.Invoke($"Couldn't put {request.CallerName} on the air (the radio was busy or off).");
+                // One stuck call (a voice that never finishes playing, a hung request) must not block every later one.
+                using var perCall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                perCall.CancelAfter(CallTimeout);
+                bool ok;
+                try { ok = await _radio.AnswerCallerAsync(request, perCall.Token); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { ok = false; }
+                catch (Exception ex) { AppLog.Error("Stream: answering a caller failed", ex); ok = false; }
+                if (!ok)
+                    Report($"Couldn't put {request.CallerName} on the air: {_radio.LastCallerProblem ?? "the radio was busy or off"}.");
+                else
+                    Report($"{request.CallerName} was answered on the radio.");
                 PushState();
             }
         }
@@ -283,9 +303,9 @@ public sealed class StreamHub : IAsyncDisposable
     /// <summary>Re-sends the overlay state (e.g. after the CB channel changed).</summary>
     public void PushState() => _overlay?.PushState();
 
-    private void SetTwitchStatus(string s) { TwitchStatus = s; StatusChanged?.Invoke(); }
-    private void SetConvoyStatus(string s) { ConvoyStatus = s; StatusChanged?.Invoke(); }
-    private void SetOverlayStatus(string s) { OverlayStatus = s; StatusChanged?.Invoke(); }
+    private void SetTwitchStatus(string s) { if (s != TwitchStatus) AppLog.Info($"Stream: {s}"); TwitchStatus = s; StatusChanged?.Invoke(); }
+    private void SetConvoyStatus(string s) { if (s != ConvoyStatus) AppLog.Info($"Stream: {s}"); ConvoyStatus = s; StatusChanged?.Invoke(); }
+    private void SetOverlayStatus(string s) { if (s != OverlayStatus) AppLog.Info($"Stream: {s}"); OverlayStatus = s; StatusChanged?.Invoke(); }
 
     public async ValueTask DisposeAsync()
     {

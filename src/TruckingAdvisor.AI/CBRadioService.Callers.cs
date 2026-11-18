@@ -99,23 +99,38 @@ public sealed partial class CBRadioService
     /// Waits for the player's own exchange, yields to the player keying up, and works with AI off.
     /// Returns false when the call couldn't go out (radio off, interrupted, or waited too long).
     /// </summary>
+    /// <summary>Why the last caller wasn't answered (for the Stream log and app.log). Null after a call that went out.</summary>
+    public string? LastCallerProblem { get; private set; }
+
     public async Task<bool> AnswerCallerAsync(CallerRequest request, CancellationToken cancellationToken = default)
     {
-        if (CurrentState == CBRadioState.RadioOff) return false;
+        LastCallerProblem = null;
+        bool Fail(string why)
+        {
+            LastCallerProblem = why;
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"Radio: caller {request.CallerName} not answered: {why} (radio state {CurrentState})");
+            return false;
+        }
+        if (CurrentState == CBRadioState.RadioOff) return Fail("the radio is off");
         var giveUp = Clock() + CallerWait;
         while (IsPlayerExchange(CurrentState))
         {
-            if (Clock() > giveUp) return false;
-            await Task.Delay(150, cancellationToken);
+            if (Clock() > giveUp) return Fail($"you were still talking on the radio after {CallerWait.TotalSeconds:F0} s");
+            try { await Task.Delay(150, cancellationToken); }
+            catch (OperationCanceledException) { return Fail("timed out waiting for your own radio call to finish"); }
         }
         // A caller outranks background chatter: a long AI conversation (slow with on-device voices) would
         // otherwise hold the radio past CallerWait and the viewer would never be answered. Chatter is cut
         // at the end of its current line; the player's own exchange is still waited for.
-        while (!await _gate.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken))
+        try
         {
-            if (Clock() > giveUp) return false;
-            if (!IsPlayerExchange(CurrentState)) CancelChatter();
+            while (!await _gate.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken))
+            {
+                if (Clock() > giveUp) return Fail($"the radio stayed busy for {CallerWait.TotalSeconds:F0} s");
+                if (!IsPlayerExchange(CurrentState)) CancelChatter();
+            }
         }
+        catch (OperationCanceledException) { return Fail("timed out waiting for the radio"); }
         CancellationToken keyUpToken;
         int version;
         lock (_stateLock) { keyUpToken = _keyUpCts.Token; version = _txVersion; }
@@ -124,7 +139,7 @@ public sealed partial class CBRadioService
         try
         {
             // The radio may still read as busy from chatter that was just cut; it no longer holds the radio.
-            if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return false;
+            if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return Fail("you keyed up just as the call came in");
             ArmWatchdog(version);
             int channel = CallerChannel(request);
 
@@ -140,7 +155,8 @@ public sealed partial class CBRadioService
             }
 
             var (speaker, handle, voice, neural, reply) = await ComposeCallerReplyAsync(request, channel, ct);
-            if (ct.IsCancellationRequested) return false;
+            if (ct.IsCancellationRequested) return Fail("you keyed up while the reply was being written");
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Info($"Radio: {handle} answers caller {request.CallerName} on channel {channel}");
             await PauseAsync(ct);
             Relay?.OnReply(new RelayedReply(speaker, handle, reply, voice, neural, channel, request.ReplyToId));
             CallerAnswered?.Invoke(this, (request, handle, reply, channel));
@@ -149,12 +165,15 @@ public sealed partial class CBRadioService
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return Fail(cancellationToken.IsCancellationRequested
+                ? "the call took too long (a voice or AI request stalled)"
+                : "you keyed up, which always cuts callers off");
         }
         catch (Exception ex)
         {
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Error($"Radio: answering caller {request.CallerName} failed", ex);
             Notice?.Invoke(this, $"Radio error: {ex.Message}");
-            return false;
+            return Fail($"error: {ex.Message}");
         }
         finally
         {

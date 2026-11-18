@@ -132,6 +132,13 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _streamHub = new TruckingAdvisor.AI.Streaming.StreamHub(_cbRadio, _aiSettings, _company,
             () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot);
+        // Show on the main window why a chat call didn't make it on air (cooldown, busy radio, ...), not only in
+        // the Stream window, which is usually closed while streaming.
+        _streamHub.Activity += line =>
+        {
+            if (line.StartsWith("Ignored ", StringComparison.Ordinal) || line.StartsWith("Couldn't put ", StringComparison.Ordinal))
+                Dispatcher.BeginInvoke(() => ShowNotice($"Twitch: {line}"));
+        };
         // Contacts are refreshed in place when a trucker answers; keep the one you're looking at selected.
         LstContacts.SelectionChanged += (_, _) => { if (LstContacts.SelectedItem is ContactView c) _selectedContactId = c.Id; };
         _viewModel.Contacts.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(() =>
@@ -660,6 +667,10 @@ public partial class MainWindow : Window
         sb.AppendLine($"Game: {(s.GameId == 1 ? "ETS2" : s.GameId == 2 ? "ATS" : "unknown")}, plugin revision {s.PluginRevision}, demo {s.IsDemoData}");
         sb.AppendLine($"AI: {(_aiSettings.GlobalAiEnabled ? "on" : "off")}, voice {_aiSettings.VoicePipeline}, mic {(_aiSettings.MicrophoneEnabled ? "on" : "off")}, units {_aiSettings.Units}");
         sb.AppendLine($"Controllers: {string.Join(", ", _controllers?.DeviceNames ?? Array.Empty<string>())}");
+        sb.AppendLine($"Voices: {_aiSettings.VoiceEngine}; radio {_cbRadio.CurrentState} on channel {_cbRadio.ActiveChannel}; AI replies {(_cbRadio.AiAvailable ? "available" : "not available (built-in replies)")}");
+        var st = _aiSettings.Stream;
+        sb.AppendLine($"Twitch: {_streamHub.TwitchStatus} Cooldowns {st.GlobalCooldownSeconds} s / {st.UserCooldownSeconds} s per viewer, subs only {st.SubscribersOnly}, read aloud {st.ReadViewerMessageAloud}");
+        sb.AppendLine($"Overlay: {_streamHub.OverlayStatus} Convoy: {_streamHub.ConvoyStatus}");
         sb.AppendLine();
         sb.AppendLine("Recent log:");
         foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(line);

@@ -94,12 +94,12 @@ public sealed class StreamingTests
 
         Assert.NotNull(gate.TryAccept(Chat("!cb first"), out _));
         Assert.Null(gate.TryAccept(Chat("!cb second", "other"), out var why));
-        Assert.Equal("radio cooldown", why);
+        Assert.StartsWith("radio cooldown, 30 s left", why);
         Assert.Equal(30, gate.SecondsUntilOpen());
 
         now += TimeSpan.FromSeconds(31);
         Assert.Null(gate.TryAccept(Chat("!cb again"), out why));
-        Assert.Equal("user cooldown", why);
+        Assert.StartsWith("per-viewer cooldown, 89 s left", why);
         Assert.NotNull(gate.TryAccept(Chat("!cb hi", "other"), out _));
 
         now += TimeSpan.FromSeconds(31);
@@ -711,6 +711,105 @@ public sealed class StreamingTests
         string evt = await ReadEventAsync();
         Assert.Contains("event: line", evt);
         Assert.Contains("radio check", evt);
+    }
+
+    /// <summary>
+    /// The whole path a real "!cb" takes: Twitch IRC line (exactly as Twitch sends it, all tags) -> chat client ->
+    /// command gate -> call queue -> radio -> AI -> spoken reply.
+    /// </summary>
+    [Fact]
+    public async Task Hub_RealTwitchChatLine_EndToEnd_GetsATruckerReplyOnTheRadio()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            var stream = tcp.GetStream();
+            var reader = new StreamReader(stream);
+            var writer = new StreamWriter(stream) { NewLine = "\r\n", AutoFlush = true };
+            for (int i = 0; i < 4; i++) await reader.ReadLineAsync(); // CAP, PASS, NICK, JOIN
+            await writer.WriteLineAsync(":tmi.twitch.tv CAP * ACK :twitch.tv/tags twitch.tv/commands");
+            await writer.WriteLineAsync(":tmi.twitch.tv 001 justinfan12345 :Welcome, GLHF!");
+            await writer.WriteLineAsync(":justinfan12345!justinfan12345@justinfan12345.tmi.twitch.tv JOIN #ghost");
+            await writer.WriteLineAsync("@emote-only=0;followers-only=-1;r9k=0;room-id=12345;slow=0;subs-only=0 :tmi.twitch.tv ROOMSTATE #ghost");
+            await writer.WriteLineAsync("@badge-info=;badges=;client-nonce=4b1d;color=#1E90FF;display-name=RoadDog_77;emotes=;first-msg=0;flags=;" +
+                "id=9f2c;mod=0;returning-chatter=0;room-id=12345;subscriber=0;tmi-sent-ts=1700000000000;turbo=0;user-id=777;user-type= " +
+                ":roaddog_77!roaddog_77@roaddog_77.tmi.twitch.tv PRIVMSG #ghost :!cb anybody got eyes on a bear?");
+            await Task.Delay(3000);
+        });
+
+        var audio = new RecordingAudio();
+        var settings = new AiSettings();
+        settings.Stream.TwitchEnabled = true;
+        settings.Stream.TwitchChannel = "Ghost";
+        var company = new VirtualCompanyProfile { PlayerHandle = "Highway Ghost" };
+        var llm = new FakeLlm { Reply = "Road Dog, no bears in sight, clean shot to Boise." };
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), company, audio, () => Driving, settings, llm, random: new Random(2)) { ReplyPause = (0, 0) };
+        var activity = new List<string>();
+        await using var hub = new StreamHub(radio, settings, company, () => Driving, twitchFactory: ch => new TwitchChatClient(ch, async ct =>
+        {
+            var tcp = new TcpClient();
+            await tcp.ConnectAsync(IPAddress.Loopback, port, ct);
+            return tcp.GetStream();
+        }));
+        hub.Activity += line => { lock (activity) activity.Add(line); };
+        await hub.ApplyAsync();
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!audio.Texts().Contains(llm.Reply) && DateTime.UtcNow < deadline) await Task.Delay(50);
+        lock (activity) Assert.Contains(activity, l => l.Contains("RoadDog_77 is on the air"));
+        Assert.Equal(new[] { "anybody got eyes on a bear?", llm.Reply }, audio.Texts());
+        Assert.Contains("Road Dog", llm.Calls.Single().User);
+        Assert.Contains("Connected", hub.TwitchStatus);
+        listener.Stop();
+    }
+
+    /// <summary>Audio whose first line never finishes playing (a dead output device, a hung voice).</summary>
+    private sealed class FirstLineHangsAudio : IAudioPriorityManager
+    {
+        public readonly List<string> Played = new();
+        private int _count;
+        public bool IsRadioChannelBusy { get; set; }
+        public void EnqueueAnnouncement(string text, AudioPriority priority, string voiceProfile = "advisor", bool applyCbEffects = false) { }
+        public void Enqueue(AudioItem item) { }
+        public Task EnqueueAndWaitAsync(AudioItem item, CancellationToken ct = default)
+        {
+            lock (Played) Played.Add(item.Text);
+            return Interlocked.Increment(ref _count) == 1 ? Task.Delay(Timeout.Infinite, ct) : Task.CompletedTask;
+        }
+        public void SetChannelVolume(string channel, float volume0To1) { }
+        public void StopAll() { }
+    }
+
+    [Fact]
+    public async Task Hub_AStuckCall_TimesOut_SaysWhy_AndTheNextViewerIsStillAnswered()
+    {
+        var audio = new FirstLineHangsAudio();
+        var settings = new AiSettings();
+        settings.Stream.ReadViewerMessageAloud = false;
+        var company = new VirtualCompanyProfile { PlayerHandle = "Highway Ghost" };
+        var radio = new CBRadioService(PersonalityCatalog.CreateDefaultRoster(), company, audio, () => Driving, settings, random: new Random(2)) { ReplyPause = (0, 0) };
+        var activity = new List<string>();
+        await using var hub = new StreamHub(radio, settings, company, () => Driving) { CallTimeout = TimeSpan.FromSeconds(1) };
+        hub.Activity += line => { lock (activity) activity.Add(line); };
+
+        Assert.True(hub.SimulateViewer("Stuck", "!cb first"));
+        Assert.True(hub.SimulateViewer("RoadDog", "!cb second"));
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (activity) if (activity.Any(l => l.Contains("RoadDog was answered"))) break;
+            await Task.Delay(50);
+        }
+        lock (activity)
+        {
+            Assert.Contains(activity, l => l.StartsWith("Couldn't put Stuck on the air: the call took too long"));
+            Assert.Contains(activity, l => l.Contains("RoadDog was answered"));
+        }
+        lock (audio.Played) Assert.Equal(2, audio.Played.Count);
     }
 
     [Fact]

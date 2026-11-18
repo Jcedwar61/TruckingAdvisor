@@ -112,11 +112,12 @@ public sealed class ViewerCallGate
             var now = _clock();
             if (!reward)
             {
-                if (now - _lastCall < TimeSpan.FromSeconds(Math.Max(0, _settings.GlobalCooldownSeconds)))
-                { rejectedBecause = "radio cooldown"; return null; }
-                if (!message.IsPrivileged && _lastByUser.TryGetValue(message.User, out var last) &&
-                    now - last < TimeSpan.FromSeconds(Math.Max(0, _settings.UserCooldownSeconds)))
-                { rejectedBecause = "user cooldown"; return null; }
+                var global = TimeSpan.FromSeconds(Math.Max(0, _settings.GlobalCooldownSeconds));
+                if (now - _lastCall < global)
+                { rejectedBecause = $"radio cooldown, {SecondsLeft(_lastCall + global - now)} s left (Stream settings > cooldown)"; return null; }
+                var perUser = TimeSpan.FromSeconds(Math.Max(0, _settings.UserCooldownSeconds));
+                if (!message.IsPrivileged && _lastByUser.TryGetValue(message.User, out var last) && now - last < perUser)
+                { rejectedBecause = $"per-viewer cooldown, {SecondsLeft(last + perUser - now)} s left (mods and the broadcaster skip it)"; return null; }
             }
             _lastCall = now;
             _lastByUser[message.User] = now;
@@ -124,6 +125,8 @@ public sealed class ViewerCallGate
         }
         return new ViewerCall(message.User, message.DisplayName, text, role, reward);
     }
+
+    private static int SecondsLeft(TimeSpan left) => Math.Max(1, (int)Math.Ceiling(left.TotalSeconds));
 
     /// <summary>"!mechanic how are the tires" -> (Mechanic, "how are the tires"). Null if it isn't a radio command.</summary>
     public static (CallerRole Role, string Body)? ParseCommand(string text)
