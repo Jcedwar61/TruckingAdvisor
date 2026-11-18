@@ -1,4 +1,5 @@
 using TruckingAdvisor.Shared;
+using TruckingAdvisor.AI;
 using System.Collections.ObjectModel;
 using TruckingAdvisor.Shared.Enums;
 using TruckingAdvisor.Shared.Models;
@@ -48,6 +49,16 @@ public sealed partial class MainDashboardViewModel
         : "Quiet 30 min";
 
     /// <summary>Starts a 30-minute quiet period, or ends the current one early.</summary>
+    /// <summary>Flips the radio between TV-friendly and R-rated language. Takes effect on the next line anyone says.</summary>
+    public void ToggleRating()
+    {
+        _aiSettings.Rating = _aiSettings.Rating == RadioRating.TvFriendly ? RadioRating.RRated : RadioRating.TvFriendly;
+        try { _aiSettings.Save(); } catch { /* the toggle still applies for this session */ }
+        RadioNotice = _aiSettings.Rating == RadioRating.RRated
+            ? "Radio language: R-rated. The truckers can swear and joke like real drivers (never slurs or explicit content)."
+            : "Radio language: TV-friendly. Clean talk, no swearing.";
+    }
+
     public void ToggleQuiet()
     {
         if (_radio.IsQuietPeriod)

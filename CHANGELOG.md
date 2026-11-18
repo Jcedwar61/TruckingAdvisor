@@ -1,5 +1,26 @@
 # Changelog — TruckingAdvisor
 
+## [v3.5.0] — 2026-11-18
+
+### Fixed
+- **AI truckers replied in text but were never heard** ("A voice line couldn't be played (Source array type cannot be assigned to destination array type.)"). Every CB voice line hit a bug in the audio hand-off to the speakers. Fixed and reproduced; the Windows CI smoke test now plays a line through the full CB radio chain (static, filter, clicks) to prove it.
+
+### The truckers talk to each other
+- **Real conversations, built line on line.** Instead of one canned exchange, two (sometimes three) truckers hold a back-and-forth where each reply reacts to what the last driver actually said: stories, questions, friendly arguments, tangents, truck talk, the road you're on, or a callback to something you told them. Each round is written fresh from the previous one, carries on exactly where it left off, and signs off naturally at the end. The next round is written while the current one is being spoken, so there are no awkward gaps.
+- **Busier radio, longer conversations:** Quiet 2 rounds, Normal 3, Busy 4, Very busy 5.
+- **Cross-talk:** after a trucker answers you, another driver sometimes chimes in on what was said.
+- **You're never talked over:** press push-to-talk and the conversation stops at once; whoever spoke last answers you.
+- Truckers stay in character, use their own memories of you, and still never claim to see traffic, police or weather.
+
+### TV-friendly or R-rated
+- **Settings > Radio language:** TV-friendly (clean, no swearing) or R-rated (truckers swear and joke like real drivers). Applies to every AI voice: truckers, their conversations and dispatch. R-rated never allows slurs, hate, explicit sexual content or encouraging unsafe driving. Default: TV-friendly.
+- Bindable: **More > Controls > Radio language** flips it from a key or wheel button.
+
+### Two AIs, the right model for each job
+- **Optional DeepSeek key** (Settings > DeepSeek, stored encrypted like the OpenAI key). With both keys, DeepSeek writes the truckers' conversations and OpenAI keeps the quick replies to you. With one key, that AI does everything. If one fails or runs out of credit, the other takes over.
+- **Still no models to choose:** quick replies use the fastest model your key can use; conversations use the strongest writer. Newer models your key offers are found automatically, and a model that rejects a setting or isn't available is skipped. Settings shows which AI and model wrote the last conversation.
+- DeepSeek prices can be entered for cost estimates; DeepSeek requests count toward the daily limits.
+
 ## [v3.4.0] — 2026-11-14
 
 ### Speech recognition, rebuilt

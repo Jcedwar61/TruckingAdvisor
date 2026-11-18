@@ -10,11 +10,11 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-3.4.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-3.5.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
-4. Optional: **AI & Radio Settings** → enable AI, paste your OpenAI key, turn on the microphone, set your CB handle.
+4. Optional: **AI & Radio Settings** → enable AI, paste your OpenAI key (and optionally a DeepSeek key), turn on the microphone, set your CB handle.
 
 No game handy? Use the **TruckingAdvisor (demo data)** Start-menu shortcut. Demo values are clearly bannered and never saved.
 
@@ -42,7 +42,9 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | Diagnostics | Log file (scrubbed of personal details), **More > Copy Diagnostics**, **More > Record a Session** (raw telemetry for bug reports; replay with `--replay file`). |
 | Speech recognition | Whisper on your PC (free, offline, private; one-time model download) or OpenAI with AI on. Mic stays ready so first words aren't clipped; silence is never sent; your handle, truckers, cities and CB slang are recognized. **Settings > Test microphone**. |
 | Voices | Free Microsoft neural voices by default (each trucker, dispatch and the co-driver has their own; Windows voices take over offline), or OpenAI voices with your key. **Settings > Test voices** plays a sample. |
-| AI models | Nothing to pick: choose **AI quality** (Economy / Balanced / Best); built-in model lists, automatic fallback if a model is unavailable. |
+| AI models | Nothing to pick: choose **AI quality** (Economy / Balanced / Best); built-in model lists, automatic fallback if a model is unavailable. Each job gets its own model: the quickest for replies to you, the strongest writer for the truckers' conversations. |
+| Trucker conversations | With AI on, the truckers talk to each other in real back-and-forth conversations, each reply building on the last (stories, questions, friendly arguments, the road you're on), and sometimes chime in after one answers you. Push-to-talk cuts in any time. Optional **DeepSeek** key: DeepSeek writes the conversations while OpenAI answers you, each covering for the other. |
+| Radio language | **TV-friendly** (clean) or **R-rated** (swearing and crude jokes; never slurs, hate or explicit content), for every AI voice. Settings > Radio language, or bind it to a wheel button. |
 | Guide | **F1**, the **?** button or **More > User Guide**: searchable help for every feature, voice command and CB tip, with your own key and wheel bindings. |
 | Updates | Checks GitHub releases in the background, downloads new versions and verifies them against the published SHA-256 checksum, then offers **Restart & update** in a quiet banner (or installs when you close the app). **More > Check for Updates** checks now; **Settings > Updates** turns it off. |
 | Voice commands | Say "TruckingAdvisor, ..." to switch channels, call dispatch, ask fuel range or distance left, change radio volume, mute/unmute or repeat. Introduce yourself on the radio ("call me Highway Ghost") and the app offers to save your handle. |

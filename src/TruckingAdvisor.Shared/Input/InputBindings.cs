@@ -60,6 +60,7 @@ public static class InputActions
         new("previousCbChannel", "Previous CB channel", "CB radio", 0xDB),                // [
         new("quickDispatchCheck", "Check in with dispatch", "CB radio", 0x79),            // F10
         new("toggleQuiet", "Quiet 30 min on/off", "CB radio"),
+        new("toggleRadioRating", "Radio language: TV-friendly / R-rated", "CB radio"),
         new("radioVolumeUp", "Radio volume up", "Audio"),
         new("radioVolumeDown", "Radio volume down", "Audio"),
         new("acknowledgeAlert", "Stop current announcement", "Audio", 0xDC),              // \

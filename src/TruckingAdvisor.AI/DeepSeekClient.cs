@@ -201,6 +201,7 @@ public sealed class LlmRouter : IJobLlmClient
     }
 
     public bool IsAvailable => _openAi.IsAvailable || _deepSeek.IsAvailable;
+    public DeepSeekClient DeepSeek => _deepSeek;
 
     public Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken cancellationToken) =>
         CompleteAsync(systemPrompt, userPrompt, maxOutputTokens, LlmJob.Reply, cancellationToken);

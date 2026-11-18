@@ -1,4 +1,5 @@
 using System.Net;
+using TruckingAdvisor.Shared.Input;
 using System.Text;
 using System.Text.Json;
 using TruckingAdvisor.AI;
@@ -190,5 +191,16 @@ public class ConversationTests
         var gpt = AiModelCatalog.Discover(new[] { ("gpt-7", 9L), ("gpt-7-pro", 9L), ("gpt-7-mini", 8L), ("gpt-7-realtime", 9L) }, "gpt-",
             AiModelCatalog.Conversation, LlmJobKind.Conversation);
         Assert.Equal(new[] { "gpt-7", "gpt-7-mini" }, gpt);               // no costly -pro, no realtime
+    }
+}
+
+public class RatingToggleTests
+{
+    [Fact]
+    public void RatingToggle_IsBindable()
+    {
+        var action = InputActions.Find("toggleRadioRating");
+        Assert.NotNull(action);
+        Assert.Contains("R-rated", action!.Label);
     }
 }

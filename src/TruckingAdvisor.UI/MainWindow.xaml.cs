@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private readonly AtsMemoryMappedTelemetryProvider _telemetry;
     private readonly AiSettings _aiSettings;
     private readonly OpenAiClientService _openAi;
+    private readonly DeepSeekClient _deepSeek;
+    private readonly LlmRouter _llm;   // picks OpenAI or DeepSeek per job (quick replies vs conversations)
     private readonly TruckingAdvisorDatabase _db;
     private readonly VirtualCompanyProfile _company;
     private readonly WindowsAudioSink _sink = new();
@@ -73,6 +75,8 @@ public partial class MainWindow : Window
 
         _aiSettings = AiSettings.Load();
         _openAi = new OpenAiClientService(_aiSettings, new AiUsageTracker(AiUsageTracker.DefaultPath));
+        _deepSeek = new DeepSeekClient(_aiSettings, _openAi.Usage);
+        _llm = new LlmRouter(_openAi, _deepSeek, _aiSettings);
         _db = new TruckingAdvisorDatabase();
         _company = _db.LoadCompany();
         var career = _db.LoadCareer();
@@ -93,7 +97,7 @@ public partial class MainWindow : Window
         });
         _audio.AudioStarted += (_, item) => { if (item.Channel == "advisor") _lastAdvisory = item.Text; };
         _cbRadio = new CBRadioService(roster, _company, _audio, () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot, _aiSettings,
-            llm: _openAi, stt: _speech, tts: _openAi)
+            llm: _llm, stt: _speech, tts: _openAi)
         {
             RealtimeTransportFactory = () => new WebSocketRealtimeTransport(),
             RealtimeApiKey = () => ApiKeyStore.Load(_aiSettings.Provider),
@@ -138,6 +142,7 @@ public partial class MainWindow : Window
         // Pick the working OpenAI models from the built-in lists (no model names for the player to choose).
         _openAi.ApplyResolvedModels();
         _ = _openAi.RefreshModelsAsync();
+        _ = _deepSeek.RefreshModelsAsync();
 
         // Every function can be bound to keys and to wheel / button-box buttons (More > Controls).
         // All input goes through one router on the UI thread. Hook callbacks must return fast
@@ -478,6 +483,7 @@ public partial class MainWindow : Window
                 _channelBar?.Flash();
                 break;
             case "toggleQuiet": _viewModel.ToggleQuiet(); break;
+            case "toggleRadioRating": _viewModel.ToggleRating(); break;
             case "radioVolumeUp": _viewModel.RunCommand(VoiceCommandKind.VolumeUp); break;
             case "radioVolumeDown": _viewModel.RunCommand(VoiceCommandKind.VolumeDown); break;
             case "distanceReport": _viewModel.RunCommand(VoiceCommandKind.DistanceReport); break;
@@ -706,7 +712,7 @@ public partial class MainWindow : Window
 
     private void BtnAiSettings_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _company, TestVoicesAsync, TestMicrophoneAsync) { Owner = this };
+        var dlg = new AiSettingsWindow(_aiSettings, _openAi, _llm, _company, TestVoicesAsync, TestMicrophoneAsync) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
             _db.SaveCompany(_company);
@@ -714,6 +720,7 @@ public partial class MainWindow : Window
             _viewModel.RefreshUnits();
             _openAi.ApplyResolvedModels();
             _ = _openAi.RefreshModelsAsync();
+            _ = _deepSeek.RefreshModelsAsync();
         }
     }
 
