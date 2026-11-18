@@ -1,11 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <LangVersion>12.0</LangVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.Net.Http" />
+    <Using Include="System.IO" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
     <PackageReference Include="xunit" Version="2.7.0" />
@@ -17,5 +22,6 @@
     <ProjectReference Include="..\..\src\TruckingAdvisor.Data\TruckingAdvisor.Data.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj" />
+    <ProjectReference Include="..\..\src\TruckingAdvisor.Audio\TruckingAdvisor.Audio.csproj" />
   </ItemGroup>
 </Project>

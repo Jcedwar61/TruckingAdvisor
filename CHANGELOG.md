@@ -1,25 +1,83 @@
-# Changelog — TruckingAdvisor
+# Changelog - TruckingAdvisor
 
-## [v3.5.0] — 2026-11-18
-
-### Fixed
-- **AI truckers replied in text but were never heard** ("A voice line couldn't be played (Source array type cannot be assigned to destination array type.)"). Every CB voice line hit a bug in the audio hand-off to the speakers. Fixed and reproduced; the Windows CI smoke test now plays a line through the full CB radio chain (static, filter, clicks) to prove it.
+## [v3.7.0] - 2026-11-18
 
 ### The truckers talk to each other
 - **Real conversations, built line on line.** Instead of one canned exchange, two (sometimes three) truckers hold a back-and-forth where each reply reacts to what the last driver actually said: stories, questions, friendly arguments, tangents, truck talk, the road you're on, or a callback to something you told them. Each round is written fresh from the previous one, carries on exactly where it left off, and signs off naturally at the end. The next round is written while the current one is being spoken, so there are no awkward gaps.
 - **Busier radio, longer conversations:** Quiet 2 rounds, Normal 3, Busy 4, Very busy 5.
 - **Cross-talk:** after a trucker answers you, another driver sometimes chimes in on what was said.
 - **You're never talked over:** press push-to-talk and the conversation stops at once; whoever spoke last answers you.
-- Truckers stay in character, use their own memories of you, and still never claim to see traffic, police or weather.
+- Conversations draw on each trucker's own backstory and topics (the v3.6 cast), stay in character, use their memories of you, and still never claim to see traffic, police or weather.
 
 ### TV-friendly or R-rated
-- **Settings > Radio language:** TV-friendly (clean, no swearing) or R-rated (truckers swear and joke like real drivers). Applies to every AI voice: truckers, their conversations and dispatch. R-rated never allows slurs, hate, explicit sexual content or encouraging unsafe driving. Default: TV-friendly.
+- **Settings > Radio language:** TV-friendly (clean, no swearing) or R-rated (truckers swear and joke like real drivers). Applies to every AI voice: truckers, their conversations and dispatch. R-rated never allows slurs, hate, explicit sexual content or encouraging unsafe driving. Default: TV-friendly, which also overrides the swearing in the cast's speaking styles (accent and attitude stay, the language is clean). Pick R-rated for the v3.6 behaviour and then some.
 - Bindable: **More > Controls > Radio language** flips it from a key or wheel button.
 
 ### Two AIs, the right model for each job
 - **Optional DeepSeek key** (Settings > DeepSeek, stored encrypted like the OpenAI key). With both keys, DeepSeek writes the truckers' conversations and OpenAI keeps the quick replies to you. With one key, that AI does everything. If one fails or runs out of credit, the other takes over.
 - **Still no models to choose:** quick replies use the fastest model your key can use; conversations use the strongest writer. Newer models your key offers are found automatically, and a model that rejects a setting or isn't available is skipped. Settings shows which AI and model wrote the last conversation.
 - DeepSeek prices can be entered for cost estimates; DeepSeek requests count toward the daily limits.
+
+### Fixed
+- **The stuck-radio watchdog could cut off a conversation.** The 45-second timer armed by push-to-talk kept running after your call, so a conversation or cross-talk that followed could be "put back on the hook" mid-sentence. The watchdog is now a heartbeat: each call replaces the previous timer and conversations renew it before every line, so it only steps in when a line really stalls.
+
+
+## [v3.6.3] - 2026-11-17
+
+### Changed
+- **New licence.** TruckingAdvisor is now licensed under the PolyForm Noncommercial License 1.0.0 instead of MIT. It stays free to use, share and change for any noncommercial purpose; commercial use needs the author's permission. The installer and app file properties say so too. Nothing else changes.
+
+## [v3.6.2] - 2026-11-14
+
+### Fixed
+- **"An ItemsControl is inconsistent with its items source" on the radio.** The transcript scrolled itself from inside its own CollectionChanged handler. `ScrollIntoView` forces a layout, and forcing it between a line being added and the oldest being trimmed left the list's container generator out of step with the collection (the inner exception reported two events for three items). The scroll is queued now, at most one at a time.
+- **The radio could stay stuck on "RECEIVING" for good**, after which every unprompted line was silently dropped, because chatter waits for an idle radio. Two things caused it: the screenshot pass abandoned its typed call after five seconds while the call kept holding the radio, and a slow render or a stalled request had no time limit at all. Calls now have a 45-second watchdog that puts the radio back on the hook, and the capture waits for its line.
+- **Unprompted radio traffic never happened in demo mode.** The slow tick and the parked check bailed out unless the telemetry was live, and demo data is not, so truckers only ever spoke when the capture typed at them.
+
+## [v3.6.1] - 2026-11-14
+### Fixed
+- **The error pop-up when the radio talked.** The radio transcript and the demo history added rows to bound lists from the telemetry and radio threads, which left the WPF list "inconsistent with its items source"; the pop-up then repeated for every line. Rows now always land on the UI thread, with regression tests that drive a real ListBox.
+- The pop-up showed the exception text with a literal `\n` in it and pointed at an inner exception that was never logged. The whole chain is written to the log now and the message reads as a sentence.
+- **The User Guide and Controls windows were cut off.** A VisualBrush anchors on the element's outer edge, so the screenshot helper lost a margin's worth off the top and left and pushed the far edges out of frame; the Controls rows also overran the window width. Both read properly now.
+
+## [v3.6.0] - 2026-11-14
+### Cast and conversations
+- **A full crew of regulars: fifteen of them.** Carolina Chrome, Bayou Belle, Glacier Gus, Texas Slim, Prairie Rose, Cajun Coyote, Flatbed Frank, Mama Bear, Vinegar Val and Dusty Dakota join the five originals, each with a backstory, a truck, a home patch of highway, opinions and their own way of talking. They talk like truckers: some swearing, no formality, never at you.
+- **Anyone will start a conversation on their own now**, about whatever is on their mind: their own topics first, then truck-stop talk, plus a nudge when you are parked, low on fuel, heavy or running at night. The old five-trucker assumption is gone, including in the hourly cap and the newcomer roll.
+- **Newcomers are more likely to pull onto the channel and stay** (up to six extras), and they arrive with a backstory and their own opener rather than a name and a trait list.
+- The AI is told each trucker's story and told that mild swearing is normal. CB Contacts gained a BACKSTORY panel, so you can read who you are talking to.
+- Relationship labels read properly ("Familiar Voice", not "FamiliarVoice"), and the settings pickers do too ("Old School Trucker", "Very Busy").
+
+### Voices
+- **New on-device model: Kokoro 82M (Apache-2.0)**, offering the most natural offline voices in the app. Fifty-four voices, one per regular, and the men sound like men. Settings > Voices has it next to the existing on-device model; both download once, checksum-pinned, and need no key.
+- **Pitch was upside down.** A "deep" voice spec (-8 Hz) was raising pitch by a quarter instead of lowering it. Fixed, and the tempo change that pitch-shifting causes is now given back to the synthesizer, so a deep voice is no longer also a fast one. Measured, both on-device engines now land at 80-125 Hz for a deep line and 120-140 wpm.
+- **Voices are assigned by measurement, not by luck.** Every speaker in both on-device models was rendered and its pitch measured, so every male regular gets a man's voice and every female regular a woman's, all fifteen distinct on Kokoro. Before, three men had women's voices and the newcomer pool could hand a man a soprano.
+- **Nothing sounds like a walkie-talkie any more, and the bass is back.** The radio band went from 300-3200 Hz to 145-4800 Hz; it now starts at 72 Hz because the old cut was stripping the fundamental out of deep voices and leaving them thin. Presence is +2 dB at 1.7 kHz instead of +3.
+- **Much quieter static, and no more fizz.** Hiss drops to 8 % under the voice (was 15 %), is rolled off by 2.2 kHz and tilted pink, and a new de-esser pulls back the 5-8 kHz band that sampled voices hiss in. Measured, the gaps sit about 40x below the voice. Key-up ticks are 12 ms and the squelch tail 26 ms, separated instead of one 40 ms warble.
+- **The Windows fallback no longer mumbles at 93 wpm.** Its rate is mapped to the same target pace as the neural voices, and it now honours the pitch hint so the fallback cast stops sounding like one man.
+- Pitch resampling is low-pass filtered first, so deep voices stop picking up aliasing buzz.
+
+### Fixed
+- Every regular has a unique voice id again (three newcomers had borrowed one), which is what actually keeps them apart on the on-device models.
+- `--voice-selftest` covers both on-device models.
+- **The Kokoro download 404ed.** Its file list never carried its own repository name, so the downloader asked the Supertonic repo for Kokoro files and the model never arrived; a test now pins each model's files to its own repo.
+- **The installer left out the native DLLs.** onnxruntime, sherpa-onnx, the WPF and SQLite natives were in the portable zip but not in setup, so an installed copy started and then died. Setup ships them now (and removes them again on uninstall).
+## [v3.5.0] - 2026-11-14
+### Voice and audio quality
+- **Lines were about twice as fast as a person talks** (257-281 words per minute; natural is 150-170). Every voice spec was re-paced: truckers, dispatch and the co-driver now land at 150-180 wpm, and the on-device engine gets its own mapping because it already speaks at a natural pace.
+- **The static is gone.** Hiss was a flat wash over every gap and the limiter clipped hard. The filter is now second-order: a real 300-3200 Hz band pass, gentle saturation, a soft knee limiter, and hiss that ducks to a quarter under a voice. Noise floor dropped about 5 dB and the pauses are quiet again. Clicks went from 90 ms to 40 ms with a 1.5 ms fade-in instead of a pop.
+- **Every line is levelled** to the same loudness before playback, so a quiet voice and a loud one sound like the same station, and nothing clips.
+- **On-device filter rates**: the band pass is now designed for whatever sample rate the engine produces (22.05 kHz Windows voices included); before, it was tuned for 24 kHz only.
+- Neural voices ask for a higher bitrate (96 kbps instead of 48).
+- **Windows voice pitch**: the pitch in a voice spec was parsed and thrown away; the Windows fallback ignored it entirely. Both are honoured now.
+
+### Added
+- **On-device voice engine (Supertonic 3 through sherpa-onnx, MIT).** Natural, offline, no key, no cost. Ten voices, mapped to the cart's regulars so they keep their character; about fifteen times faster than realtime on a desktop CPU. Downloads once (~145 MB, checksum-pinned) and then runs entirely on the PC. Settings > Voices has it as an engine, and Test voices covers it.
+- `--voice-selftest` now renders the on-device voice too.
+## [v3.4.1] — 2026-11-14
+
+### Fixed
+- **No voice line played at all.** Every line failed with ArrayTypeMismatchException (A voice line couldn't be played: Source array type cannot be assigned to destination array type). NAudio hands the playback provider a byte buffer disguised as a float array, and the sample copy used Array.Copy, whose array-type check rejected it. The copy now goes through spans, which copy by memory. Covered by a test that drives the real NAudio provider chain.
 
 ## [v3.4.0] — 2026-11-14
 

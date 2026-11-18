@@ -169,14 +169,14 @@ public sealed class AiAndRadioTests
     public void Roster_StartsAsStrangers_WithNoInventedHistory()
     {
         var roster = PersonalityCatalog.CreateDefaultRoster();
-        Assert.Equal(5, roster.Count);
+        Assert.True(roster.Count >= 10);
         Assert.All(roster, t =>
         {
             Assert.Equal(RelationshipLevel.Stranger, t.Relationship);
             Assert.Empty(t.SummarizedMemories);
             Assert.Null(t.LastSpokenAt);
         });
-        var validVoices = new[] { "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse" };
+        var validVoices = new[] { "alloy", "ash", "ballad", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse", "jenny", "sonia", "liam" };
         Assert.All(roster, t => Assert.Contains(t.VoiceId, validVoices));
     }
 

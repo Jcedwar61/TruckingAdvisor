@@ -25,7 +25,8 @@ public static class TruckerConversation
           "about anyone's race, religion, nationality, sexuality, gender or disability; no explicit sexual description; " +
           "nothing involving minors; never encourage unsafe or illegal driving."
         : "LANGUAGE: TV-friendly. Clean language only: no swearing at all (not even mild words), no crude or sexual " +
-          "humour. Teasing stays good-natured. Think prime-time television about truckers.";
+          "humour. Teasing stays good-natured. Think prime-time television about truckers. This overrides any swearing " +
+          "mentioned in a speaking style: keep the accent and attitude, use clean stand-ins (\"dang\", \"heck\", \"son of a gun\").";
 
     /// <summary>The system prompt: who's talking, how real CB talk sounds, the hard rules and the reply format.</summary>
     public static string System(IReadOnlyList<TruckerPersonality> voices, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry,
@@ -34,6 +35,7 @@ public static class TruckerConversation
         string cast = string.Join("\n", voices.Select(t =>
             $"- {t.Handle}: {t.FullName}, {t.YearsExperience} years driving, {t.Truck}, from {t.HomeState}, usually runs {t.CurrentFictionalRegion}. " +
             $"{t.PersonalityTraits}. Talks like this: {t.SpeakingStyle}. Likes talking about: {string.Join(", ", t.FavoriteTopics)}." +
+            (string.IsNullOrWhiteSpace(t.Background) ? "" : $" Their story: {t.Background}") +
             Memories(t)));
         string player = string.IsNullOrWhiteSpace(company.PlayerHandle) ? "the player" : company.PlayerHandle;
         var context = new
@@ -77,13 +79,16 @@ mood: one of calm, amused, excited, fed up, nostalgic, competitive, tired, sarca
 
     /// <summary>Opening task for a new conversation of the given shape. Returns (task, who opens).</summary>
     public static (string Task, string Opener) Open(string shape, IReadOnlyList<TruckerPersonality> voices, VirtualCompanyProfile company,
-        AtsTelemetrySnapshot telemetry, Random rng)
+        AtsTelemetrySnapshot telemetry, Random rng, string? sharedTopic = null)
     {
         var a = voices[0];
         var b = voices[1];
         string player = string.IsNullOrWhiteSpace(company.PlayerHandle) ? "the new driver on the channel" : company.PlayerHandle;
         string third = voices.Count > 2 ? $" {voices[2].Handle} can cut in once with their own take." : "";
         string topic = a.FavoriteTopics.Count > 0 ? a.FavoriteTopics[rng.Next(a.FavoriteTopics.Count)] : "the road";
+        // Something from the drivers' own lives (shared interests or their own chatter topics) for story-type openings.
+        string about = string.IsNullOrWhiteSpace(sharedTopic) || sharedTopic.StartsWith("whatever", StringComparison.OrdinalIgnoreCase)
+            ? "" : $" It's about {sharedTopic}, from their own experience.";
         string how = shape switch
         {
             "question" => $"{a.Handle} asks {b.Handle} a real question, the kind one driver asks another; {b.Handle} answers it with something specific and an opinion; {a.Handle} picks that up and takes it somewhere (agrees with a twist, or doubts it). 3 lines.",
@@ -95,8 +100,9 @@ mood: one of calm, amused, excited, fed up, nostalgic, competitive, tired, sarca
             "truck" => $"Truck talk: {a.Handle} brings up {topic} or something about their {a.Truck}; {b.Handle} answers with their own experience; it turns into a friendly argument or a tip. 3 or 4 lines.",
             "callback" => $"{a.Handle} brings back something said on the radio earlier (recentRadio, or what they remember) and they look at it again: someone was wrong, someone was right, or it got funnier since. 3 lines.",
             "player" => $"{a.Handle} and {b.Handle} talk about {player}, the driver who's been on the channel (only what the JSON shows, or that they've heard them on the radio), and end by asking {player} a direct question so they can answer. 2 or 3 lines.",
-            _ => $"{a.Handle} starts telling a short story from the road (made up but believable, no named businesses); {b.Handle} reacts and adds to it or tops it; {a.Handle} finishes it. 3 lines."
+            _ => $"{a.Handle} starts telling a short story from the road (made up but believable, no named businesses){about} {b.Handle} reacts and adds to it or tops it; {a.Handle} finishes it. 3 lines."
         };
+        if (shape is "question" or "debate" && about.Length > 0) how += about;
         return ($"The channel is quiet. Start a natural CB conversation. {how}{third} Start with {a.Handle}.", a.Handle);
     }
 

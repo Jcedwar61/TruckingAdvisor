@@ -110,6 +110,28 @@ public class ConversationTests
         Assert.Equal(10, audio.Items.Count);
     }
 
+    [Fact]
+    public async Task ALongConversation_IsNotCutOffByTheStuckRadioWatchdog()
+    {
+        var audio = new Audio();
+        var llm = new JobLlm();
+        var radio = new CBRadioService(Two(), new VirtualCompanyProfile(), audio, () => new AtsTelemetrySnapshot(),
+            new AiSettings { RadioActivity = RadioActivitySetting.VeryBusy }, llm, random: new Random(3))
+            { ReplyPause = (0, 0), CallWatchdog = TimeSpan.FromMilliseconds(250) };
+        var notices = new List<string>();
+        radio.Notice += (_, n) => { lock (notices) notices.Add(n); };
+        audio.OnPlay = _ => Thread.Sleep(80);                    // 10 lines x 80 ms: far longer than the watchdog
+
+        radio.BeginPushToTalk();                                 // a call arms the watchdog...
+        await radio.EndPushToTalkAsync("");                    // (nothing said: back to idle)
+        await radio.TriggerAiToAiBanterAsync(new AtsTelemetrySnapshot());   // ...then a long conversation starts
+
+        Assert.Equal(10, audio.Items.Count);
+        Assert.DoesNotContain(notices, n => n.Contains("back on the hook"));
+        await Task.Delay(400);                                   // and once it's over the radio is simply idle
+        Assert.Equal(CBRadioState.RadioIdle, radio.CurrentState);
+    }
+
     // ---- Providers: conversations on DeepSeek, replies on OpenAI, each falling back to the other ----
 
     private sealed class FakeApi : HttpMessageHandler

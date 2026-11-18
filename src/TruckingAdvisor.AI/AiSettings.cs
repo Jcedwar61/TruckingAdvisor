@@ -73,7 +73,9 @@ public sealed class AiSettings
     public bool KeepMicReady { get; set; } = true;
 
     /// <summary>Co-driver (advisor) neural voice.</summary>
-    public string CoDriverNeuralVoice { get; set; } = "en-US-AndrewNeural|+0%|+0Hz";
+    public string CoDriverNeuralVoice { get; set; } = "en-US-AndrewNeural|-44%|+0Hz";
+    /// <summary>Set once the on-device voice model is downloaded, so nothing is fetched twice.</summary>
+    public bool LocalVoiceModelReady { get; set; }
 
     /// <summary>Max tokens per radio reply. CB transmissions are short.</summary>
     public int MaxResponseTokens { get; set; } = 160;

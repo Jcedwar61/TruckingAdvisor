@@ -9,6 +9,14 @@ try {
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$Version -o publish/bin
   if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
+  # Everything the script installs has to exist in the publish output; a missing file makes makensis
+  # abort on a "no files found" warning that says nothing about the cause.
+  $published = @("TruckingAdvisor.exe", "D3DCompiler_47_cor3.dll", "PenImc_cor3.dll", "PresentationNative_cor3.dll",
+    "vcruntime140_cor3.dll", "wpfgfx_cor3.dll", "e_sqlite3.dll", "onnxruntime.dll", "sherpa-onnx-c-api.dll",
+    "runtimes\win-x64\whisper.dll")
+  $missing = @($published | Where-Object { -not (Test-Path (Join-Path "publish\bin" $_)) })
+  $missing += @("Assets\TruckingAdvisor.ico", "README.md") | Where-Object { -not (Test-Path $_) }
+  if ($missing) { throw "installer inputs are missing: $($missing -join ', ')" }
   $makensis = (Get-Command makensis -ErrorAction SilentlyContinue).Source
   if (-not $makensis) { $makensis = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1 }
   if (-not $makensis) { throw "NSIS not found. Install it with: winget install NSIS.NSIS" }

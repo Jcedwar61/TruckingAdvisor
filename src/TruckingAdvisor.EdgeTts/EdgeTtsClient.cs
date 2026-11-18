@@ -76,7 +76,7 @@ public sealed class EdgeTtsClient
         await SendTextAsync(ws,
             $"X-Timestamp:{Timestamp()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
             "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"true\",\"wordBoundaryEnabled\":\"false\"}," +
-            "\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n", token).ConfigureAwait(false);
+            "\"outputFormat\":\"audio-24khz-96kbitrate-mono-mp3\"}}}}\r\n", token).ConfigureAwait(false);
 
         string ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
                       $"<voice name='{voice}'><prosody pitch='{pitch}' rate='{rate}' volume='+0%'>{Escape(Clean(text))}</prosody></voice></speak>";

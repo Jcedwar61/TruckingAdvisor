@@ -78,9 +78,9 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Dispatcher's name", _dispatcherName));
 
         form.Children.Add(Header("Radio, dispatch & co-driver"));
-        _mode.ItemsSource = Enum.GetValues<ConversationTimingMode>();
-        _coDriver.ItemsSource = Enum.GetValues<CoDriverPersonality>();
-        _dispatch.ItemsSource = Enum.GetValues<DispatchContactLevel>();
+        EnumPicker.Fill<ConversationTimingMode>(_mode);
+        EnumPicker.Fill<CoDriverPersonality>(_coDriver);
+        EnumPicker.Fill<DispatchContactLevel>(_dispatch);
         form.Children.Add(Row("Conversation mode", _mode));
         form.Children.Add(Indent(new TextBlock { Text = "Brief / Natural / Chatty set reply length. Quiet: truckers only answer when called. Immersive: occasional unsolicited chatter.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11 }));
         form.Children.Add(Row("Co-driver personality", _coDriver));
@@ -95,15 +95,18 @@ public sealed class AiSettingsWindow : Window
         }));
         form.Children.Add(_remember);
         form.Children.Add(_announceFines);
-        _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, °F)", "Metric (km, km/h, L, kg, °C)" };
+        _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, Ã‚Â°F)", "Metric (km, km/h, L, kg, Ã‚Â°C)" };
         form.Children.Add(Row("Units", _units));
 
         form.Children.Add(Header("Voices"));
+        // Order must match the VoiceEngine enum values.
         _voiceEngine.ItemsSource = new[]
         {
             "Free neural voices (Microsoft, natural; needs internet) - recommended",
             "Windows voices (offline, more robotic)",
-            "OpenAI voices (uses your API key; costs money)"
+            "OpenAI voices (uses your API key; costs money)",
+            "On-device voice (natural, offline, one-time ~145 MB download)",
+            "On-device voice, best quality (offline, ~150 MB download; slower to start speaking)"
         };
         form.Children.Add(Row("Truckers & co-driver speak with", _voiceEngine));
         var testRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(150, 4, 0, 0) };
@@ -119,7 +122,7 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Indent(_voiceTestResult));
         form.Children.Add(Indent(new TextBlock
         {
-            Text = "Each trucker, your dispatcher and your co-driver have their own voice. If the free neural voices can't be reached (no internet), a Windows voice speaks instead, so nobody goes silent.",
+            Text = "Each trucker, your dispatcher and your co-driver have their own voice. If the free neural voices can't be reached (no internet), a Windows voice speaks instead, so nobody goes silent. The on-device voice needs no internet and costs nothing; it downloads once and then stays on this PC.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
 
@@ -190,7 +193,7 @@ public sealed class AiSettingsWindow : Window
             Text = "When AI is on, OpenAI receives: your push-to-talk recording (for transcription), what was said on the radio, and a short summary of game data (speed, fuel, load, destination). Nothing is sent while you aren't talking or chatter is off.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
-        _activity.ItemsSource = Enum.GetValues<RadioActivitySetting>();
+        EnumPicker.Fill<RadioActivitySetting>(_activity);
         form.Children.Add(Row("Background radio activity", _activity));
         form.Children.Add(Indent(new TextBlock
         {
@@ -276,7 +279,7 @@ public sealed class AiSettingsWindow : Window
         _modelsInUse.Text = $"In use now: {_s.ChatModel} (chat), {_s.SpeechToTextModel} (listening), {_s.RealtimeModel} (realtime).";
         _maxTokens.Text = _s.MaxResponseTokens.ToString(inv);
         _mic.IsChecked = _s.MicrophoneEnabled;
-        _activity.SelectedItem = _s.RadioActivity;
+        EnumPicker.Select(_activity, _s.RadioActivity);
         _requestLimit.Text = _s.DailyRequestLimit.ToString(inv);
         _spendLimit.Text = _s.DailySpendLimitUsd.ToString(inv);
         _priceIn.Text = _s.ChatInputPricePerMillionTokens.ToString(inv);
@@ -290,9 +293,9 @@ public sealed class AiSettingsWindow : Window
         _updateOnExit.IsChecked = _s.InstallUpdatesOnExit;
         _hq.Text = _company.Headquarters;
         _dispatcherName.Text = _company.DispatcherName;
-        _mode.SelectedItem = _s.ConversationMode;
-        _coDriver.SelectedItem = _s.CoDriver;
-        _dispatch.SelectedItem = _s.DispatchContact;
+        EnumPicker.Select(_mode, _s.ConversationMode);
+        EnumPicker.Select(_coDriver, _s.CoDriver);
+        EnumPicker.Select(_dispatch, _s.DispatchContact);
         _maxUnsolicited.Text = _s.MaxUnsolicitedPerHour.ToString(inv);
         _remember.IsChecked = _s.RememberConversations;
         _clean.IsChecked = _s.CleanAudio;
@@ -363,9 +366,9 @@ public sealed class AiSettingsWindow : Window
         _s.InstallUpdatesOnExit = _updateOnExit.IsChecked == true;
         _company.Headquarters = _hq.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_dispatcherName.Text)) _company.DispatcherName = _dispatcherName.Text.Trim();
-        if (_mode.SelectedItem is ConversationTimingMode m) _s.ConversationMode = m;
-        if (_coDriver.SelectedItem is CoDriverPersonality cd) _s.CoDriver = cd;
-        if (_dispatch.SelectedItem is DispatchContactLevel dl) _s.DispatchContact = dl;
+        if (EnumPicker.TryGet(_mode, out ConversationTimingMode m)) _s.ConversationMode = m;
+        if (EnumPicker.TryGet(_coDriver, out CoDriverPersonality cd)) _s.CoDriver = cd;
+        if (EnumPicker.TryGet(_dispatch, out DispatchContactLevel dl)) _s.DispatchContact = dl;
         if (int.TryParse(_maxUnsolicited.Text, NumberStyles.Integer, inv, out var mu)) _s.MaxUnsolicitedPerHour = Math.Clamp(mu, 0, 120);
         _s.RememberConversations = _remember.IsChecked == true;
         _s.CleanAudio = _clean.IsChecked == true;
@@ -378,7 +381,7 @@ public sealed class AiSettingsWindow : Window
         _s.AdvisorVolume = (float)_advisorVol.Value;
         _s.GlobalAiEnabled = _enabled.IsChecked == true;
         _s.MicrophoneEnabled = _mic.IsChecked == true;
-        if (_activity.SelectedItem is RadioActivitySetting a) _s.RadioActivity = a;
+        if (EnumPicker.TryGet(_activity, out RadioActivitySetting a)) _s.RadioActivity = a;
         if (int.TryParse(_maxTokens.Text, NumberStyles.Integer, inv, out var mt)) _s.MaxResponseTokens = Math.Clamp(mt, 32, 1000);
         if (int.TryParse(_requestLimit.Text, NumberStyles.Integer, inv, out var rl)) _s.DailyRequestLimit = Math.Max(0, rl);
         _s.Rating = _rating.SelectedIndex == 1 ? RadioRating.RRated : RadioRating.TvFriendly;

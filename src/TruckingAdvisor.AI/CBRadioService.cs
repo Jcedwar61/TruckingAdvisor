@@ -32,6 +32,8 @@ public sealed class CBRadioService : ICBRadioService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<RadioTurn> _recent = new();
     private CancellationTokenSource _chatterCts = new();
+    /// <summary>Cancelled when the radio is disposed, so pending watchdogs stop.</summary>
+    private readonly CancellationTokenSource _watchdogCts = new();
     private readonly object _stateLock = new();
     /// <summary>Bumped on every player key-up; older exchanges and chatter must not touch newer state.</summary>
     private int _txVersion;
@@ -53,6 +55,8 @@ public sealed class CBRadioService : ICBRadioService
     public HalfDuplexCollisionPolicy CollisionPolicy { get; set; } = HalfDuplexCollisionPolicy.InterruptSpeaker;
     public TruckerPersonality? ActivePartner { get; private set; }
     public IReadOnlyList<TruckerPersonality> Roster { get { lock (_roster) return _roster.ToArray(); } }
+    /// <summary>How many of the roster are regulars, so the radio knows which ones are still newcomers.</summary>
+    public int RegularCount { get; init; } = PersonalityCatalog.CreateDefaultRoster().Count;
     public bool AiAvailable => _llm?.IsAvailable == true;
     /// <summary>How long the truck has been parked (set by the dashboard); enables truck-stop talk.</summary>
     public TimeSpan ParkedFor { get; set; }
@@ -125,6 +129,7 @@ public sealed class CBRadioService : ICBRadioService
             _txVersion++;
             _audio.IsRadioChannelBusy = true;
             SetState(CBRadioState.PlayerTransmitting);
+            ArmWatchdog(_txVersion);
         }
     }
 
@@ -281,9 +286,12 @@ public sealed class CBRadioService : ICBRadioService
             var trucker = MaybeMeetNewTrucker() ?? PickRandomTrucker();
             string situation = DescribeEncounter(snapshot, trucker, ParkedFor, _random);
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return;
+            ArmWatchdog(version);
             string line = await GenerateAsync(
                 TruckerPrompt(trucker, snapshot, ActiveChannel),
-                $"(No one has spoken to you. Make one unprompted CB call to the channel about: {situation})", cancellationToken, MaxTokensForMode())
+                $"(No one has spoken to you. Make one unprompted CB call to the channel. It's your call: {situation}. " +
+                "Say whatever is on your mind in your own voice, as long as you like, even a story about your own past or a gripe about the road.)",
+                cancellationToken, MaxTokensForMode())
                 ?? OfflineEncounterLine(snapshot, trucker);
             ActivePartner = trucker;
             await SpeakAsync(trucker.FullName, trucker.Handle, line, trucker.VoiceId, AudioPriority.Low, ActiveChannel, cancellationToken, chatterVersion: version);
@@ -317,7 +325,7 @@ public sealed class CBRadioService : ICBRadioService
                 b = _roster[j];
             }
             if (!TryChatterState(CBRadioState.PlayingTransmission, version)) return;
-            await RunConversationAsync(a, b, snapshot, version, cancellationToken);
+            await RunConversationAsync(a, b, snapshot, DescribeBanterTopic(a, b), version, cancellationToken);
         }
         catch (OperationCanceledException) { }
         finally
@@ -341,7 +349,7 @@ public sealed class CBRadioService : ICBRadioService
     /// exactly where the last one stopped. The next exchange is written while this one is being spoken, so there's
     /// no dead air. Keying up (push-to-talk) cancels it at once and the player is in the conversation.
     /// </summary>
-    private async Task RunConversationAsync(TruckerPersonality a, TruckerPersonality b, AtsTelemetrySnapshot snapshot, int version, CancellationToken ct)
+    private async Task RunConversationAsync(TruckerPersonality a, TruckerPersonality b, AtsTelemetrySnapshot snapshot, string topic, int version, CancellationToken ct)
     {
         var voices = new List<TruckerPersonality> { a, b };
         lock (_roster)
@@ -363,7 +371,7 @@ public sealed class CBRadioService : ICBRadioService
             }, ct);
         }
 
-        var (openTask, opener) = TruckerConversation.Open(shape, voices, _company, snapshot, _random);
+        var (openTask, opener) = TruckerConversation.Open(shape, voices, _company, snapshot, _random, topic);
         var pending = _llm?.IsAvailable == true ? Write(openTask, opener, Array.Empty<RadioTurn>()) : Task.FromResult<List<ConversationLine>?>(null);
         var spoken = new List<ConversationLine>();
         for (int exchange = 0; exchange < max; exchange++)
@@ -384,6 +392,7 @@ public sealed class CBRadioService : ICBRadioService
             foreach (var line in lines)
             {
                 var speaker = voices.FirstOrDefault(v => v.Handle == line.Handle) ?? a;
+                ArmWatchdog(version);
                 await SpeakAsync(speaker.FullName, speaker.Handle, line.Text, speaker.VoiceId, AudioPriority.Low, channel, ct, chatterVersion: version);
                 ct.ThrowIfCancellationRequested();
                 spoken.Add(line);
@@ -439,6 +448,7 @@ public sealed class CBRadioService : ICBRadioService
             foreach (var line in lines.Take(3))
             {
                 var speaker = voices.First(v => v.Handle == line.Handle);
+                ArmWatchdog(version);
                 await SpeakAsync(speaker.FullName, speaker.Handle, line.Text, speaker.VoiceId, AudioPriority.Low, ActiveChannel, chatterToken, chatterVersion: version);
                 ActivePartner = speaker;
             }
@@ -450,17 +460,6 @@ public sealed class CBRadioService : ICBRadioService
             _gate.Release();
             ReturnToIdleIfCurrent(version);
         }
-    }
-
-    private async Task<List<(string Handle, string Text)>?> GenerateBanterAsync(TruckerPersonality a, TruckerPersonality b, AtsTelemetrySnapshot snapshot, CancellationToken ct)
-    {
-        if (_llm?.IsAvailable != true) return null;
-        int lineCount = 4 + _random.Next(3);
-        var result = await _llm.CompleteAsync(
-            "You write short, natural CB radio dialogue. Output JSON only.",
-            ContextBuilder.BuildBanterPrompt(a, b, _company, snapshot, lineCount),
-            _settings.MaxResponseTokens * 3, ct);
-        return result is null ? null : ParseBanter(result.Text, a, b);
     }
 
     /// <summary>Parses {"lines":[{"handle","text"}]}; tolerates code fences. Null if unusable.</summary>
@@ -650,13 +649,13 @@ public sealed class CBRadioService : ICBRadioService
     private string NeuralVoiceFor(string handle)
     {
         if (handle == "Dispatch") return DispatchNeuralVoice;
-        if (handle == "Channel 9") return "en-US-GuyNeural|-6%|-4Hz";
+        if (handle == "Channel 9") return "en-US-GuyNeural|-46%|-4Hz";
         TruckerPersonality? t;
         lock (_roster) t = _roster.FirstOrDefault(r => r.Handle == handle);
         return t is null ? PersonalityCatalog.NeuralVoicePool[0] : PersonalityCatalog.NeuralVoiceFor(t);
     }
 
-    private const string DispatchNeuralVoice = "en-US-AriaNeural|+4%|+0Hz";
+    private const string DispatchNeuralVoice = "en-US-AriaNeural|-38%|+0Hz";
 
     private RadioTurn[] RecentTurns()
     {
@@ -693,20 +692,24 @@ public sealed class CBRadioService : ICBRadioService
     /// <summary>Occasionally a new (generated) trucker shows up; they persist like the core cast.</summary>
     private TruckerPersonality? MaybeMeetNewTrucker()
     {
-        const int coreCast = 5, maxExtra = 4;
+        const int maxExtra = 6;
         TruckerPersonality newcomer;
         lock (_roster)
         {
-            int extra = _roster.Count - coreCast;
-            if (extra >= maxExtra || _random.NextDouble() >= 0.15) return null;
-            newcomer = PersonalityCatalog.GenerateDynamicTrucker(Math.Max(0, extra));
-            if (_roster.Any(t => t.Id == newcomer.Id)) return null;
-            _roster.Add(newcomer);
+            int extra = _roster.Count - RegularCount;
+            if (extra >= maxExtra || _random.NextDouble() >= 0.2) return null;
+            // Try a few templates: the first one that hasn't already turned up.
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                newcomer = PersonalityCatalog.GenerateDynamicTrucker(Math.Max(0, extra) + attempt);
+                if (_roster.Any(t => t.Id == newcomer.Id)) continue;
+                _roster.Add(newcomer);
+                TruckerUpdated?.Invoke(this, newcomer);
+                return newcomer;
+            }
+            return null;
         }
-        TruckerUpdated?.Invoke(this, newcomer);
-        return newcomer;
     }
-
     private static readonly string[] TruckStopTopics =
     {
         "asking if anyone else is shutting down for the night at a truck stop",
@@ -718,17 +721,35 @@ public sealed class CBRadioService : ICBRadioService
         "fuel economy tricks"
     };
 
+    /// <summary>
+    /// One thing this trucker might key up about, all their own. Most calls are just whatever is on their
+    /// mind; the situation only nudges them when the game gives them something to react to.
+    /// </summary>
     private static string DescribeEncounter(AtsTelemetrySnapshot s, TruckerPersonality t, TimeSpan parkedFor, Random random)
     {
         if (parkedFor >= TimeSpan.FromMinutes(5))
-            return TruckStopTopics[random.Next(TruckStopTopics.Length)] + " (relaxed truck-stop talk; you're parked too)";
+            return "shutting down for the night at a truck stop, looking for somebody to pass the time with";
         if (s.HasFuelCapacity && s.FuelPercent < 25 && t.Relationship >= RelationshipLevel.RoadAcquaintance)
             return "checking whether the player plans a fuel stop soon (their fuel is low)";
         if (s.JobActive && s.CargoWeightLbs >= 38000)
             return "the heavy load the player is pulling and where they're headed";
         if (s.GameTimeMinutes > 0 && s.IsNightDriving)
-            return "asking who else is driving late tonight";
-        return "general road chatter or a short trucking story";
+            return "who else is driving late tonight";
+        var topics = t.ChatterTopics.Count > 0 ? t.ChatterTopics : t.FavoriteTopics;
+        if (topics.Count > 0 && random.NextDouble() < 0.6)
+            return $"{topics[random.Next(topics.Count)]}, from your own experience";
+        if (random.NextDouble() < 0.3)
+            return TruckStopTopics[random.Next(TruckStopTopics.Length)];
+        return "whatever is on your mind";
+    }
+
+    /// <summary>The two truckers' banter topic: one they share, or one of their own.</summary>
+    private string DescribeBanterTopic(TruckerPersonality a, TruckerPersonality b)
+    {
+        var shared = a.FavoriteTopics.Intersect(b.FavoriteTopics, StringComparer.OrdinalIgnoreCase).ToList();
+        if (shared.Count > 0 && _random.NextDouble() < 0.5) return shared[_random.Next(shared.Count)];
+        var own = a.ChatterTopics.Concat(b.ChatterTopics).ToList();
+        return own.Count > 0 && _random.NextDouble() < 0.7 ? own[_random.Next(own.Count)] : "whatever is on your minds";
     }
 
     // ---- Offline lines (AI disabled or unavailable) ----
@@ -746,10 +767,13 @@ public sealed class CBRadioService : ICBRadioService
 
     private string OfflineDispatchReply() => $"Dispatch copies, {_company.DisplayHandle}. Keep us posted.";
 
-    private string OfflineEncounterLine(AtsTelemetrySnapshot s, TruckerPersonality t) =>
-        s.GameTimeMinutes > 0 && s.IsNightDriving
+    private string OfflineEncounterLine(AtsTelemetrySnapshot s, TruckerPersonality t)
+    {
+        if (t.OfflineOpeners.Count > 0) return t.OfflineOpeners[_random.Next(t.OfflineOpeners.Count)];
+        return s.GameTimeMinutes > 0 && s.IsNightDriving
             ? $"Breaker one-nine, {t.Handle} here. Anybody else burning the midnight diesel?"
             : $"Breaker one-nine, {t.Handle} rolling. Hope everybody's having a clean run.";
+    }
 
     private static List<(string, string)> OfflineBanter(TruckerPersonality a, TruckerPersonality b) => new()
     {
@@ -774,6 +798,13 @@ public sealed class CBRadioService : ICBRadioService
     }
 
     /// <summary>Goes idle only if no newer transmission has started since <paramref name="version"/>.</summary>
+    /// <summary>
+    /// How long a call may hold the radio before it is released. Rendering a long line on a slow machine, or a
+    /// stalled network request, can outlast this; without it the radio stays "receiving" for good and every
+    /// unprompted line is dropped, because chatter waits for an idle radio.
+    /// </summary>
+    public TimeSpan CallWatchdog { get; set; } = TimeSpan.FromSeconds(45);
+
     private void ReturnToIdleIfCurrent(int version)
     {
         lock (_stateLock)
@@ -782,6 +813,35 @@ public sealed class CBRadioService : ICBRadioService
             _audio.IsRadioChannelBusy = false;
             SetState(CBRadioState.RadioIdle);
         }
+    }
+
+    private int _watchdogSeq;
+
+    /// <summary>
+    /// Releases the radio if <paramref name="version"/> is still the current call after the watchdog. Each arm
+    /// replaces the previous one (a heartbeat), so a long conversation that re-arms before every line is only
+    /// released if one line stalls, never by a timer left over from an earlier call.
+    /// </summary>
+    private void ArmWatchdog(int version)
+    {
+        if (CallWatchdog <= TimeSpan.Zero) return;
+        int seq = Interlocked.Increment(ref _watchdogSeq);
+        var token = _watchdogCts;
+        _ = Task.Delay(CallWatchdog, token.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            bool released = false;
+            lock (_stateLock)
+            {
+                if (version == _txVersion && seq == Volatile.Read(ref _watchdogSeq) && CurrentState != CBRadioState.RadioIdle)
+                {
+                    _audio.IsRadioChannelBusy = false;
+                    SetState(CBRadioState.RadioIdle);
+                    released = true;
+                }
+            }
+            if (released) Notice?.Invoke(this, "The radio was still busy, so it was put back on the hook.");
+        }, TaskScheduler.Default);
     }
 
     private void ReturnToIdle()

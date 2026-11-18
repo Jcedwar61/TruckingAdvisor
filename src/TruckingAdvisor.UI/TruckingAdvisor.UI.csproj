@@ -7,11 +7,11 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>TruckingAdvisor</AssemblyName>
-    <Version>3.5.0</Version>
+    <Version>3.7.0</Version>
     <Product>TruckingAdvisor</Product>
     <Company>TruckingAdvisor contributors</Company>
     <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>
-    <Copyright>Copyright (c) 2026 TruckingAdvisor contributors. MIT License.</Copyright>
+    <Copyright>Copyright (c) 2026 TruckingAdvisor contributors. PolyForm Noncommercial License 1.0.0.</Copyright>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>none</DebugType>
     <ApplicationIcon>Assets\TruckingAdvisor.ico</ApplicationIcon>
@@ -30,12 +30,20 @@
   </ItemGroup>
   <!-- The offline speech engine (whisper.cpp) is loaded by path at runtime, so it must sit next to the exe
        in runtimes\win-x64 instead of inside the single-file bundle. Other platforms' copies aren't shipped. -->
+  <PropertyGroup>
+    <__NativeOutsideBundle>;D3DCompiler_47_cor3.dll;PenImc_cor3.dll;PresentationNative_cor3.dll;vcruntime140_cor3.dll;wpfgfx_cor3.dll;e_sqlite3.dll;onnxruntime.dll;sherpa-onnx-c-api.dll;</__NativeOutsideBundle>
+  </PropertyGroup>
   <Target Name="KeepWhisperNativeOutsideBundle" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
         Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/')) And !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/win-x64/'))" />
       <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
         Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\','/').StartsWith('runtimes/win-x64/'))"
+        ExcludeFromSingleFile="true" />
+      <!-- The native loaders that are opened by name at run time (WPF/D3D, SQLite, onnxruntime, sherpa-onnx)
+           also have to stay loose beside the exe; inside the bundle they can't be found by name. -->
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
+        Condition="$(__NativeOutsideBundle.Contains(';%(Filename)%(Extension);'))"
         ExcludeFromSingleFile="true" />
     </ItemGroup>
   </Target>

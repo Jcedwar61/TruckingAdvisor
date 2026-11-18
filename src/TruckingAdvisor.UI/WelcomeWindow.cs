@@ -10,7 +10,7 @@ namespace TruckingAdvisor.UI;
 public sealed class WelcomeWindow : Window
 {
     private readonly TextBox _handle = new(), _company = new();
-    private readonly ComboBox _coDriver = new() { ItemsSource = Enum.GetValues<CoDriverPersonality>() };
+    private readonly ComboBox _coDriver = new();
     private readonly AiSettings _settings;
     private readonly VirtualCompanyProfile _profile;
 
@@ -31,7 +31,8 @@ public sealed class WelcomeWindow : Window
 
         _handle.Text = profile.PlayerHandle;
         _company.Text = profile.CompanyName;
-        _coDriver.SelectedItem = settings.CoDriver;
+        EnumPicker.Fill<CoDriverPersonality>(_coDriver);
+        EnumPicker.Select(_coDriver, settings.CoDriver);
 
         var form = new StackPanel { Margin = new Thickness(24) };
         var title = new TextBlock { Text = "Welcome, driver.", FontSize = 26, FontWeight = FontWeights.Bold };
@@ -46,7 +47,7 @@ public sealed class WelcomeWindow : Window
         form.Children.Add(Label("Co-driver voice style"));
         form.Children.Add(_coDriver);
 
-        form.Children.Add(Para("Good to know:\n•  Hold LEFT ALT to talk on the CB (or type in the radio box).\n•  F8 shows the in-game HUD.  [ and ]  change channel.  F10 calls dispatch.\n•  Every function can go on a key or a wheel / button-box button: More > Controls & Key Bindings.\n•  Press F1 (or the ? button) any time for the guide: features, voice commands, CB tips.\n•  Everything works offline. Add an OpenAI key later for real AI conversations.\n•  Say \"TruckingAdvisor, what's my fuel range?\" for voice commands."));
+        form.Children.Add(Para("Good to know:\nâ€¢  Hold LEFT ALT to talk on the CB (or type in the radio box).\nâ€¢  F8 shows the in-game HUD.  [ and ]  change channel.  F10 calls dispatch.\nâ€¢  Every function can go on a key or a wheel / button-box button: More > Controls & Key Bindings.\nâ€¢  Press F1 (or the ? button) any time for the guide: features, voice commands, CB tips.\nâ€¢  Everything works offline. Add an OpenAI key later for real AI conversations.\nâ€¢  Say \"TruckingAdvisor, what's my fuel range?\" for voice commands."));
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         var ai = new Button { Content = "Set up AI voices now", Margin = new Thickness(0, 0, 8, 0) };
@@ -65,7 +66,7 @@ public sealed class WelcomeWindow : Window
     {
         _profile.PlayerHandle = _handle.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_company.Text)) _profile.CompanyName = _company.Text.Trim();
-        if (_coDriver.SelectedItem is CoDriverPersonality p) _settings.CoDriver = p;
+        if (EnumPicker.TryGet(_coDriver, out CoDriverPersonality p)) _settings.CoDriver = p;
         DialogResult = true;
     }
 

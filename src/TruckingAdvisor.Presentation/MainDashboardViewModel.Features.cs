@@ -14,9 +14,11 @@ namespace TruckingAdvisor.Presentation;
 /// <summary>One CB contact for the Contacts page.</summary>
 public sealed record ContactView(string Id, string Handle, string Name, string Truck, string HomeState, string Relationship,
     string LastContact, int Conversations, IReadOnlyList<string> Memories,
-    string Personality = "", string Topics = "", string Region = "", int Experience = 0, double RelationshipPercent = 0)
+    string Personality = "", string Topics = "", string Region = "", int Experience = 0, double RelationshipPercent = 0,
+    string Background = "")
 {
     public string NoMemoriesHint => Memories.Count == 0 ? $"You haven't talked with {Handle} yet. Give them a call." : "";
+    public bool HasBackground => !string.IsNullOrWhiteSpace(Background);
     internal DateTimeOffset SortKey { get; init; }
 }
 
@@ -99,7 +101,8 @@ public sealed partial class MainDashboardViewModel
     /// <summary>Called once a second from the telemetry thread.</summary>
     private void OnSlowTick(AtsTelemetrySnapshot s)
     {
-        if (!s.IsLive || s.IsPaused) return;
+        // Demo data drives the same code paths as a live game; it just isn't saved.
+        if (!(s.IsLive || s.IsDemoData) || s.IsPaused) return;
         _grades.Record(s.WorldX, s.WorldZ, s.CalculatedGradePercent, s.HeadingDegrees, s.SpeedMph);
 
         var where = _locations.Describe(s.WorldX, s.WorldZ);
@@ -285,6 +288,31 @@ public sealed partial class MainDashboardViewModel
         RefreshContacts();
     }
 
+    private bool _demoSeeded;
+
+    /// <summary>
+    /// Demo mode has no game behind it, so career, statistics and trips would all open empty. Fill them
+    /// with a plausible history so the screens actually show something (nothing is saved). Runs on the
+    /// first demo snapshot, because demo data only starts then.
+    /// </summary>
+    private void SeedDemoHistoryOnce()
+    {
+        if (_demoSeeded) return;
+        _demoSeeded = true;
+        if (_db is null || TripHistory.Count > 0) return;
+        var trips = DemoHistory.BuildTrips(DateTimeOffset.UtcNow);
+        DemoHistory.Apply(trips, Company, Career);
+        lock (_tripsLock) _allTrips.AddRange(trips);
+        // This runs on the telemetry thread, but TripHistory feeds a ListBox: adding to it from here
+        // leaves the list's item container generator out of step with the source.
+        var ordered = trips.OrderByDescending(t => t.StartedAt).ToList();
+        _postToUi(() =>
+        {
+            foreach (var t in ordered) TripHistory.Add(t);
+            RefreshCareerViews(ComputeInsights());
+        });
+    }
+
     private string? CoDriverPhrase(DrivingIncident incident)
     {
         var text = CoDriverVoice.Phrase(incident, _aiSettings.CoDriver);
@@ -294,7 +322,7 @@ public sealed partial class MainDashboardViewModel
 
     private void OnTelemetryFeatures(AtsTelemetrySnapshot s, AtsTelemetrySnapshot? prev)
     {
-        if (!s.IsLive) { _parkedSince = null; _radio.ParkedFor = TimeSpan.Zero; return; }
+        if (!(s.IsLive || s.IsDemoData)) { _parkedSince = null; _radio.ParkedFor = TimeSpan.Zero; return; }
 
         // Safe Driver progress: real odometer miles, ignoring jumps (ferries, teleports).
         if (prev is { IsLive: true })
@@ -363,7 +391,7 @@ public sealed partial class MainDashboardViewModel
                 views.Add(new ContactView(t.Id, t.Handle, t.FullName, t.Truck, t.HomeState, Spaced(t.Relationship.ToString()),
                     t.LastSpokenAt is { } last ? Ago(DateTimeOffset.UtcNow - last) : "Never", t.ConversationCount, t.SummarizedMemories.ToList(),
                     t.PersonalityTraits, string.Join(" • ", t.FavoriteTopics), t.CurrentFictionalRegion, t.YearsExperience,
-                    Math.Clamp(t.RelationshipPoints / 160.0 * 100.0, 0, 100)) { SortKey = t.LastSpokenAt ?? DateTimeOffset.MinValue });
+                    Math.Clamp(t.RelationshipPoints / 160.0 * 100.0, 0, 100), t.Background) { SortKey = t.LastSpokenAt ?? DateTimeOffset.MinValue });
             }
         }
         // Update in place: replacing rows the user is looking at (instead of clearing the list) keeps the selection stable.

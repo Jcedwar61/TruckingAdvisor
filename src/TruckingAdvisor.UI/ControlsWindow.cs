@@ -71,7 +71,13 @@ public sealed class ControlsWindow : Window
             list.Children.Add(header);
             foreach (var action in group) list.Children.Add(Row(action));
         }
-        root.Children.Add(new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        root.Children.Add(new ScrollViewer
+        {
+            Content = list,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            // Rows size themselves to the window, so nothing runs off the right edge.
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        });
         Content = root;
 
         RefreshDevices();
