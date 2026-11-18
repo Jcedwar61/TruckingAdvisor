@@ -43,7 +43,7 @@ public sealed class AiSettings
     public string CustomChatEndpoint { get; set; } = string.Empty;
 
     /// <summary>TV-friendly (default) or R-rated radio talk, for every AI voice on the radio.</summary>
-    public RadioRating Rating { get; set; } = RadioRating.TvFriendly;
+    public RadioRating Rating { get; set; } = RadioRating.RRated;
     /// <summary>Who writes the truckers' conversations among themselves.</summary>
     public ConversationWriter ConversationWriter { get; set; } = ConversationWriter.Automatic;
     public string DeepSeekBaseUrl { get; set; } = "https://api.deepseek.com";

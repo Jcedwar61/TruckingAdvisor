@@ -43,12 +43,14 @@ public class ConversationTests
         Assert.Contains("no swearing at all", tv);
         Assert.Contains("swearing is natural and allowed", r);
         Assert.Contains("Never: slurs", r);
-        Assert.Contains("swearing is natural", ContextBuilder.BuildTruckerSystemPrompt(voices[0], company, snap, Array.Empty<RadioTurn>(), 19,
-            ConversationTimingMode.Natural, voices, RadioRating.RRated));
-        Assert.Contains("no swearing at all", ContextBuilder.BuildTruckerSystemPrompt(voices[0], company, snap, Array.Empty<RadioTurn>(), 19));
-        Assert.Contains("swear now and then", ContextBuilder.BuildDispatcherSystemPrompt(company, snap, Array.Empty<RadioTurn>(), RadioRating.RRated));
-        Assert.Contains("clean, no swearing", ContextBuilder.BuildDispatcherSystemPrompt(company, snap, Array.Empty<RadioTurn>()));
-        Assert.Equal(RadioRating.TvFriendly, new AiSettings().Rating);
+        Assert.Contains("no swearing at all", ContextBuilder.BuildTruckerSystemPrompt(voices[0], company, snap, Array.Empty<RadioTurn>(), 19,
+            ConversationTimingMode.Natural, voices, RadioRating.TvFriendly));
+        Assert.Contains("swearing is natural", ContextBuilder.BuildTruckerSystemPrompt(voices[0], company, snap, Array.Empty<RadioTurn>(), 19));
+        Assert.Contains("clean, no swearing", ContextBuilder.BuildDispatcherSystemPrompt(company, snap, Array.Empty<RadioTurn>(), RadioRating.TvFriendly));
+        Assert.Contains("swear now and then", ContextBuilder.BuildDispatcherSystemPrompt(company, snap, Array.Empty<RadioTurn>()));
+        Assert.Equal(RadioRating.RRated, new AiSettings().Rating);   // R-rated unless the player picks TV-friendly
+        // A settings file saved before the language option existed loads as R-rated too.
+        Assert.Equal(RadioRating.RRated, System.Text.Json.JsonSerializer.Deserialize<AiSettings>("{\"GlobalAiEnabled\":true}")!.Rating);
     }
 
     private sealed class Audio : IAudioPriorityManager

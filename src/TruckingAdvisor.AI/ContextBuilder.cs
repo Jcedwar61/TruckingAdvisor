@@ -79,7 +79,7 @@ public static class ContextBuilder
     public static string BuildTruckerSystemPrompt(TruckerPersonality trucker, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry,
         IReadOnlyList<RadioTurn> recentTurns, int channel,
         ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null,
-        RadioRating rating = RadioRating.TvFriendly)
+        RadioRating rating = RadioRating.RRated)
     {
         var context = new
         {
@@ -130,7 +130,7 @@ Context JSON:
     }
 
     public static string BuildDispatcherSystemPrompt(VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, IReadOnlyList<RadioTurn> recentTurns,
-        RadioRating rating = RadioRating.TvFriendly)
+        RadioRating rating = RadioRating.RRated)
     {
         var context = new
         {
@@ -152,7 +152,7 @@ Context JSON:
     }
 
     public static string BuildBanterPrompt(TruckerPersonality a, TruckerPersonality b, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, int lines,
-        string? topic = null, RadioRating rating = RadioRating.TvFriendly)
+        string? topic = null, RadioRating rating = RadioRating.RRated)
     {
         var context = BuildTelemetryContext(company, telemetry);
         string topicLine = string.IsNullOrWhiteSpace(topic) ? "whatever comes to mind" : topic;

@@ -10,7 +10,7 @@
 - Conversations draw on each trucker's own backstory and topics (the v3.6 cast), stay in character, use their memories of you, and still never claim to see traffic, police or weather.
 
 ### TV-friendly or R-rated
-- **Settings > Radio language:** TV-friendly (clean, no swearing) or R-rated (truckers swear and joke like real drivers). Applies to every AI voice: truckers, their conversations and dispatch. R-rated never allows slurs, hate, explicit sexual content or encouraging unsafe driving. Default: TV-friendly, which also overrides the swearing in the cast's speaking styles (accent and attitude stay, the language is clean). Pick R-rated for the v3.6 behaviour and then some.
+- **Settings > Radio language:** TV-friendly (clean, no swearing) or R-rated (truckers swear and joke like real drivers). Applies to every AI voice: truckers, their conversations and dispatch. R-rated never allows slurs, hate, explicit sexual content or encouraging unsafe driving. Default: R-rated, which goes a step past v3.6's mild swearing with crude jokes too. TV-friendly overrides the swearing in the cast's speaking styles (accent and attitude stay, the language is clean); good with family around or on stream.
 - Bindable: **More > Controls > Radio language** flips it from a key or wheel button.
 
 ### Two AIs, the right model for each job
