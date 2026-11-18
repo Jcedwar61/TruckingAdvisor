@@ -107,6 +107,37 @@ public sealed class WindowsAudioSink : IAudioSink
         }
     }
 
+    /// <summary>
+    /// Runs a line through everything playback does (voice, radio filter, clicks, volume, the float-to-bytes
+    /// conversion the speaker gets) without a speaker, and returns how many bytes would be played. Used by the
+    /// self-test so playback problems are caught on machines without audio hardware.
+    /// </summary>
+    public async Task<(long Bytes, string Source)> RenderPlaybackAsync(AudioItem item, float volume, CancellationToken ct)
+    {
+        var (samples, sampleRate, source) = await RenderAsync(item, ct);
+        samples = Shape(item, samples, sampleRate, volume);
+        var wave = new NAudio.Wave.SampleProviders.SampleToWaveProvider(new ArraySampleProvider(samples, sampleRate));
+        var buf = new byte[wave.WaveFormat.AverageBytesPerSecond / 10];
+        long total = 0;
+        int n;
+        while ((n = wave.Read(buf, 0, buf.Length)) > 0) total += n;
+        return (total, source);
+    }
+
+    /// <summary>Radio filter, key-up / squelch clicks and volume.</summary>
+    private float[] Shape(AudioItem item, float[] samples, int sampleRate, float volume0To1)
+    {
+        if (item.ApplyCbEffects && !CleanAudio)
+        {
+            var dsp = new CbRadioDspFilter { StaticLevel = StaticLevel };
+            dsp.ProcessBuffer(samples, sampleRate);
+            var click = dsp.GenerateMicClickAndSquelchTail(sampleRate);
+            samples = [.. click, .. samples, .. click];
+        }
+        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1;
+        return samples;
+    }
+
     public static (string Voice, string Rate, string Pitch) ParseVoice(string spec)
     {
         var parts = (spec ?? "").Split('|');
@@ -148,15 +179,7 @@ public sealed class WindowsAudioSink : IAudioSink
         LastVoiceSource = source;
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (item.ApplyCbEffects && !CleanAudio)
-        {
-            var dsp = new CbRadioDspFilter { StaticLevel = StaticLevel };
-            dsp.ProcessBuffer(samples, sampleRate);
-            var click = dsp.GenerateMicClickAndSquelchTail(sampleRate);
-            samples = [.. click, .. samples, .. click];
-        }
-
-        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1;
+        samples = Shape(item, samples, sampleRate, volume0To1);
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int device = DeviceSelector?.Invoke(item.Channel) ?? -1;
@@ -220,7 +243,9 @@ public sealed class WindowsAudioSink : IAudioSink
         public int Read(float[] buffer, int offset, int count)
         {
             int n = Math.Min(count, _samples.Length - _position);
-            Array.Copy(_samples, _position, buffer, offset, n);
+            // A plain loop on purpose: NAudio passes a byte[] disguised as float[] (its WaveBuffer), which
+            // Array.Copy / Span copies reject at runtime ("Source array type cannot be assigned...").
+            for (int i = 0; i < n; i++) buffer[offset + i] = _samples[_position + i];
             _position += n;
             return n;
         }

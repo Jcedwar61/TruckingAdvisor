@@ -58,6 +58,8 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
 
     private readonly HashSet<string> _unusable = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _available;   // from GET /models; null = unknown (don't filter)
+    private List<(string Id, long Created)> _listed = new();
+    private readonly HashSet<(string Model, string Option)> _noOption = new();   // options a model refused
     private readonly object _modelLock = new();
 
     /// <summary>Models on the built-in list that haven't been rejected, best first.</summary>
@@ -92,9 +94,15 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
             using (resp)
             using (var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), cancellationToken: ct))
             {
-                var ids = doc.RootElement.GetProperty("data").EnumerateArray()
-                    .Select(m => m.GetProperty("id").GetString() ?? "").Where(id => id.Length > 0);
-                lock (_modelLock) _available = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
+                var listed = doc.RootElement.GetProperty("data").EnumerateArray()
+                    .Select(m => (Id: m.GetProperty("id").GetString() ?? "",
+                                  Created: m.TryGetProperty("created", out var c) && c.TryGetInt64(out long t) ? t : 0L))
+                    .Where(m => m.Id.Length > 0).ToList();
+                lock (_modelLock)
+                {
+                    _available = new HashSet<string>(listed.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+                    _listed = listed;
+                }
             }
             ApplyResolvedModels();
         }
@@ -104,75 +112,113 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
         }
     }
 
+    /// <summary>
+    /// Chat models for a job, best first: the built-in list (filtered to what the account has), plus newer models the
+    /// account lists that aren't on it (conversations put those first: the newest full-size model writes best).
+    /// </summary>
+    public IReadOnlyList<string> ChatCandidates(LlmJobKind job)
+    {
+        var list = job == LlmJobKind.Conversation ? AiModelCatalog.Conversation : AiModelCatalog.Chat(_settings.Quality);
+        var known = Candidates(list);
+        List<(string, long)> listed;
+        lock (_modelLock) listed = _listed.ToList();
+        var newer = AiModelCatalog.Discover(listed, "gpt-", AiModelCatalog.Conversation.Concat(AiModelCatalog.Chat(AiQuality.Best))
+            .Concat(AiModelCatalog.Chat(AiQuality.Economy)).Concat(AiModelCatalog.Chat(AiQuality.Balanced)).ToList(), job);
+        lock (_modelLock) newer = newer.Where(m => !_unusable.Contains(m)).ToList();
+        return (job == LlmJobKind.Conversation ? newer.Concat(known) : known.Concat(newer)).Distinct().ToList();
+    }
+
     /// <summary>Puts the model each job will use into the settings (shown in the UI, read by the realtime client).</summary>
     public void ApplyResolvedModels()
     {
-        _settings.ChatModel = Candidates(AiModelCatalog.Chat(_settings.Quality))[0];
+        _settings.ChatModel = ChatCandidates(LlmJobKind.Reply)[0];
         _settings.SpeechToTextModel = Candidates(AiModelCatalog.Transcription)[0];
         _settings.TextToSpeechModel = Candidates(AiModelCatalog.Speech)[0];
         _settings.RealtimeModel = Candidates(AiModelCatalog.Realtime)[0];
     }
 
-    public async Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken cancellationToken)
+    public Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken cancellationToken) =>
+        CompleteAsync(systemPrompt, userPrompt, maxOutputTokens, LlmJobKind.Reply, cancellationToken);
+
+    /// <summary>The model used for the last request of each job (for display).</summary>
+    public string LastModel(LlmJobKind job) => job == LlmJobKind.Conversation ? _lastConvoModel : _settings.ChatModel;
+    private string _lastConvoModel = "";
+
+    public async Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, LlmJobKind job, CancellationToken cancellationToken)
     {
         if (!IsAvailable) return null;
 
-        foreach (var model in Candidates(AiModelCatalog.Chat(_settings.Quality)))
+        foreach (var model in ChatCandidates(job))
         {
-            bool reasoning = AiModelCatalog.IsReasoningModel(model);
-            var body = new Dictionary<string, object>
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                ["model"] = model,
-                // Reasoning models count their thinking in this budget; give them room so the reply isn't cut off.
-                ["max_completion_tokens"] = reasoning ? Math.Max(600, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens),
-                ["messages"] = new object[]
+                bool reasoning = AiModelCatalog.IsReasoningModel(model);
+                var body = new Dictionary<string, object>
                 {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = userPrompt }
-                }
-            };
-            if (reasoning) body["reasoning_effort"] = "minimal";
+                    ["model"] = model,
+                    // Reasoning models count their thinking in this budget; give them room so the reply isn't cut off.
+                    ["max_completion_tokens"] = reasoning ? Math.Max(600, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens),
+                    ["messages"] = new object[]
+                    {
+                        new { role = "system", content = systemPrompt },
+                        new { role = "user", content = userPrompt }
+                    }
+                };
+                bool NoOption(string o) { lock (_modelLock) return _noOption.Contains((model, o)); }
+                if (reasoning && !NoOption("reasoning_effort")) body["reasoning_effort"] = job == LlmJobKind.Conversation ? "low" : "minimal";
+                if (NoOption("max_completion_tokens")) body["max_tokens"] = body["max_completion_tokens"];
+                if (NoOption("max_completion_tokens")) body.Remove("max_completion_tokens");
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
-            };
-            var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
-            if (resp is null)
-            {
-                if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
-                return null; // key, credit, network: another model won't help
-            }
-            using (resp)
-            {
-                try
+                using var req = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint)
                 {
-                    using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-                    var root = doc.RootElement;
-                    string text = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
-                    int input = 0, output = 0;
-                    if (root.TryGetProperty("usage", out var u))
-                    {
-                        if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
-                        if (u.TryGetProperty("completion_tokens", out var ctk)) output = ctk.GetInt32();
-                    }
-                    _usage.RecordChat(_settings, input, output);
-                    text = text.Trim();
-                    if (text.Length == 0)
-                    {
-                        // Spent its whole budget thinking: try the next model rather than go silent.
-                        MarkUnusable(model, "empty reply");
-                        continue;
-                    }
-                    _settings.ChatModel = model;
-                    return new LlmResult(text, new LlmUsage(input, output));
-                }
-                catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or JsonException)
+                    Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+                };
+                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+                if (resp is null)
                 {
-                    LastError = "Unexpected chat response format.";
-                    return null;
+                    if (modelProblem is not null)
+                    {
+                        // An optional setting this model doesn't take: drop it and ask the same model again.
+                        string? option = new[] { "reasoning_effort", "max_completion_tokens", "temperature" }
+                            .FirstOrDefault(o => modelProblem.Contains(o, StringComparison.OrdinalIgnoreCase) && !NoOption(o));
+                        if (option is not null) { lock (_modelLock) _noOption.Add((model, option)); continue; }
+                        MarkUnusable(model, modelProblem);
+                        goto nextModel;
+                    }
+                    return null; // key, credit, network: another model won't help
+                }
+                using (resp)
+                {
+                    try
+                    {
+                        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                        var root = doc.RootElement;
+                        string text = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
+                        int input = 0, output = 0;
+                        if (root.TryGetProperty("usage", out var u))
+                        {
+                            if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
+                            if (u.TryGetProperty("completion_tokens", out var ctk)) output = ctk.GetInt32();
+                        }
+                        _usage.RecordChat(_settings, input, output);
+                        text = text.Trim();
+                        if (text.Length == 0)
+                        {
+                            // Spent its whole budget thinking: try the next model rather than go silent.
+                            MarkUnusable(model, "empty reply");
+                            goto nextModel;
+                        }
+                        if (job == LlmJobKind.Conversation) _lastConvoModel = model; else _settings.ChatModel = model;
+                        return new LlmResult(text, new LlmUsage(input, output));
+                    }
+                    catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or JsonException)
+                    {
+                        LastError = "Unexpected chat response format.";
+                        return null;
+                    }
                 }
             }
+        nextModel:;
         }
         LastError = "None of the built-in chat models worked for this API key.";
         return null;

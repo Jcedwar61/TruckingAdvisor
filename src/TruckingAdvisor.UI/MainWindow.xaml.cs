@@ -263,6 +263,9 @@ public partial class MainWindow : Window
                         w.WriteSamples(samples, 0, samples.Length);
                     report.AppendLine($"{engine}: {source}, {samples.Length / (double)rate:F1} s at {rate} Hz");
                     if (engine == VoiceEngine.FreeNeural && source.Contains("neural")) neural = (samples, rate);
+                    // The whole playback chain (radio filter, clicks, volume, conversion for the speaker), no speaker needed.
+                    var (bytes, _) = await _sink.RenderPlaybackAsync(item with { ApplyCbEffects = true }, 0.8f, CancellationToken.None);
+                    report.AppendLine($"{engine} playback chain: {bytes} bytes");
                 }
                 catch (Exception ex) { report.AppendLine($"{engine}: FAILED {ex.GetType().Name}: {ex.Message}"); }
             }

@@ -1,5 +1,8 @@
 namespace TruckingAdvisor.AI;
 
+/// <summary>Mirror of TruckingAdvisor.Shared.Interfaces.LlmJob for the catalog (kept separate so the catalog needs no interfaces).</summary>
+public enum LlmJobKind { Reply, Conversation }
+
 /// <summary>How much to spend on AI conversations. The player picks this; the app picks the models.</summary>
 public enum AiQuality
 {
@@ -24,6 +27,53 @@ public static class AiModelCatalog
         AiQuality.Best => new[] { "gpt-5", "gpt-4.1", "gpt-4o", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini" },
         _ => new[] { "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini", "gpt-4.1" }
     };
+
+    /// <summary>
+    /// OpenAI models for the truckers' conversations among themselves: written ahead of time, so the strongest
+    /// writer leads (full-size before mini/nano, reasoning-heavy last). Newer models the key can use are added
+    /// ahead of these automatically (see <see cref="Discover"/>).
+    /// </summary>
+    public static readonly IReadOnlyList<string> Conversation = new[] { "gpt-4.1", "gpt-5", "gpt-4o", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini" };
+
+    /// <summary>DeepSeek, quickest first (replies to the player).</summary>
+    public static readonly IReadOnlyList<string> DeepSeekReply = new[] { "deepseek-chat", "deepseek-reasoner" };
+    /// <summary>DeepSeek, best writer first (conversations); the reasoner thinks too long for radio chatter.</summary>
+    public static readonly IReadOnlyList<string> DeepSeekConversation = new[] { "deepseek-chat", "deepseek-reasoner" };
+
+    private static readonly string[] NotChat =
+        { "tts", "audio", "realtime", "transcribe", "whisper", "image", "dall-e", "embedding", "moderation", "search",
+          "computer-use", "codex", "instruct", "davinci", "babbage", "sora", "vision", "deep-research", "oss" };
+
+    /// <summary>
+    /// Models the account lists that aren't on the built-in list (newer releases), best first for the job:
+    /// newest first; for conversations full-size models before mini/nano/flash/lite. Same rule SimCast uses.
+    /// </summary>
+    public static IReadOnlyList<string> Discover(IEnumerable<(string Id, long Created)> listed, string family, IReadOnlyCollection<string> known, LlmJobKind job)
+    {
+        var found = listed
+            .Where(m => m.Id.StartsWith(family, StringComparison.OrdinalIgnoreCase)
+                        && !known.Contains(m.Id, StringComparer.OrdinalIgnoreCase)
+                        && !NotChat.Any(x => m.Id.Contains(x, StringComparison.OrdinalIgnoreCase))
+                        && !System.Text.RegularExpressions.Regex.IsMatch(m.Id, @"-\d{4}-\d{2}-\d{2}$")   // dated snapshots
+                        && !m.Id.StartsWith("gpt-3", StringComparison.OrdinalIgnoreCase)
+                        // OpenAI's "-pro" models cost many times more and answer far too slowly for the radio.
+                        && !(family == "gpt-" && m.Id.Contains("-pro", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        int Penalty(string id)
+        {
+            string m = id.ToLowerInvariant();
+            int p = 0;
+            if (job == LlmJobKind.Conversation)
+            {
+                if (m.Contains("lite") || m.Contains("nano") || m.Contains("mini")) p += 2;
+                if (m.Contains("flash")) p += 1;
+                if (m.Contains("pro")) p -= 1;
+            }
+            if (m.Contains("reasoner")) p += 4;
+            return p;
+        }
+        return found.OrderBy(m => Penalty(m.Id)).ThenByDescending(m => m.Created).Select(m => m.Id).ToList();
+    }
 
     /// <summary>Speech to text, best first.</summary>
     public static readonly IReadOnlyList<string> Transcription = new[] { "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1" };
