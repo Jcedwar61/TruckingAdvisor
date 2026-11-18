@@ -99,7 +99,9 @@ public sealed partial class CBRadioService : ICBRadioService
         _llm = llm;
         _stt = stt;
         _tts = tts;
-        _random = random ?? new Random();
+        // The radio is used from several threads at once (chatter, callers, cross-talk pauses), and System.Random
+        // breaks for good if two threads hit it together (it starts returning 0: same trucker, same pause, forever).
+        _random = new TruckingAdvisor.Shared.SynchronizedRandom(random ?? new Random());
     }
 
     public void SwitchChannel(int channelNumber)

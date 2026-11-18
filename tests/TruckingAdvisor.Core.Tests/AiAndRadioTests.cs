@@ -65,7 +65,9 @@ public sealed class AiAndRadioTests
         var audio = new RecordingAudio();
         var llm = new FakeLlm { Reply = "Well, I hear you loud and clear, driver." };
         var roster = PersonalityCatalog.CreateDefaultRoster();
-        var radio = Radio(audio, llm, roster);
+        // No cross-talk: another trucker chiming in afterwards is a second AI call on a background thread,
+        // which made this test count calls while one was still being added.
+        var radio = Radio(audio, llm, roster, settings: new AiSettings { RadioActivity = RadioActivitySetting.Off });
         TruckerPersonality? updated = null;
         radio.TruckerUpdated += (_, t) => updated = t;
 

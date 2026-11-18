@@ -1,5 +1,10 @@
 # Changelog - TruckingAdvisor
 
+## [v3.8.3] - 2026-11-18
+### Fixed
+- **The radio could get stuck repeating itself.** Its random choices (which trucker answers or chimes in, conversation length, pauses) came from a generator shared by several threads at once, which can break for good and keep returning the same value: the same trucker every time and no more cross-talk. It is now safe to share.
+- **Demo mode showed a delivery dated tomorrow.** The sample trips now all end in the past, the newest a couple of hours ago.
+
 ## [v3.8.2] - 2026-11-18
 ### Fixed
 - **A Twitch call that stalls no longer blocks every call after it.** If a reply never finished (a voice that hung, an AI request that never came back), the next viewers' `!cb` calls waited behind it forever. Each call now gets three minutes, then the next one goes on air.

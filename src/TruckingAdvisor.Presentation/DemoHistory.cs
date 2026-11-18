@@ -40,7 +40,9 @@ public static class DemoHistory
     public static List<DeliveryTripRecord> BuildTrips(DateTimeOffset now)
     {
         var trips = new List<DeliveryTripRecord>();
-        var time = now.AddDays(-6);
+        // Lay the trips out backwards from now, so the newest one finished a couple of hours ago, never in the future.
+        double span = Routes.Sum(r => r.Miles / 52.0 + 9) - 9;
+        var time = now.AddHours(-2 - span);
         foreach (var r in Routes)
         {
             double hours = r.Miles / 52.0;
