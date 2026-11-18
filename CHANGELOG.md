@@ -1,6 +1,6 @@
 # Changelog - TruckingAdvisor
 
-## [Unreleased]
+## [v3.8.1] - 2026-11-18
 ### Fixed
 - **`!cb` calls from Twitch chat could go unanswered.** A viewer's call waited behind the truckers' own background conversation and was dropped after 60 seconds; with the on-device voices (Kokoro especially) a conversation often runs longer than that. Viewer calls now cut in at the end of the current line. Starting a quiet period (or anything else that stops chatter) no longer cancels a viewer's reply mid-way, and if the AI errors (bad key, network, rate limit) the viewer still gets the built-in trucker answer instead of silence.
 - Garbled degree signs in Settings > Units and bullets on the welcome screen.
