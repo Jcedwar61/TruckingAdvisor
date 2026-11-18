@@ -1,5 +1,10 @@
 # Changelog - TruckingAdvisor
 
+## [v3.6.3] - 2026-11-17
+
+### Changed
+- **New licence.** TruckingAdvisor is now licensed under the PolyForm Noncommercial License 1.0.0 instead of MIT. It stays free to use, share and change for any noncommercial purpose; commercial use needs the author's permission. The installer and app file properties say so too. Nothing else changes.
+
 ## [v3.6.2] - 2026-11-14
 
 ### Fixed
