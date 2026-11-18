@@ -41,7 +41,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "FileDescription" "${APP} Setup - ATS telemetry, driving coach and AI CB radio"
 VIAddVersionKey "CompanyName" "TruckingAdvisor contributors"
-VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 TruckingAdvisor contributors. MIT License."
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 TruckingAdvisor contributors. PolyForm Noncommercial License 1.0.0."
 
 !define MUI_ICON "..\Assets\TruckingAdvisor.ico"
 !define MUI_UNICON "..\Assets\TruckingAdvisor.ico"

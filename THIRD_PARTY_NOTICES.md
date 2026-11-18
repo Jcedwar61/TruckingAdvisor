@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-- **SimCoach** — https://github.com/Jcedwar61/SimCoach (MIT). The project TruckingAdvisor grew out of.
+- **SimCoach** — https://github.com/Jcedwar61/SimCoach (PolyForm Noncommercial License 1.0.0, same author). The project TruckingAdvisor grew out of.
 - **scs-sdk-plugin (RenCloud)** — https://github.com/RenCloud/scs-sdk-plugin (MIT). Provides `scs-telemetry.dll` and the `Local\SCSTelemetry` shared memory. Not bundled; downloaded on request. TruckingAdvisor's offsets come from its `scs-telemetry-common.hpp` (layout revision 12).
 - **NAudio** — https://github.com/naudio/NAudio (MIT). Audio playback and microphone capture.
 - **Microsoft.Data.Sqlite / SQLitePCLRaw** — https://github.com/dotnet/efcore (MIT), https://github.com/ericsink/SQLitePCL.raw (Apache-2.0). Local database.

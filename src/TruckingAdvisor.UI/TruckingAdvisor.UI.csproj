@@ -11,7 +11,7 @@
     <Product>TruckingAdvisor</Product>
     <Company>TruckingAdvisor contributors</Company>
     <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>
-    <Copyright>Copyright (c) 2026 TruckingAdvisor contributors. MIT License.</Copyright>
+    <Copyright>Copyright (c) 2026 TruckingAdvisor contributors. PolyForm Noncommercial License 1.0.0.</Copyright>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>none</DebugType>
     <ApplicationIcon>Assets\TruckingAdvisor.ico</ApplicationIcon>
