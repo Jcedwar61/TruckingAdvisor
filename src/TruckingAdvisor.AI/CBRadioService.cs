@@ -32,6 +32,11 @@ public sealed partial class CBRadioService : ICBRadioService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<RadioTurn> _recent = new();
     private CancellationTokenSource _chatterCts = new();
+    /// <summary>
+    /// Cancelled only when the player keys up. Viewer and convoy calls use this instead of the chatter token,
+    /// so stopping background chatter (quiet period, a viewer call cutting in) never kills a viewer's reply.
+    /// </summary>
+    private CancellationTokenSource _keyUpCts = new();
     /// <summary>Cancelled when the radio is disposed, so pending watchdogs stop.</summary>
     private readonly CancellationTokenSource _watchdogCts = new();
     private readonly object _stateLock = new();
@@ -130,6 +135,8 @@ public sealed partial class CBRadioService : ICBRadioService
             // The player always wins over background chatter.
             _chatterCts.Cancel(); // not disposed: chatter may still be linking to it
             _chatterCts = new CancellationTokenSource();
+            _keyUpCts.Cancel();
+            _keyUpCts = new CancellationTokenSource();
             _txVersion++;
             _audio.IsRadioChannelBusy = true;
             SetState(CBRadioState.PlayerTransmitting);

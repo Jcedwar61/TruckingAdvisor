@@ -108,15 +108,22 @@ public sealed partial class CBRadioService
             if (Clock() > giveUp) return false;
             await Task.Delay(150, cancellationToken);
         }
-        var left = giveUp - Clock();
-        if (!await _gate.WaitAsync(left > TimeSpan.Zero ? left : TimeSpan.Zero, cancellationToken)) return false;
-        CancellationToken chatterToken;
+        // A caller outranks background chatter: a long AI conversation (slow with on-device voices) would
+        // otherwise hold the radio past CallerWait and the viewer would never be answered. Chatter is cut
+        // at the end of its current line; the player's own exchange is still waited for.
+        while (!await _gate.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken))
+        {
+            if (Clock() > giveUp) return false;
+            if (!IsPlayerExchange(CurrentState)) CancelChatter();
+        }
+        CancellationToken keyUpToken;
         int version;
-        lock (_stateLock) { chatterToken = _chatterCts.Token; version = _txVersion; }
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, chatterToken);
+        lock (_stateLock) { keyUpToken = _keyUpCts.Token; version = _txVersion; }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, keyUpToken);
         var ct = linked.Token;
         try
         {
+            // The radio may still read as busy from chatter that was just cut; it no longer holds the radio.
             if (!TryChatterState(CBRadioState.IncomingTransmission, version)) return false;
             ArmWatchdog(version);
             int channel = CallerChannel(request);
@@ -233,6 +240,23 @@ public sealed partial class CBRadioService
         }
     }
 
+    /// <summary>
+    /// The AI's reply for a caller, or null when the AI is off or fails (network error, bad key, rate limit),
+    /// so the caller still gets a template answer instead of silence.
+    /// </summary>
+    private async Task<string?> TryGenerateForCallerAsync(string systemPrompt, string userPrompt, CancellationToken ct, int? maxTokens = null)
+    {
+        try
+        {
+            return await GenerateAsync(systemPrompt, userPrompt, ct, maxTokens);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            Notice?.Invoke(this, $"AI reply to a caller failed ({ex.Message}); answering without AI.");
+            return null;
+        }
+    }
+
     private string WithRelayContext(string systemPrompt, int channel) =>
         Relay?.ExtraContext(channel) is { Length: > 0 } extra ? systemPrompt + "\n\n" + extra : systemPrompt;
 
@@ -250,7 +274,7 @@ public sealed partial class CBRadioService
             case CallerRole.Dispatch:
             {
                 string prompt = WithRelayContext(ContextBuilder.BuildDispatcherSystemPrompt(_company, snapshot, RecentTurns(), _settings.Rating), channel);
-                string reply = Usable(await GenerateAsync(prompt, userPrompt, ct))
+                string reply = Usable(await TryGenerateForCallerAsync(prompt, userPrompt, ct))
                     ?? CbTemplateResponder.Reply(CallerRole.Dispatch, "Dispatch", request.SpokenName, request.Text, facts, _random, aboutCaller);
                 return (DispatchSpeaker, "Dispatch", DispatchVoice, DispatchNeuralVoice, reply);
             }
@@ -259,7 +283,7 @@ public sealed partial class CBRadioService
             {
                 var crew = CrewMember.ForRole(request.Role)!;
                 string prompt = WithRelayContext(CrewSystemPrompt(crew, snapshot), channel);
-                string reply = Usable(await GenerateAsync(prompt, userPrompt, ct))
+                string reply = Usable(await TryGenerateForCallerAsync(prompt, userPrompt, ct))
                     ?? CbTemplateResponder.Reply(request.Role, crew.Handle, request.SpokenName, request.Text, facts, _random, aboutCaller);
                 return ($"{crew.Name} ({crew.Handle})", crew.Handle, crew.VoiceId, crew.NeuralVoice, reply);
             }
@@ -268,7 +292,7 @@ public sealed partial class CBRadioService
                 var partner = PickPartner(request.Text);
                 ActivePartner = partner;
                 string prompt = TruckerPrompt(partner, snapshot, channel);
-                string reply = Usable(await GenerateAsync(prompt, userPrompt, ct, MaxTokensForMode()))
+                string reply = Usable(await TryGenerateForCallerAsync(prompt, userPrompt, ct, MaxTokensForMode()))
                     ?? (request.Source == CallerSource.PlayerFallback
                         ? OfflineTruckerReply(partner, request.Text)
                         : CbTemplateResponder.Reply(CallerRole.Trucker, partner.Handle, request.SpokenName, request.Text, facts, _random, aboutCaller));

@@ -361,6 +361,86 @@ public sealed class StreamingTests
         Assert.DoesNotContain("heck", audio.Items.Single().Text);
     }
 
+    /// <summary>
+    /// An AI that can stall the trucker conversation (as a slow model plus slow on-device voices does) until it
+    /// is cancelled, and answers callers normally.
+    /// </summary>
+    private sealed class StallingLlm : ILlmClient
+    {
+        public bool IsAvailable => true;
+        public Func<string, string, CancellationToken, Task<string>> Answer = (_, _, _) => Task.FromResult("Ten-four, good buddy.");
+        public async Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken ct) =>
+            new LlmResult(await Answer(systemPrompt, userPrompt, ct), new LlmUsage(10, 5));
+    }
+
+    [Fact]
+    public async Task ViewerCall_DuringALongTruckerConversation_CutsInAndIsAnswered()
+    {
+        var audio = new RecordingAudio();
+        var llm = new StallingLlm();
+        var conversationStarted = new TaskCompletionSource();
+        llm.Answer = async (system, user, ct) =>
+        {
+            if (user.Contains("Twitch chat")) return "Copy that, Road Dog, I hear you.";
+            conversationStarted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct); // the conversation never finishes on its own
+            return "unreachable";
+        };
+        var radio = Radio(audio, llm);
+
+        var banter = radio.TriggerAiToAiBanterAsync(Driving);
+        await conversationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotEqual(CBRadioState.RadioIdle, radio.CurrentState);
+
+        var call = radio.AnswerCallerAsync(new CallerRequest("RoadDog_77", "anybody got eyes on a bear?", CallerRole.Trucker, CallerSource.Twitch)
+        {
+            SpokenName = "Road Dog"
+        });
+        // Before the fix the call waited out CallerWait (60 s) behind the conversation and was dropped.
+        Assert.True(await call.WaitAsync(TimeSpan.FromSeconds(5)));
+        await banter.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("Copy that, Road Dog, I hear you.", audio.Texts());
+        Assert.Equal(CBRadioState.RadioIdle, radio.CurrentState);
+    }
+
+    [Fact]
+    public async Task ViewerReply_SurvivesChatterBeingStopped()
+    {
+        var audio = new RecordingAudio();
+        var llm = new StallingLlm();
+        CBRadioService? radio = null;
+        llm.Answer = (_, _, _) =>
+        {
+            radio!.CancelChatter(); // e.g. the streamer starts a quiet period while the reply is being written
+            return Task.FromResult("Ten-four, Road Dog.");
+        };
+        radio = Radio(audio, llm);
+
+        bool ok = await radio.AnswerCallerAsync(new CallerRequest("RoadDog_77", "radio check", CallerRole.Trucker, CallerSource.Twitch)
+        {
+            SpokenName = "Road Dog"
+        });
+
+        Assert.True(ok);
+        Assert.Contains("Ten-four, Road Dog.", audio.Texts());
+    }
+
+    [Fact]
+    public async Task ViewerCall_WhenTheAiFails_StillGetsATruckerAnswer()
+    {
+        var audio = new RecordingAudio();
+        var llm = new StallingLlm { Answer = (_, _, _) => throw new HttpRequestException("401 Unauthorized") };
+        var radio = Radio(audio, llm);
+
+        bool ok = await radio.AnswerCallerAsync(new CallerRequest("RoadDog_77", "how's the fuel?", CallerRole.Trucker, CallerSource.Twitch)
+        {
+            SpokenName = "Road Dog"
+        });
+
+        Assert.True(ok);
+        Assert.Contains("40 percent", audio.Items.Single().Text);
+    }
+
     // ---------- convoy ----------
 
     /// <summary>Records what a node publishes; the test delivers it to the other node by hand.</summary>
