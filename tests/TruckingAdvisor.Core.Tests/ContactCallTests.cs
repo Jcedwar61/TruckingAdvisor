@@ -73,6 +73,8 @@ public class ContactCallTests
         Assert.Empty(notices.Where(n => n.StartsWith("Radio error")));
         Assert.Empty(errors);
         Assert.Contains(audio.Items, i => i.Text.Contains("good buddy"));
+        // Another driver may chime in after a reply (cross-talk); it must finish and leave the radio idle.
+        for (int i = 0; i < 100 && radio.CurrentState != CBRadioState.RadioIdle; i++) await Task.Delay(50);
         Assert.Equal(CBRadioState.RadioIdle, radio.CurrentState);
     }
 }

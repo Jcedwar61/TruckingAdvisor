@@ -199,3 +199,7 @@ public class UnitsTests
         Assert.True(TruckingAdvisor.Shared.Units.Resolve(TruckingAdvisor.Shared.UnitPreference.Metric, 2));
     }
 }
+
+/// <summary>Switching units changes text everywhere, so the Units tests run on their own, never alongside other tests.</summary>
+[CollectionDefinition("Units", DisableParallelization = true)]
+public class UnitsCollection { }

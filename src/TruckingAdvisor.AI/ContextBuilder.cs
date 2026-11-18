@@ -78,7 +78,8 @@ public static class ContextBuilder
 
     public static string BuildTruckerSystemPrompt(TruckerPersonality trucker, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry,
         IReadOnlyList<RadioTurn> recentTurns, int channel,
-        ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null)
+        ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null,
+        RadioRating rating = RadioRating.TvFriendly)
     {
         var context = new
         {
@@ -118,13 +119,16 @@ Rules:
    You may mention the other drivers you know, but only what's listed; it's radio gossip, not something you saw.
 6. Don't end every message with a question. Sign off naturally when the player says goodbye.
 7. Never give advice that conflicts with driving safely.
+8. {TruckerConversation.RatingRule(rating)}
+9. If recentRadio shows other drivers were just talking, you can pick up what they said (you heard it too).
 
 Context JSON:
 {JsonSerializer.Serialize(context, JsonOptions)}
 """;
     }
 
-    public static string BuildDispatcherSystemPrompt(VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, IReadOnlyList<RadioTurn> recentTurns)
+    public static string BuildDispatcherSystemPrompt(VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, IReadOnlyList<RadioTurn> recentTurns,
+        RadioRating rating = RadioRating.TvFriendly)
     {
         var context = new
         {
@@ -138,6 +142,7 @@ You are {company.DispatcherName}, the dispatcher for {company.CompanyName}, talk
 Be brief, professional and friendly (1-2 sentences, under 40 words). Plain spoken words only.
 Use only facts from the JSON below; if ETA, fuel or damage data is missing, say you don't have it.
 Remind about fuel or rest only when the data shows it is relevant. Never pressure the driver to speed or skip rest.
+{(rating == RadioRating.RRated ? "Language: you can be salty and swear now and then like a real dispatcher who's had a long day, but you're still the driver's boss: never slurs, hate or anything sexual." : "Language: clean, no swearing.")}
 
 Context JSON:
 {JsonSerializer.Serialize(context, JsonOptions)}
