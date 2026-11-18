@@ -95,7 +95,7 @@ public sealed class AiSettingsWindow : Window
         }));
         form.Children.Add(_remember);
         form.Children.Add(_announceFines);
-        _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, Ã‚Â°F)", "Metric (km, km/h, L, kg, Ã‚Â°C)" };
+        _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, °F)", "Metric (km, km/h, L, kg, °C)" };
         form.Children.Add(Row("Units", _units));
 
         form.Children.Add(Header("Voices"));
