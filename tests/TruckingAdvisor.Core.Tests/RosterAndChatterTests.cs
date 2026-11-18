@@ -116,7 +116,7 @@ public sealed class RosterAndChatterTests
         var prompt = ContextBuilder.BuildTruckerSystemPrompt(trucker, new VirtualCompanyProfile(), new AtsTelemetrySnapshot(),
             Array.Empty<RadioTurn>(), 19);
         Assert.Contains(trucker.Background, prompt);
-        Assert.Contains("swearing", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("R-rated, uncensored", prompt);   // R-rated by default
         Assert.Contains("whatever you like", prompt);
     }
 
@@ -129,7 +129,9 @@ public sealed class RosterAndChatterTests
         Assert.Contains(roster[0].Background, prompt);
         Assert.Contains(roster[1].Background, prompt);
         Assert.Contains("the best truck stop coffee", prompt);
-        Assert.Contains("swear", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("R-rated, uncensored", prompt);
+        Assert.Contains("no swearing at all", ContextBuilder.BuildBanterPrompt(roster[0], roster[1], new VirtualCompanyProfile(),
+            new AtsTelemetrySnapshot(), 4, null, RadioRating.TvFriendly));   // TV-friendly overrides the speaking styles
     }
 
     [Fact]

@@ -61,6 +61,23 @@ public interface ILlmClient
     Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, CancellationToken cancellationToken);
 }
 
+/// <summary>What a chat request is for, so the best model for that job is used.</summary>
+public enum LlmJob
+{
+    /// <summary>A trucker or dispatch answering the player: the quickest good model (someone's waiting).</summary>
+    Reply,
+    /// <summary>Truckers talking among themselves: written ahead of time, so the strongest writer.</summary>
+    Conversation
+}
+
+/// <summary>A chat client that picks its provider and model per job (and reports who answered).</summary>
+public interface IJobLlmClient : ILlmClient
+{
+    Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, LlmJob job, CancellationToken cancellationToken);
+    /// <summary>"DeepSeek deepseek-chat": who answered the last request of this job.</summary>
+    string LastUsed(LlmJob job);
+}
+
 public interface ISpeechToText
 {
     bool IsAvailable { get; }

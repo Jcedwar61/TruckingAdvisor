@@ -23,7 +23,7 @@ jobs:
       id-token: write       # only used for release attestation on tags
       attestations: write
     env:
-      VERSION: 3.6.3
+      VERSION: 3.7.0
     steps:
       - uses: actions/checkout@v4
 
@@ -85,6 +85,7 @@ jobs:
           Get-Content "$voice\voice-selftest.txt"
           if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "FreeNeural: Microsoft neural voice" -Quiet)) { throw "The free neural voice did not synthesize" }
           if ((Get-Item "$voice\voice-FreeNeural.wav").Length -lt 20000) { throw "Neural voice audio is too short" }
+          if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "FreeNeural playback chain: [1-9]" -Quiet)) { throw "The playback chain failed (radio filter / speaker conversion)" }
           if (-not (Select-String -Path "$voice\voice-selftest.txt" -Pattern "Windows: Windows voice" -Quiet)) { Write-Warning "Windows voice fallback did not synthesize on this runner" }
           # Speech recognition: local Whisper must understand the neural voice's line.
           $heard = Select-String -Path "$voice\voice-selftest.txt" -Pattern 'Whisper base\.en: "(.*)"' | Select-Object -First 1
@@ -154,7 +155,7 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: 3.6.3
+      VERSION: 3.7.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

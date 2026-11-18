@@ -78,7 +78,8 @@ public static class ContextBuilder
 
     public static string BuildTruckerSystemPrompt(TruckerPersonality trucker, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry,
         IReadOnlyList<RadioTurn> recentTurns, int channel,
-        ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null)
+        ConversationTimingMode mode = ConversationTimingMode.Natural, IReadOnlyList<TruckerPersonality>? otherDrivers = null,
+        RadioRating rating = RadioRating.RRated)
     {
         var context = new
         {
@@ -119,15 +120,17 @@ Rules:
    You may mention the other drivers you know, but only what's listed; it's radio gossip, not something you saw.
 6. Don't end every message with a question. Sign off naturally when the player says goodbye.
 7. Never give advice that conflicts with driving safely.
-8. Talk like a real trucker, not a customer service bot. Swearing is normal on the CB ("hell", "damn", "crap", "son of a bitch", "shit"), and the odd stronger one is fine when the line earns it; use it like a working driver would, not in every sentence. Nothing hateful or crude at the player.
+8. Talk like a real trucker, not a customer service bot. {TruckerConversation.RatingRule(rating)}
 9. You can talk about whatever you like: your own life and backstory, other drivers, old hauls, dumb mistakes, the road, whatever is on your mind. You don't need a reason to key up.
+10. If recentRadio shows other drivers were just talking, you can pick up what they said (you heard it too).
 
 Context JSON:
 {JsonSerializer.Serialize(context, JsonOptions)}
 """;
     }
 
-    public static string BuildDispatcherSystemPrompt(VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, IReadOnlyList<RadioTurn> recentTurns)
+    public static string BuildDispatcherSystemPrompt(VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, IReadOnlyList<RadioTurn> recentTurns,
+        RadioRating rating = RadioRating.RRated)
     {
         var context = new
         {
@@ -141,6 +144,7 @@ You are {company.DispatcherName}, the dispatcher for {company.CompanyName}, talk
 Be brief, professional and friendly (1-2 sentences, under 40 words). Plain spoken words only.
 Use only facts from the JSON below; if ETA, fuel or damage data is missing, say you don't have it.
 Remind about fuel or rest only when the data shows it is relevant. Never pressure the driver to speed or skip rest.
+{(rating == RadioRating.RRated ? "Language: uncensored. Swear freely and crack crude jokes like a real dispatcher who's had a long day; you're still the driver's boss. No slurs or hate, nothing sexual involving minors." : "Language: clean, no swearing.")}
 
 Context JSON:
 {JsonSerializer.Serialize(context, JsonOptions)}
@@ -148,7 +152,7 @@ Context JSON:
     }
 
     public static string BuildBanterPrompt(TruckerPersonality a, TruckerPersonality b, VirtualCompanyProfile company, AtsTelemetrySnapshot telemetry, int lines,
-        string? topic = null)
+        string? topic = null, RadioRating rating = RadioRating.RRated)
     {
         var context = BuildTelemetryContext(company, telemetry);
         string topicLine = string.IsNullOrWhiteSpace(topic) ? "whatever comes to mind" : topic;
@@ -157,7 +161,7 @@ Write a short CB radio exchange of exactly {{lines}} lines between two simulated
 {{a.Handle}}: {{a.FullName}}, {{a.Truck}}, from {{a.HomeState}}. {{a.PersonalityTraits}}. {{a.SpeakingStyle}} {{a.Background}}
 {{b.Handle}}: {{b.FullName}}, {{b.Truck}}, from {{b.HomeState}}. {{b.PersonalityTraits}}. {{b.SpeakingStyle}} {{b.Background}}
 Topics: whatever the two of them feel like (old hauls, other drivers, truck stops, families, dumb mistakes, the road, current {{topic}}).
-They talk like real truckers, swearing when it fits ("hell", "damn", "shit", "son of a bitch"); nothing hateful or crude.
+They talk like real truckers. {{TruckerConversation.RatingRule(rating)}}
 No claims about real traffic, police or weather. Each line under 30 words, in character with their background and speaking style.
 They may mention the player's general situation only using facts in this JSON: {{JsonSerializer.Serialize(context, JsonOptions)}}
 Return only JSON: {"lines":[{"handle":"...","text":"..."}]}

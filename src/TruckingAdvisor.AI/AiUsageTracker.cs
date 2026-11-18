@@ -57,6 +57,14 @@ public sealed class AiUsageTracker
         }
     }
 
+    /// <summary>A chat request priced per million tokens (used for DeepSeek, which has its own prices).</summary>
+    public void RecordChatPriced(int inputTokens, int outputTokens, decimal inputPerMillion, decimal outputPerMillion) => Record(t =>
+    {
+        t.InputTokens += inputTokens;
+        t.OutputTokens += outputTokens;
+        t.EstimatedCostUsd += inputTokens * inputPerMillion / 1_000_000m + outputTokens * outputPerMillion / 1_000_000m;
+    });
+
     public void RecordChat(AiSettings s, int inputTokens, int outputTokens) => Record(t =>
     {
         t.InputTokens += inputTokens;

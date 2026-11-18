@@ -95,7 +95,7 @@ public static class Guide
                 "## 3. Take a job",
                 "• Everything is recorded: your score, pay, fines, route. The delivery banner shows the result for 20 seconds.",
                 "## 4. Optional: AI",
-                "• Without AI the truckers answer with short offline lines. For real conversations: Settings > Enable AI, add your OpenAI key (stored encrypted for your Windows account), set spending limits.",
+                "• Without AI the truckers answer with short offline lines. For real conversations: Settings > Enable AI, add your OpenAI key and/or a DeepSeek key (stored encrypted for your Windows account), set spending limits.",
                 "",
                 "The checklist on the dashboard ticks these off and hides itself when you're done. No game handy? Start the \"TruckingAdvisor (demo data)\" shortcut or More > Try Demo Data.",
             }),
@@ -147,7 +147,7 @@ public static class Guide
                 "Mama Bear | Missouri owner-operator: looking out for rookies, home cooking",
                 "Vinegar Val | Pacific Northwest log hauler: sour streak, steep ground, rain",
                 "Dusty Dakota | Dakota hay and livestock: wind, wide-open country, old trucks",
-                "• Each has their own story, their own voice and their own opinions. Any of them will start a conversation now and then, about whatever is on their mind. They talk like truckers: some swearing, no formality.",
+                "• Each has their own story, their own voice and their own opinions. Any of them will start a conversation now and then, about whatever is on their mind. They talk like truckers: swearing, crude jokes, no formality. Prefer it clean? Pick TV-friendly radio language.",
                 "• New drivers turn up now and then and stay. Everyone remembers you; relationships grow over time (CB Contacts tab).",
                 "## Conversation starters",
                 "› Breaker one-nine, Big Red, you out there?",
@@ -160,6 +160,11 @@ public static class Guide
                 "• Your speed, load, route and fuel from the game, and roughly where you are in the real world (after deliveries in two cities).",
                 "• They're simulated voices: they can't see your truck, traffic, police or weather, and they'll say so.",
                 "• How chatty they are: Settings > Conversation mode and Max unprompted calls / hour, or Quiet 30 min.",
+                "## Talking to each other",
+                "• With AI on, the truckers hold real back-and-forth conversations: each reply builds on what the last driver said (stories, questions, friendly arguments, the road you're on). A busier Background radio activity means longer, more frequent conversations.",
+                "• Sometimes another driver chimes in after a trucker answers you. Press push-to-talk any time to cut in; whoever spoke last answers you.",
+                "• Radio language: R-rated by default (uncensored: heavy swearing, raunchy and dark humour; only slurs/hate and anything involving minors are off limits) or TV-friendly (clean). Settings > Radio language, or bind \"Radio language\" in More > Controls to flip it from your wheel.",
+                "• Two AIs: add a DeepSeek key (optional) and DeepSeek writes the truckers' conversations while OpenAI answers you. Each covers for the other. The best model for each job is picked for you.",
             }),
 
             new GuideTopic("Voice commands", "Hands-free app control", voice),
@@ -196,7 +201,7 @@ public static class Guide
             new GuideTopic("Settings, AI & cost", "AI on/off, voices, devices, spending", new[]
             {
                 "• Everything except AI conversations works offline with no account.",
-                "• AI uses your own OpenAI key, stored encrypted for your Windows account (never in a plain file). Daily request and spending limits stop it before it costs more than you allow.",
+                "• AI uses your own OpenAI and/or DeepSeek key, stored encrypted for your Windows account (never in a plain file). Daily request and spending limits stop it before it costs more than you allow.",
                 "• No model names to choose: pick AI quality (Economy, Balanced, Best) and TruckingAdvisor uses the best built-in model your key can use, switching automatically if OpenAI retires one.",
                 "• Voices: the on-device voices are free and offline once downloaded (Kokoro is the most natural, one voice per character; Supertonic is smaller and faster). Free Microsoft neural voices, Windows voices or OpenAI voices with your key also work. Settings > Test voices plays a sample of each.",
                 "• Realtime voice mode answers faster (costs more).",

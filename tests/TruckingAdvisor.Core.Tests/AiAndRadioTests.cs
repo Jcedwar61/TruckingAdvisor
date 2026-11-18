@@ -81,18 +81,19 @@ public sealed class AiAndRadioTests
     }
 
     [Fact]
-    public async Task Banter_WithTwoTruckers_DoesNotCrash_AndUsesOneCall()
+    public async Task Banter_WithTwoTruckers_IsAConversation_OneCallPerExchange()
     {
         var audio = new RecordingAudio();
         var roster = PersonalityCatalog.CreateDefaultRoster().Take(2).ToList();
-        var llm = new FakeLlm { Reply = "```json\n{\"lines\":[{\"handle\":\"Big Red\",\"text\":\"Anybody westbound?\"},{\"handle\":\"Highway Hank\",\"text\":\"Yeah, I'm rolling.\"}]}\n```" };
+        var llm = new FakeLlm { Reply = "```json\n{\"lines\":[{\"who\":\"Big Red\",\"text\":\"Anybody westbound?\"},{\"who\":\"Highway Hank\",\"text\":\"Yeah, I'm rolling.\"}]}\n```" };
         var radio = Radio(audio, llm, roster);
 
         await radio.TriggerAiToAiBanterAsync(new AtsTelemetrySnapshot());
 
-        Assert.Single(llm.Calls);
-        Assert.Equal(2, audio.Items.Count);
+        Assert.Equal(3, llm.Calls.Count);                     // Normal activity: an opening and two follow-ups
+        Assert.Equal(6, audio.Items.Count);
         Assert.All(audio.Items, i => Assert.Equal(AudioPriority.Low, i.Priority));
+        Assert.Contains("exactly where it left off", llm.Calls[1].User); // follow-ups continue the conversation
     }
 
     private sealed class SlowLlm : ILlmClient

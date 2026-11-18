@@ -133,6 +133,39 @@ public sealed class WindowsAudioSink : IAudioSink
         }
     }
 
+    /// <summary>
+    /// Runs a line through everything playback does (voice, radio filter, clicks, volume, the float-to-bytes
+    /// conversion the speaker gets) without a speaker, and returns how many bytes would be played. Used by the
+    /// self-test so playback problems are caught on machines without audio hardware.
+    /// </summary>
+    public async Task<(long Bytes, string Source)> RenderPlaybackAsync(AudioItem item, float volume, CancellationToken ct)
+    {
+        var (samples, sampleRate, source) = await RenderAsync(item, ct);
+        samples = Shape(item, samples, sampleRate, volume);
+        var wave = new NAudio.Wave.SampleProviders.SampleToWaveProvider(new ArraySampleProvider(samples, sampleRate));
+        var buf = new byte[wave.WaveFormat.AverageBytesPerSecond / 10];
+        long total = 0;
+        int n;
+        while ((n = wave.Read(buf, 0, buf.Length)) > 0) total += n;
+        return (total, source);
+    }
+
+    /// <summary>Levelling, radio filter, key-up / squelch clicks and volume (shared by playback and the self-test).</summary>
+    private float[] Shape(AudioItem item, float[] samples, int sampleRate, float volume0To1)
+    {
+        samples = Normalize(samples);
+        if (item.ApplyCbEffects && !CleanAudio)
+        {
+            var dsp = new CbRadioDspFilter { StaticLevel = StaticLevel };
+            dsp.ProcessBuffer(samples, sampleRate);
+            var click = dsp.GenerateMicClickAndSquelchTail(sampleRate);
+            samples = [.. click, .. samples, .. click];
+        }
+        // Leave headroom so a loud line doesn't clip against the device.
+        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1 * 0.9f;
+        return samples;
+    }
+
     public static (string Voice, string Rate, string Pitch) ParseVoice(string spec)
     {
         var parts = (spec ?? "").Split('|');
@@ -174,18 +207,7 @@ public sealed class WindowsAudioSink : IAudioSink
         LastVoiceSource = source;
         cancellationToken.ThrowIfCancellationRequested();
 
-        samples = Normalize(samples);
-
-        if (item.ApplyCbEffects && !CleanAudio)
-        {
-            var dsp = new CbRadioDspFilter { StaticLevel = StaticLevel };
-            dsp.ProcessBuffer(samples, sampleRate);
-            var click = dsp.GenerateMicClickAndSquelchTail(sampleRate);
-            samples = [.. click, .. samples, .. click];
-        }
-
-        // Leave headroom so a loud line doesn't clip against the device.
-        for (int i = 0; i < samples.Length; i++) samples[i] *= volume0To1 * 0.9f;
+        samples = Shape(item, samples, sampleRate, volume0To1);
 
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int device = DeviceSelector?.Invoke(item.Channel) ?? -1;

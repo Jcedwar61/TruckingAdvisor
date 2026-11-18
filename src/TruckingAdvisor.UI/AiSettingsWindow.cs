@@ -5,6 +5,7 @@ using System.Windows.Media;
 using TruckingAdvisor.AI;
 using TruckingAdvisor.Audio;
 using TruckingAdvisor.Shared.Enums;
+using TruckingAdvisor.Shared.Interfaces;
 using TruckingAdvisor.Shared.Models;
 
 namespace TruckingAdvisor.UI;
@@ -16,6 +17,12 @@ public sealed class AiSettingsWindow : Window
 {
     private readonly AiSettings _s;
     private readonly OpenAiClientService _client;
+    private readonly LlmRouter? _router;
+    private readonly ComboBox _rating = new(), _writer = new();
+    private readonly PasswordBox _dsKey = new();
+    private readonly TextBlock _dsKeyStatus = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _writerInUse = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+    private readonly TextBox _dsPriceIn = new(), _dsPriceOut = new();
     private readonly VirtualCompanyProfile _company;
 
     private readonly CheckBox _enabled = new() { Content = "Enable AI (CB truckers, dispatcher, voice)" };
@@ -47,13 +54,14 @@ public sealed class AiSettingsWindow : Window
     private readonly CheckBox _autoUpdate = new() { Content = "Check for updates automatically and download them in the background" };
     private readonly CheckBox _updateOnExit = new() { Content = "Install a downloaded update when I close the app" };
 
-    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, VirtualCompanyProfile company,
+    public AiSettingsWindow(AiSettings settings, OpenAiClientService client, LlmRouter? router, VirtualCompanyProfile company,
         Func<VoiceEngine, Task<string>>? testVoices = null, Func<int, Task<string>>? testMic = null)
     {
         _testVoices = testVoices;
         _testMic = testMic;
         _s = settings;
         _client = client;
+        _router = router;
         _company = company;
         Title = "AI & Radio Settings";
         Width = 620;
@@ -78,6 +86,13 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Co-driver personality", _coDriver));
         form.Children.Add(Row("Dispatch contact", _dispatch));
         form.Children.Add(Row("Max unprompted calls / hour", _maxUnsolicited));
+        _rating.ItemsSource = new[] { "TV-friendly (clean, no swearing)", "R-rated (uncensored: swearing, raunchy and dark humour)" };
+        form.Children.Add(Row("Radio language", _rating));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Applies to every AI voice: truckers, their conversations with each other, and dispatch. R-rated is uncensored adult talk; the only lines are slurs/hate and anything involving minors. Bindable in More > Controls.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
         form.Children.Add(_remember);
         form.Children.Add(_announceFines);
         _units.ItemsSource = new[] { "Auto (ATS miles, ETS2 kilometres)", "Imperial (mi, MPH, gal, lbs, Ã‚Â°F)", "Metric (km, km/h, L, kg, Ã‚Â°C)" };
@@ -180,6 +195,41 @@ public sealed class AiSettingsWindow : Window
         }));
         EnumPicker.Fill<RadioActivitySetting>(_activity);
         form.Children.Add(Row("Background radio activity", _activity));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Busier radio: the truckers talk to each other more often and for longer, and sometimes chime in after one of them answers you.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
+
+        form.Children.Add(Header("DeepSeek (optional second AI)"));
+        form.Children.Add(Indent(new TextBlock
+        {
+            Text = "Add a DeepSeek key and the truckers' conversations with each other are written by DeepSeek (lively and inexpensive) while OpenAI keeps the quick replies to you. Either AI works alone too, and each covers for the other if it fails. Get a key at platform.deepseek.com.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
+        }));
+        form.Children.Add(Row("DeepSeek API key", _dsKey));
+        var dsButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(150, 4, 0, 0) };
+        dsButtons.Children.Add(Button("Save key (encrypted)", (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(_dsKey.Password)) { _dsKeyStatus.Text = "Paste a key first."; return; }
+            ApiKeyStore.Save(_dsKey.Password, AiLlmProvider.DeepSeek);
+            _dsKey.Clear();
+            _dsKeyStatus.Text = "Key saved (encrypted for your Windows account).";
+            ShowWriter();
+        }));
+        dsButtons.Children.Add(Button("Delete saved key", (_, _) =>
+        {
+            ApiKeyStore.Delete(AiLlmProvider.DeepSeek);
+            _dsKeyStatus.Text = "Saved key deleted.";
+            ShowWriter();
+        }));
+        form.Children.Add(dsButtons);
+        form.Children.Add(Indent(_dsKeyStatus));
+        _writer.ItemsSource = new[] { "Automatic (DeepSeek when it has a key, otherwise OpenAI)", "OpenAI", "DeepSeek" };
+        form.Children.Add(Row("Conversations written by", _writer));
+        _writerInUse.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        form.Children.Add(Indent(_writerInUse));
+        _writer.SelectionChanged += (_, _) => ShowWriter();
 
         form.Children.Add(Header("Spending (estimates; your OpenAI dashboard is the source of truth)"));
         form.Children.Add(Row("Daily request limit", _requestLimit));
@@ -193,6 +243,8 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Chat output $ / 1M tokens", _priceOut));
         form.Children.Add(Row("Transcription $ / minute", _priceStt));
         form.Children.Add(Row("Voice $ / 1M characters", _priceTts));
+        form.Children.Add(Row("DeepSeek input $ / 1M", _dsPriceIn));
+        form.Children.Add(Row("DeepSeek output $ / 1M", _dsPriceOut));
         form.Children.Add(Indent(_usage));
 
         form.Children.Add(Header("Updates"));
@@ -254,11 +306,33 @@ public sealed class AiSettingsWindow : Window
         _radioVol.Value = _s.RadioVolume;
         _dispatchVol.Value = _s.DispatcherVolume;
         _advisorVol.Value = _s.AdvisorVolume;
+        _rating.SelectedIndex = (int)_s.Rating;
+        _writer.SelectedIndex = (int)_s.ConversationWriter;
+        _dsKeyStatus.Text = ApiKeyStore.Exists(AiLlmProvider.DeepSeek) ? "A key is saved (encrypted for your Windows account)." : "No key saved (optional).";
+        _dsPriceIn.Text = _s.DeepSeekInputPricePerMillionTokens.ToString(inv);
+        _dsPriceOut.Text = _s.DeepSeekOutputPricePerMillionTokens.ToString(inv);
+        ShowWriter();
         _keyStatus.Text = ApiKeyStore.Exists(_s.Provider) ? "A key is saved (encrypted for your Windows account)." : "No key saved.";
         var u = _client.Usage.Data;
         _usage.Text = $"Today: {u.Today.Requests} requests, {u.Today.InputTokens + u.Today.OutputTokens:N0} tokens, ~${u.Today.EstimatedCostUsd:F4}\n" +
                       $"All time: {u.Lifetime.Requests} requests, {u.Lifetime.InputTokens + u.Lifetime.OutputTokens:N0} tokens, ~${u.Lifetime.EstimatedCostUsd:F4}" +
-                      (_client.LastError is { } err ? $"\nLast error: {err}" : string.Empty);
+                      (_client.LastError is { } err ? $"\nLast error: {err}" : string.Empty) +
+                      (_router?.DeepSeek.LastError is { } dsErr ? $"\nLast DeepSeek error: {dsErr}" : string.Empty);
+    }
+
+    /// <summary>Shows which AI and model writes the truckers' conversations, so it's never a mystery.</summary>
+    private void ShowWriter()
+    {
+        if (_router is null) { _writerInUse.Text = ""; return; }
+        var saved = _s.ConversationWriter;
+        _s.ConversationWriter = (ConversationWriter)Math.Max(0, _writer.SelectedIndex);   // preview the choice
+        string planned = _router.PlannedConversationWriter();
+        _s.ConversationWriter = saved;
+        string last = _router.LastUsed(LlmJob.Conversation);
+        if (string.IsNullOrEmpty(last)) last = _s.ConversationModel;
+        _writerInUse.Text = planned == "offline lines"
+            ? "No AI key is ready, so the truckers use built-in offline lines."
+            : $"Conversations are written by {planned}" + (string.IsNullOrEmpty(last) ? ", using its best writing model." : $". Last used: {last}.");
     }
 
     private void SaveKey(object sender, RoutedEventArgs e)
@@ -310,6 +384,10 @@ public sealed class AiSettingsWindow : Window
         if (EnumPicker.TryGet(_activity, out RadioActivitySetting a)) _s.RadioActivity = a;
         if (int.TryParse(_maxTokens.Text, NumberStyles.Integer, inv, out var mt)) _s.MaxResponseTokens = Math.Clamp(mt, 32, 1000);
         if (int.TryParse(_requestLimit.Text, NumberStyles.Integer, inv, out var rl)) _s.DailyRequestLimit = Math.Max(0, rl);
+        _s.Rating = _rating.SelectedIndex == 1 ? RadioRating.RRated : RadioRating.TvFriendly;
+        _s.ConversationWriter = (ConversationWriter)Math.Max(0, _writer.SelectedIndex);
+        _s.DeepSeekInputPricePerMillionTokens = Dec(_dsPriceIn.Text, _s.DeepSeekInputPricePerMillionTokens);
+        _s.DeepSeekOutputPricePerMillionTokens = Dec(_dsPriceOut.Text, _s.DeepSeekOutputPricePerMillionTokens);
         _s.DailySpendLimitUsd = Dec(_spendLimit.Text, _s.DailySpendLimitUsd);
         _s.ChatInputPricePerMillionTokens = Dec(_priceIn.Text, _s.ChatInputPricePerMillionTokens);
         _s.ChatOutputPricePerMillionTokens = Dec(_priceOut.Text, _s.ChatOutputPricePerMillionTokens);

@@ -8,7 +8,27 @@ public enum AiLlmProvider
     OpenAI,
     /// <summary>Any OpenAI-compatible chat endpoint (set <see cref="AiSettings.CustomChatEndpoint"/>).</summary>
     OpenAICompatible,
-    Offline
+    Offline,
+    /// <summary>DeepSeek (its own key; OpenAI-compatible API). Used for trucker conversations when it has a key.</summary>
+    DeepSeek
+}
+
+/// <summary>How the AI voices on the radio talk.</summary>
+public enum RadioRating
+{
+    /// <summary>Clean: no swearing, no crude humour. Good with family around or on stream.</summary>
+    TvFriendly = 0,
+    /// <summary>Real truckers off the clock: uncensored swearing, raunchy and dark humour (only no slurs/hate and nothing involving minors).</summary>
+    RRated = 1
+}
+
+/// <summary>Which AI writes the truckers' conversations among themselves.</summary>
+public enum ConversationWriter
+{
+    /// <summary>DeepSeek when it has a key (a second AI working alongside OpenAI), otherwise OpenAI.</summary>
+    Automatic = 0,
+    OpenAI = 1,
+    DeepSeek = 2
 }
 
 /// <summary>
@@ -21,6 +41,17 @@ public sealed class AiSettings
     public AiLlmProvider Provider { get; set; } = AiLlmProvider.OpenAI;
     public string ApiBaseUrl { get; set; } = "https://api.openai.com/v1";
     public string CustomChatEndpoint { get; set; } = string.Empty;
+
+    /// <summary>TV-friendly (default) or R-rated radio talk, for every AI voice on the radio.</summary>
+    public RadioRating Rating { get; set; } = RadioRating.RRated;
+    /// <summary>Who writes the truckers' conversations among themselves.</summary>
+    public ConversationWriter ConversationWriter { get; set; } = ConversationWriter.Automatic;
+    public string DeepSeekBaseUrl { get; set; } = "https://api.deepseek.com";
+    /// <summary>DeepSeek prices for the cost estimate (USD per 1M tokens; 0 = not counted).</summary>
+    public decimal DeepSeekInputPricePerMillionTokens { get; set; }
+    public decimal DeepSeekOutputPricePerMillionTokens { get; set; }
+    /// <summary>Filled in by the app: the model writing conversations right now (for display).</summary>
+    public string ConversationModel { get; set; } = "";
 
     /// <summary>Picks the models (see <see cref="AiModelCatalog"/>). The player never types a model name.</summary>
     public AiQuality Quality { get; set; } = AiQuality.Balanced;
