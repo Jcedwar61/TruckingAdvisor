@@ -86,11 +86,11 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Co-driver personality", _coDriver));
         form.Children.Add(Row("Dispatch contact", _dispatch));
         form.Children.Add(Row("Max unprompted calls / hour", _maxUnsolicited));
-        _rating.ItemsSource = new[] { "TV-friendly (clean, no swearing)", "R-rated (truckers swear and joke like real drivers)" };
+        _rating.ItemsSource = new[] { "TV-friendly (clean, no swearing)", "R-rated (uncensored: swearing, raunchy and dark humour)" };
         form.Children.Add(Row("Radio language", _rating));
         form.Children.Add(Indent(new TextBlock
         {
-            Text = "Applies to every AI voice: truckers, their conversations with each other, and dispatch. R-rated still never allows slurs, hate or explicit content. Bindable in More > Controls.",
+            Text = "Applies to every AI voice: truckers, their conversations with each other, and dispatch. R-rated is uncensored adult talk; the only lines are slurs/hate and anything involving minors. Bindable in More > Controls.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
         form.Children.Add(_remember);

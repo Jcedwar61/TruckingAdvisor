@@ -163,7 +163,7 @@ public static class Guide
                 "## Talking to each other",
                 "• With AI on, the truckers hold real back-and-forth conversations: each reply builds on what the last driver said (stories, questions, friendly arguments, the road you're on). A busier Background radio activity means longer, more frequent conversations.",
                 "• Sometimes another driver chimes in after a trucker answers you. Press push-to-talk any time to cut in; whoever spoke last answers you.",
-                "• Radio language: R-rated by default (swearing and crude jokes, never slurs or explicit content) or TV-friendly (clean). Settings > Radio language, or bind \"Radio language\" in More > Controls to flip it from your wheel.",
+                "• Radio language: R-rated by default (uncensored: heavy swearing, raunchy and dark humour; only slurs/hate and anything involving minors are off limits) or TV-friendly (clean). Settings > Radio language, or bind \"Radio language\" in More > Controls to flip it from your wheel.",
                 "• Two AIs: add a DeepSeek key (optional) and DeepSeek writes the truckers' conversations while OpenAI answers you. Each covers for the other. The best model for each job is picked for you.",
             }),
 

@@ -19,11 +19,12 @@ public static class TruckerConversation
 
     /// <summary>How the voices talk: TV-friendly (clean) or R-rated (real truckers off the clock).</summary>
     public static string RatingRule(RadioRating rating) => rating == RadioRating.RRated
-        ? "LANGUAGE: R-rated. These are real truckers off the clock: swearing is natural and allowed (real words, never " +
-          "bleeped or starred), crude jokes, trash talk, griping about dispatch, four-wheelers, scales and bad drivers, " +
-          "adult humour and innuendo. Curse when a moment earns it, not in every line. Never: slurs or anything hateful " +
-          "about anyone's race, religion, nationality, sexuality, gender or disability; no explicit sexual description; " +
-          "nothing involving minors; never encourage unsafe or illegal driving."
+        ? "LANGUAGE: R-rated, uncensored. These are real truckers off the clock with nobody listening: swear as much and " +
+          "as hard as feels natural (real words, never bleeped or starred), raunchy and filthy jokes, explicit sex talk " +
+          "between adults, dark humour, brutal trash talk and insults between drivers, griping about dispatch, " +
+          "four-wheelers, scales and cops, war stories about bending the rules. Don't soften it, don't moralise, don't " +
+          "add disclaimers. The only lines: nothing sexual involving minors, and no slurs or hate aimed at people for " +
+          "their race, religion, nationality, sexuality, gender or disability."
         : "LANGUAGE: TV-friendly. Clean language only: no swearing at all (not even mild words), no crude or sexual " +
           "humour. Teasing stays good-natured. Think prime-time television about truckers. This overrides any swearing " +
           "mentioned in a speaking style: keep the accent and attitude, use clean stand-ins (\"dang\", \"heck\", \"son of a gun\").";

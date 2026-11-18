@@ -63,7 +63,7 @@ public sealed partial class MainDashboardViewModel
         _aiSettings.Rating = _aiSettings.Rating == RadioRating.TvFriendly ? RadioRating.RRated : RadioRating.TvFriendly;
         try { _aiSettings.Save(); } catch { /* the toggle still applies for this session */ }
         RadioNotice = _aiSettings.Rating == RadioRating.RRated
-            ? "Radio language: R-rated. The truckers can swear and joke like real drivers (never slurs or explicit content)."
+            ? "Radio language: R-rated. Uncensored adult talk: swearing, raunchy and dark humour."
             : "Radio language: TV-friendly. Clean talk, no swearing.";
     }
 

@@ -18,7 +18,7 @@ public enum RadioRating
 {
     /// <summary>Clean: no swearing, no crude humour. Good with family around or on stream.</summary>
     TvFriendly = 0,
-    /// <summary>Real truckers off the clock: swearing and crude humour (never slurs, hate or explicit sex).</summary>
+    /// <summary>Real truckers off the clock: uncensored swearing, raunchy and dark humour (only no slurs/hate and nothing involving minors).</summary>
     RRated = 1
 }
 
