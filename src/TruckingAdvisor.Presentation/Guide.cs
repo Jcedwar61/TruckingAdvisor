@@ -180,6 +180,8 @@ public static class Guide
                 "• How often: Settings > Dispatch contact. Truckers never hear channel 30; dispatch never hears CB chatter.",
             }),
 
+            new GuideTopic("Twitch, overlay & convoy", "Let stream chat talk to the truckers; share the radio with friends", StreamingLines()),
+
             new GuideTopic("Map & real places", "Self-drawing map, real towns and highways", new[]
             {
                 "• The Map tab draws every road you drive, separately for ATS and ETS2, in any DLC region or map mod. Drag to pan, mouse wheel to zoom, double-click to follow the truck.",
@@ -221,5 +223,46 @@ public static class Guide
                 "• Project page: github.com/Jcedwar61/TruckingAdvisor",
             }),
         };
+    }
+
+    /// <summary>The streaming page lists the real chat commands, so it can't drift from what the app accepts.</summary>
+    private static IReadOnlyList<string> StreamingLines()
+    {
+        var lines = new List<string>
+        {
+            "Open More > Twitch, Overlay & Convoy.",
+            "## Twitch chat on the CB",
+            "• Tick \"Let Twitch chat talk on the CB radio\" and type your channel name. Chat is read anonymously: no Twitch login or token, and nothing is ever posted.",
+            "• Viewers type a command and their message; the message is read out in a caller voice, then a trucker or crew member answers on the radio, out loud, using your live truck data.",
+        };
+        foreach (var c in TruckingAdvisor.AI.Streaming.ViewerCallGate.AllCommands)
+            lines.Add($"{c.Command}{(c.Aliases.Length > 0 ? " (" + string.Join(", ", c.Aliases) + ")" : "")} | {c.Description}");
+        lines.AddRange(new[]
+        {
+            "› !cb anybody got eyes on a bear?",
+            "› !mechanic how are the tires holding up?",
+            "• Cooldowns keep the cab from flooding (30 s between calls, 2 min per viewer by default; mods skip their own). Up to three calls wait in line.",
+            "• Channel Points: make a reward with \"Require viewer to enter text\". Redeeming it keys up on the CB and skips the cooldown. A reward message can start with !mechanic etc. to pick who answers.",
+            "• With AI on, replies come from your AI (OpenAI, or any OpenAI-compatible service such as Groq or a local Ollama). With AI off, built-in replies still use your real fuel, speed, load, wear and rest time.",
+            "• Links, emoji and letter spam are stripped; add your own blocked words. Your push-to-talk always cuts in ahead of viewers.",
+            "• \"Play a test call\" tries it without Twitch.",
+            "## Stream overlay",
+            "• Tick \"Run the stream overlay\", then in OBS add a Browser Source with http://localhost:8789/overlay at 1920 x 1080.",
+            "• It shows the chat commands with a live \"Next call\" countdown, and a CB radio banner while a viewer is on the air.",
+            "/overlay/commands | Commands panel only",
+            "/overlay/banner | Caller banner only",
+            "/overlay/feed | Recent radio lines",
+            "?pos=br, tl or tr | Move the panel to another corner",
+            "?mode=ticker | Compact strip that rotates through the commands",
+            "?scale=1.3 | Bigger or smaller",
+            "?demo=1 | Sample data, to position it while offline",
+            "## Convoy CB",
+            "• Friends who also run TruckingAdvisor tick \"Join a convoy\" and type the same convoy code. Everyone on the same CB channel sees each other's lines, and one shared AI answers so all of you hear the same reply.",
+            "• Talk to the AI as usual (\"Big Red, how's my fuel?\"); a line just for a friend (\"Zay, you see that?\") gets no AI reply. Ask about \"my\" truck and the AI uses that driver's own numbers.",
+            "• One PC answers for the AI: tick \"This PC answers\" on one of them, or let the app pick. If that PC goes quiet, the asker's own PC answers after a few seconds.",
+            "• Your Twitch viewers' calls are heard in the whole convoy.",
+            "• Messages are encrypted with the code and pass through ntfy.sh (free, a few hundred messages a day per PC) or your own ntfy server. Keep the code off stream.",
+        });
+        return lines;
     }
 }

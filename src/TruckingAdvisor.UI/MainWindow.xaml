@@ -94,6 +94,7 @@
                                     <Button x:Name="BtnLayout" Content="Layout &amp; Theme" Click="BtnLayout_Click"/>
                                     <Button x:Name="BtnHudLock" Content="Move/Resize HUD" Click="BtnHudLock_Click"/>
                                     <Button x:Name="BtnControls" Content="Controls &amp; Key Bindings" Click="BtnControls_Click"/>
+                                    <Button x:Name="BtnStream" Content="Twitch, Overlay &amp; Convoy" Click="BtnStream_Click" ToolTip="Let Twitch chat talk to the AI truckers, show the commands on stream, and share the radio with friends"/>
                                     <Button x:Name="BtnPlugin" Content="Install Telemetry Plugin" Click="BtnPlugin_Click"/>
                                     <Button x:Name="BtnDemo" Content="Try Demo Data" Click="BtnDemo_Click"/>
                                     <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Click="BtnCheckUpdates_Click"/>

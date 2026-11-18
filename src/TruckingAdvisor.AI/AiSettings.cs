@@ -166,6 +166,9 @@ public sealed class AiSettings
     /// <summary>Clickable CB channel picker attached under the HUD.</summary>
     public bool HudChannelPicker { get; set; } = true;
 
+    /// <summary>Twitch chat, convoy CB and stream overlay.</summary>
+    public TruckingAdvisor.AI.Streaming.StreamSettings Stream { get; set; } = new();
+
     public static readonly string[] DefaultWidgetOrder = { "Gauges", "Delivery", "Advisories", "Trend", "Report" };
     /// <summary>Individual gauge cards inside the Gauges widget (can be hidden too).</summary>
     public static readonly string[] GaugeCards = { "Speed", "Engine", "Fuel", "Score" };
