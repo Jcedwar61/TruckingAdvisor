@@ -52,24 +52,99 @@ public class AiAuditFixTests
         Assert.True(tracker.IsOverLimit(s));                          // default $1 limit now actually trips
     }
 
+    // Official list prices checked 2026-11-27 (openai developers pricing page, api-docs.deepseek.com peak rates).
+    [Theory]
+    [InlineData("gpt-5-nano", 0.05, 0.40)]
+    [InlineData("gpt-5-mini", 0.25, 2.00)]
+    [InlineData("gpt-5", 1.25, 10.00)]
+    [InlineData("gpt-5-chat-latest", 1.25, 10.00)]
+    [InlineData("gpt-5.1", 1.25, 10.00)]
+    [InlineData("gpt-5.2", 1.75, 14.00)]
+    [InlineData("gpt-5.3-chat-latest", 1.75, 14.00)]
+    [InlineData("gpt-5.4", 2.50, 15.00)]
+    [InlineData("gpt-5.4-mini", 0.75, 4.50)]
+    [InlineData("gpt-5.4-nano", 0.20, 1.25)]
+    [InlineData("gpt-5.5", 5.00, 30.00)]
+    [InlineData("gpt-5.6-sol", 5.00, 30.00)]     // launch price (promotional 4/20 ends 2026-11-30)
+    [InlineData("gpt-5.6-terra", 2.00, 12.00)]
+    [InlineData("gpt-5.6-luna", 0.20, 1.20)]
+    [InlineData("gpt-6-astra", 10.00, 50.00)]
+    [InlineData("gpt-6.2-astra", 8.00, 40.00)]
+    [InlineData("gpt-6.2-sol", 2.00, 10.00)]
+    [InlineData("gpt-6.1-sol", 2.00, 10.00)]
+    [InlineData("gpt-6.1-terra", 1.00, 5.00)]
+    [InlineData("gpt-6-luna", 0.10, 0.50)]
+    [InlineData("gpt-6-cyber", 20.00, 100.00)]
+    [InlineData("gpt-4.1", 2.00, 8.00)]
+    [InlineData("gpt-4.1-mini", 0.40, 1.60)]
+    [InlineData("gpt-4.1-nano", 0.10, 0.40)]
+    [InlineData("gpt-4o", 2.50, 10.00)]
+    [InlineData("gpt-4o-mini", 0.15, 0.60)]
+    [InlineData("deepseek-flash", 0.30, 1.20)]
+    [InlineData("deepseek-v4-flash", 0.30, 1.20)]
+    [InlineData("deepseek-v4-pro", 1.32, 3.96)]
+    [InlineData("deepseek-chat", 0.30, 1.20)]       // legacy names, retired 2026-07-24 (were billed as V4-Flash)
+    [InlineData("deepseek-reasoner", 0.30, 1.20)]
+    public void BuiltInPrices_ArePerModel_AtOrAboveListPricePlus20Percent(string model, double listIn, double listOut)
+    {
+        var p = AiModelCatalog.ChatPrice(model);
+        Assert.True(p.Input >= (decimal)listIn * 1.2m, $"{model} input {p.Input} < list {listIn} + 20%");
+        Assert.True(p.Output >= (decimal)listOut * 1.2m, $"{model} output {p.Output} < list {listOut} + 20%");
+        // ...but not wildly above (a cap that trips far too early is no use either), except the legacy DeepSeek names.
+        if (!model.StartsWith("deepseek-chat") && !model.StartsWith("deepseek-reasoner"))
+            Assert.True(p.Output <= (decimal)listOut * 1.5m, $"{model} output {p.Output} far above list {listOut}");
+    }
+
     [Fact]
-    public void BuiltInPrices_ArePerModel_AtOrAboveListPrice_AndUnknownModelsAreDear()
+    public void BuiltInPrices_UnknownModels_AreAtLeastTheDearestCurrentModelOfTheirTier()
     {
         var mini = AiModelCatalog.ChatPrice("gpt-5-mini");
         var full = AiModelCatalog.ChatPrice("gpt-5");
         Assert.True(full.Output > mini.Output);
-        Assert.True(mini.Input >= 0.25m && mini.Output >= 2.00m);
-        Assert.True(full.Input >= 1.25m && full.Output >= 10m);
-        Assert.True(AiModelCatalog.ChatPrice("gpt-4.1").Output >= 8m);
-        Assert.True(AiModelCatalog.ChatPrice("gpt-4o-mini").Output >= 0.60m);
-        // A newer model the key lists: priced like the dearest known full-size model.
-        Assert.True(AiModelCatalog.ChatPrice("gpt-7-turbo").Output >= full.Output);
-        Assert.True(AiModelCatalog.ChatPrice("gpt-7-mini").Output >= mini.Output);
-        Assert.True(AiModelCatalog.DeepSeekPrice("deepseek-chat").Output >= 2.19m);
-        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("gpt-4o-transcribe") >= 0.006m);
-        Assert.True(AiModelCatalog.SpeechPricePerMillionChars("tts-1") >= 15m);
-        Assert.True(AiModelCatalog.RealtimePrice("gpt-realtime").AudioOut >= 64m);
+        // Newer models the key lists: priced like the dearest current model of their size.
+        Assert.True(AiModelCatalog.ChatPrice("gpt-7-turbo").Output >= 100m * 1.2m);   // gpt-6-cyber 20/100
+        Assert.True(AiModelCatalog.ChatPrice("gpt-7-turbo").Input >= 20m * 1.2m);
+        Assert.True(AiModelCatalog.ChatPrice("gpt-6.3-astra").Output >= 50m * 1.2m);  // gpt-6-astra 10/50
+        Assert.True(AiModelCatalog.ChatPrice("gpt-6.3-sol").Output >= 30m * 1.2m);    // gpt-5.6-sol launch 5/30
+        Assert.True(AiModelCatalog.ChatPrice("gpt-7-mini").Output >= 12m * 1.2m);     // gpt-5.6-terra 2/12
+        Assert.True(AiModelCatalog.ChatPrice("gpt-6.2-terra").Output >= 12m * 1.2m);
+        Assert.True(AiModelCatalog.ChatPrice("gpt-7-nano").Output >= 1.25m * 1.2m);   // gpt-5.4-nano 0.20/1.25
+        Assert.True(AiModelCatalog.ChatPrice("gpt-6.2-luna").Input >= 0.20m * 1.2m);
+        // A newer generation is never priced as the older one with the same leading digit.
+        Assert.True(AiModelCatalog.ChatPrice("gpt-5.7").Output >= AiModelCatalog.ChatPrice("gpt-5.5").Output);
+        Assert.True(AiModelCatalog.ChatPrice("o1").Output >= 60m * 1.2m);
+        Assert.True(AiModelCatalog.DeepSeekPrice("deepseek-v5-ultra").Output >= 3.96m * 1.2m);
+
+        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("gpt-4o-transcribe") >= 0.006m * 1.2m);
+        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("gpt-4o-mini-transcribe") >= 0.003m * 1.2m);
+        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("whisper-1") >= 0.006m * 1.2m);
+        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("gpt-realtime-whisper") >= 0.017m * 1.2m);
+        Assert.True(AiModelCatalog.TranscriptionPricePerMinute("some-new-stt") >= 0.017m * 1.2m);
+        Assert.True(AiModelCatalog.SpeechPricePerMillionChars("tts-1") >= 15m * 1.2m);
+        Assert.True(AiModelCatalog.SpeechPricePerMillionChars("tts-1-hd") >= 30m * 1.2m);
+
+        foreach (var rt in new[] { "gpt-realtime", "gpt-realtime-1.5", "gpt-realtime-2", "gpt-realtime-2.1" })
+        {
+            var p = AiModelCatalog.RealtimePrice(rt);
+            Assert.True(p.TextIn >= 4m * 1.2m && p.TextOut >= 24m * 1.2m && p.AudioIn >= 32m * 1.2m && p.AudioOut >= 64m * 1.2m && p.CachedIn >= 0.40m * 1.2m, rt);
+        }
+        foreach (var rt in new[] { "gpt-realtime-mini", "gpt-realtime-2.1-mini", "gpt-4o-mini-realtime-preview" })
+        {
+            var p = AiModelCatalog.RealtimePrice(rt);
+            Assert.True(p.TextIn >= 0.60m * 1.2m && p.TextOut >= 2.40m * 1.2m && p.AudioIn >= 10m * 1.2m && p.AudioOut >= 20m * 1.2m && p.CachedIn >= 0.30m * 1.2m, rt);
+        }
+        var old = AiModelCatalog.RealtimePrice("gpt-4o-realtime-preview");
+        Assert.True(old.TextIn >= 5m * 1.2m && old.AudioIn >= 40m * 1.2m && old.AudioOut >= 80m * 1.2m && old.CachedIn >= 2.50m * 1.2m);
     }
+
+    [Theory]
+    [InlineData(0.05, 0.06)]
+    [InlineData(0.40, 0.50)]
+    [InlineData(1.25, 1.50)]
+    [InlineData(14.00, 17.00)]
+    [InlineData(1.32, 1.60)]
+    public void Headroom_IsListPlus20Percent_RoundedUp(double list, double expected) =>
+        Assert.Equal((decimal)expected, AiModelCatalog.Headroom((decimal)list));
 
     [Fact]
     public void UserEnteredPrices_OverrideBuiltIns_ZeroMeansBuiltIn()

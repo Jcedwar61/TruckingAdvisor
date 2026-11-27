@@ -94,37 +94,111 @@ public static class AiModelCatalog
 
     // ---- Built-in price estimates (USD), used for the daily spend limit when the player hasn't entered prices ----
     //
-    // These are NOT live prices: the app has no reliable way to fetch them. They are deliberately CONSERVATIVE:
-    // each is set at or above the published list price we know of (rounded up, roughly 20% headroom), because a
-    // spend cap that over-estimates stops a little early, while one that under-estimates lets real money through.
-    // A model we don't recognise is priced at the most expensive known tier of its family/size (or a high default).
-    // Prices the player enters in AI settings (non-zero) replace these. The provider's dashboard is the truth.
+    // These are NOT live prices: the app has no reliable way to fetch them. They were checked against OpenAI's and
+    // DeepSeek's official pricing pages on 2026-11-27 and are deliberately CONSERVATIVE: list price + ~20%, rounded
+    // up (see Headroom), never below list, because a spend cap that over-estimates stops a little early, while one
+    // that under-estimates lets real money through. Where a provider has peak/off-peak or promotional rates, the
+    // higher (peak / launch) price is used. A model we don't recognise is priced at the most expensive current model
+    // of its size tier. Prices the player enters in AI settings (non-zero) replace these. The provider's dashboard
+    // is the truth.
 
-    /// <summary>Chat price per 1M tokens (input, output) for a model, by family and size.</summary>
+    /// <summary>List price + ~20%, rounded UP to a sensible step (so never below list).</summary>
+    public static decimal Headroom(decimal listPrice)
+    {
+        decimal x = listPrice * 1.2m;
+        decimal step = x < 0.1m ? 0.01m : x < 1m ? 0.05m : x < 10m ? 0.10m : 1m;
+        return Math.Ceiling(x / step) * step;
+    }
+
+    private static (decimal Input, decimal Output) Headroom((decimal In, decimal Out) list) => (Headroom(list.In), Headroom(list.Out));
+
+    /// <summary>
+    /// OpenAI chat LIST prices (Standard tier, USD per 1M tokens: input, output) as published on 2026-11-27.
+    /// A rule matches the exact id or the id followed by "-..." (so "gpt-5" covers "gpt-5-chat-latest" but not
+    /// "gpt-5.6-sol"); the longest matching rule wins.
+    /// </summary>
+    private static readonly (string Prefix, decimal In, decimal Out)[] OpenAiChatList =
+    {
+        ("gpt-6-cyber", 20.00m, 100.00m),    // specialised, access by approval
+        ("gpt-6.2-astra", 8.00m, 40.00m),
+        ("gpt-6-astra", 10.00m, 50.00m),
+        ("gpt-6.2-sol", 2.00m, 10.00m),
+        ("gpt-6.1-sol", 2.00m, 10.00m),
+        ("gpt-6-sol", 2.00m, 10.00m),
+        ("gpt-6.1-terra", 1.00m, 5.00m),
+        ("gpt-6-luna", 0.10m, 0.50m),
+        ("gpt-5.6-sol", 5.00m, 30.00m),      // launch price: the 4/20 promotion ends 2026-11-30
+        ("gpt-5.6-terra", 2.00m, 12.00m),
+        ("gpt-5.6-luna", 0.20m, 1.20m),
+        ("gpt-5.5", 5.00m, 30.00m),
+        ("gpt-5.4-mini", 0.75m, 4.50m),
+        ("gpt-5.4-nano", 0.20m, 1.25m),
+        ("gpt-5.4", 2.50m, 15.00m),
+        ("gpt-5.3", 1.75m, 14.00m),          // gpt-5.3-chat-latest
+        ("gpt-5.2", 1.75m, 14.00m),
+        ("gpt-5.1", 1.25m, 10.00m),
+        ("gpt-5-mini", 0.25m, 2.00m),
+        ("gpt-5-nano", 0.05m, 0.40m),
+        ("gpt-5", 1.25m, 10.00m),
+        ("gpt-4.1-mini", 0.40m, 1.60m),
+        ("gpt-4.1-nano", 0.10m, 0.40m),
+        ("gpt-4.1", 2.00m, 8.00m),
+        ("gpt-4o-mini", 0.15m, 0.60m),
+        ("gpt-4o", 2.50m, 10.00m),
+        ("gpt-4-turbo", 10.00m, 30.00m),
+        ("gpt-4", 30.00m, 60.00m),           // old and dear
+    };
+
+    // Unknown-model fallbacks: the dearest CURRENT list price of each size tier on 2026-11-27 (headroom added on use).
+    private static readonly (decimal, decimal) SmallTierList = (0.20m, 1.25m);   // nano / luna: gpt-5.4-nano (gpt-5.6-luna 0.20/1.20)
+    private static readonly (decimal, decimal) MidTierList = (2.00m, 12.00m);    // mini / terra: gpt-5.6-terra
+    private static readonly (decimal, decimal) SolTierList = (5.00m, 30.00m);    // sol: gpt-5.6-sol at launch price
+    private static readonly (decimal, decimal) AstraTierList = (10.00m, 50.00m); // astra: gpt-6-astra
+    private static readonly (decimal, decimal) FullTierList = (20.00m, 100.00m); // any other full-size model: gpt-6-cyber
+
+    /// <summary>Chat price per 1M tokens (input, output) for a model: by model id, else by family and size.</summary>
     public static (decimal Input, decimal Output) ChatPrice(string? model)
     {
         string m = (model ?? "").Trim().ToLowerInvariant();
         if (m.StartsWith("deepseek")) return DeepSeekPrice(m);
-        bool nano = m.Contains("nano"), mini = !nano && m.Contains("mini");
-        if (m.StartsWith("gpt-4o")) return nano || mini ? (0.20m, 0.80m) : (3.00m, 12.00m);                   // list 0.15/0.60, 2.50/10
-        if (m.StartsWith("gpt-4.1")) return nano ? (0.15m, 0.50m) : mini ? (0.50m, 2.00m) : (2.50m, 10.00m);  // list 0.10/0.40, 0.40/1.60, 2/8
-        if (m.StartsWith("gpt-5")) return nano ? (0.10m, 0.50m) : mini ? (0.30m, 2.50m) : (2.00m, 16.00m);    // list 0.05/0.40, 0.25/2, 1.25-1.75/10-14
-        if (m.StartsWith("gpt-4")) return (30.00m, 60.00m);                                                  // gpt-4 / gpt-4-turbo (old and dear)
-        if (m.Length > 1 && m[0] == 'o' && char.IsDigit(m[1])) return mini ? (1.50m, 6.00m) : (15.00m, 60.00m); // o-series (o1 is 15/60)
-        // Unknown (e.g. a newer model the key lists): the dearest known tier of its size.
-        return nano ? (0.15m, 0.50m) : mini ? (0.50m, 2.50m) : (3.00m, 16.00m);
+        var rule = OpenAiChatList.Where(r => m == r.Prefix || m.StartsWith(r.Prefix + "-"))
+                                 .OrderByDescending(r => r.Prefix.Length).FirstOrDefault();
+        if (rule.Prefix is not null) return Headroom((rule.In, rule.Out));
+        bool small = m.Contains("nano") || m.Contains("luna");
+        bool mid = !small && (m.Contains("mini") || m.Contains("terra"));
+        if (m.Length > 1 && m[0] == 'o' && char.IsDigit(m[1]))           // o-series: o1 15/60, o1/o3/o4-mini 1.10/4.40
+            return mid ? Headroom((1.10m, 4.40m)) : Headroom((15.00m, 60.00m));
+        // Unknown (e.g. a newer model the key lists): the dearest current model of its size tier.
+        if (small) return Headroom(SmallTierList);
+        if (mid) return Headroom(MidTierList);
+        if (m.Contains("sol")) return Headroom(SolTierList);
+        if (m.Contains("astra")) return Headroom(AstraTierList);
+        return Headroom(FullTierList);
     }
 
-    /// <summary>DeepSeek price per 1M tokens (input at the cache-miss rate, output): above every published DeepSeek chat/reasoner price.</summary>
-    public static (decimal Input, decimal Output) DeepSeekPrice(string? model) => (0.60m, 2.20m); // highest list: reasoner 0.55/2.19
+    /// <summary>
+    /// DeepSeek price per 1M tokens (input at the cache-miss rate, output), at the PEAK-hour rate (off-peak is half).
+    /// List on 2026-11-27: deepseek-flash (V4.1-Flash) 0.30/1.20, deepseek-v4-pro 1.32/3.96.
+    /// </summary>
+    public static (decimal Input, decimal Output) DeepSeekPrice(string? model)
+    {
+        string m = (model ?? "").Trim().ToLowerInvariant();
+        if (m.Contains("flash")) return Headroom((0.30m, 1.20m));
+        // Legacy deepseek-chat / deepseek-reasoner (retired 2026-07-24; until then billed as V4-Flash):
+        // kept above every price these names have had (R1 reasoner 0.55/2.19).
+        if (m == "deepseek-chat" || m == "deepseek-reasoner") return (0.60m, 2.20m);
+        // deepseek-v4-pro and anything unknown: the dearest current DeepSeek model.
+        return Headroom((1.32m, 3.96m));
+    }
 
     /// <summary>Speech-to-text price per minute of audio.</summary>
     public static decimal TranscriptionPricePerMinute(string? model)
     {
         string m = (model ?? "").ToLowerInvariant();
         if (m.Contains("mini")) return 0.004m;                                  // gpt-4o-mini-transcribe, list 0.003
-        if (m.Contains("transcribe") || m.StartsWith("whisper")) return 0.008m; // gpt-4o-transcribe / whisper-1, list 0.006
-        return 0.010m;
+        if (m.Contains("realtime")) return 0.021m;                              // gpt-realtime-whisper, list 0.017
+        if (m.Contains("transcribe") || m.StartsWith("whisper")) return 0.008m; // gpt-4o-transcribe / whisper-1 0.006, gpt-transcribe 0.0045
+        return 0.021m;                                                          // unknown: dearest current (gpt-realtime-whisper 0.017)
     }
 
     /// <summary>Text-to-speech price per 1M characters of input text.</summary>
@@ -132,17 +206,23 @@ public static class AiModelCatalog
     {
         string m = (model ?? "").ToLowerInvariant();
         if (m == "tts-1") return 18m;              // list 15
-        if (m.Contains("mini-tts")) return 20m;    // gpt-4o-mini-tts: about $0.015 per minute of speech, ~16-17 per 1M chars
+        if (m.Contains("mini-tts")) return 20m;    // gpt-4o-mini-tts: 0.60 text in / 12 audio out per 1M tokens, OpenAI estimates $0.015/minute ≈ 16-17 per 1M chars
         return 36m;                                // tts-1-hd (list 30) and anything unknown
     }
 
-    /// <summary>Realtime (speech-to-speech) prices per 1M tokens.</summary>
+    /// <summary>Realtime (speech-to-speech) prices per 1M tokens. CachedIn covers cached text and cached audio.</summary>
     public readonly record struct RealtimePrices(decimal TextIn, decimal TextOut, decimal AudioIn, decimal AudioOut, decimal CachedIn);
 
-    public static RealtimePrices RealtimePrice(string? model) =>
-        (model ?? "").Contains("mini", StringComparison.OrdinalIgnoreCase)
-            ? new RealtimePrices(0.80m, 3.00m, 12m, 24m, 0.50m)    // gpt-realtime-mini / 4o-mini-realtime: list 0.60/2.40 text, 10/20 audio
-            : new RealtimePrices(6.00m, 24.00m, 48m, 96m, 3.00m);  // gpt-realtime list 4/16 + 32/64; 4o-realtime-preview 5/20 + 40/80
+    public static RealtimePrices RealtimePrice(string? model)
+    {
+        string m = (model ?? "").Trim().ToLowerInvariant();
+        // gpt-realtime-mini / gpt-realtime-2.1-mini / gpt-4o-mini-realtime-preview: list 0.60/2.40 text, 10/20 audio, cached <= 0.30
+        if (m.Contains("mini")) return new RealtimePrices(0.80m, 3.00m, 12m, 24m, 0.50m);
+        // gpt-realtime / -1.5 / -2 / -2.1: list 4/16-24 text, 32/64 audio, cached 0.40
+        if (m.StartsWith("gpt-realtime")) return new RealtimePrices(5.00m, 29.00m, 39m, 77m, 0.50m);
+        // gpt-4o-realtime-preview (list 5/20 text, 40/80 audio, cached 2.50) and anything unknown: the dearer of both.
+        return new RealtimePrices(6.00m, 29.00m, 48m, 96m, 3.00m);
+    }
 
     /// <summary>Price for an OpenAI chat request: the player's prices when entered (non-zero), else the built-in estimate for that model.</summary>
     public static (decimal Input, decimal Output) EffectiveChatPrice(AiSettings s, string? model)
