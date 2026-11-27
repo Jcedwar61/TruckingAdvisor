@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TruckingAdvisor Panel</title>
+<!--
+  TruckingAdvisor's live panel. The SimHub dashboard shows it in its web view:
+    http://localhost:8789/simhub?embed=simhub   (SimHub draws speed, gear, RPM and fuel itself, so they're left out)
+  It also works on its own in any browser, tablet or phone (allow other PCs on the network in TruckingAdvisor):
+    http://localhost:8789/simhub                 everything, including the truck readouts
+  Options:  ?demo=1 (sample data; a saved copy of this page always shows it)   ?scale=1.2   ?accent=f59e0b
+  Data: polled from /simhub/state.json twice a second. Read-only.
+-->
+<style>
+  :root {
+    --accent: #f59e0b;
+    --bg: #0b1020;
+    --card: #141b2d;
+    --edge: #26314a;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+    --info: #38bdf8;
+    --lcd-bg: #07140c;
+    --lcd: #6dff9d;
+    --scale: 1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+  body {
+    font-family: "Segoe UI", "Inter", system-ui, -apple-system, Roboto, sans-serif;
+    font-size: calc(15px * var(--scale));
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace; }
+  .app { height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+  .row { display: flex; gap: 10px; min-height: 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--edge); border-radius: 12px;
+    padding: 10px 14px; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .cap { font-size: .72em; font-weight: 700; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+  .ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .muted { color: var(--muted); }
+
+  /* Header */
+  .head { display: flex; align-items: center; gap: 12px; padding: 0 4px; flex: 0 0 auto; }
+  .dot { width: .7em; height: .7em; border-radius: 50%; background: var(--dim); flex: 0 0 auto; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .conn { font-weight: 700; font-size: .85em; letter-spacing: .06em; }
+  .head .spacer { flex: 1; }
+  .clock { font-weight: 700; font-size: 1.05em; }
+  .loc { color: var(--muted); font-size: .9em; max-width: 50%; }
+  .grade { background: rgba(239, 68, 68, .15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, .4);
+           border-radius: 8px; padding: 6px 10px; font-weight: 600; font-size: .9em; flex: 0 0 auto; }
+
+  /* Truck strip (standalone only) */
+  .truck { flex: 0 0 auto; display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 10px; }
+  .truck .card { padding: 8px 12px; }
+  .big { font-size: 2.2em; font-weight: 800; line-height: 1.05; }
+  .big.bad { color: var(--bad); }
+
+  /* Score + delivery */
+  .top { flex: 0 0 auto; }
+  .score { flex: 0 0 34%; align-items: center; justify-content: center; text-align: center; gap: 2px; }
+  .ring { position: relative; width: 7.6em; height: 7.6em; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring .track { stroke: #1e293b; }
+  .ring .val { stroke: var(--ok); transition: stroke-dashoffset .6s ease, stroke .6s ease; }
+  .ring .num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring .num b { font-size: 2.3em; line-height: 1; }
+  .ring .num span { font-size: .7em; color: var(--muted); }
+  .rating { font-weight: 700; font-size: .95em; }
+  .delivery { flex: 1; gap: 6px; }
+  .cargo { font-size: 1.25em; font-weight: 700; }
+  .route { color: var(--muted); }
+  .bar { height: .6em; border-radius: 99px; background: #1e293b; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .6s ease; }
+  .kv { display: flex; gap: 14px; flex-wrap: wrap; font-size: .9em; }
+  .kv span b { color: var(--text); }
+  .kv span { color: var(--muted); }
+
+  /* Radio */
+  .radio { flex: 1 1 auto; gap: 8px; }
+  .radio-head { display: flex; align-items: center; gap: 12px; }
+  .lcd { background: var(--lcd-bg); color: var(--lcd); border-radius: 8px; padding: 4px 12px;
+         font-weight: 700; font-size: 1.5em; text-shadow: 0 0 8px rgba(109, 255, 157, .5); flex: 0 0 auto; }
+  .chan { flex: 1; min-width: 0; }
+  .chan b { display: block; font-size: 1em; }
+  .state { font-weight: 700; font-size: .78em; letter-spacing: .08em; padding: 5px 10px; border-radius: 99px;
+           background: #1e293b; color: var(--muted); flex: 0 0 auto; }
+  .state.tx { background: rgba(239, 68, 68, .2); color: #fca5a5; }
+  .state.rx { background: rgba(34, 197, 94, .2); color: #86efac; }
+  .state.busy { background: rgba(56, 189, 248, .18); color: #7dd3fc; }
+  .msgs { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; overflow: hidden; }
+  .msg { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; border-radius: 10px; background: #0f172a; border-left: 3px solid var(--edge); }
+  .msg.mine { border-left-color: var(--accent); }
+  .msg.dispatch { border-left-color: var(--info); }
+  .msg .who { font-weight: 700; flex: 0 0 auto; max-width: 30%; }
+  .msg.dispatch .who { color: var(--info); }
+  .msg.mine .who { color: var(--accent); }
+  .msg .what { color: #e2e8f0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .msg .t { color: var(--dim); font-size: .75em; margin-left: auto; flex: 0 0 auto; }
+  .empty { color: var(--dim); font-style: italic; margin: auto 0 0; }
+  .radio-foot { display: flex; gap: 14px; font-size: .78em; color: var(--dim); }
+
+  /* Coaching + career */
+  .bottom { flex: 0 0 auto; height: 31%; }
+  .coach { flex: 1.4; gap: 6px; }
+  .list { display: flex; flex-direction: column; gap: 5px; overflow: hidden; }
+  .item { display: flex; gap: 8px; align-items: baseline; font-size: .9em; }
+  .sev { font-size: .68em; font-weight: 800; letter-spacing: .06em; padding: 2px 6px; border-radius: 4px; flex: 0 0 auto; background: #1e293b; color: var(--muted); }
+  .sev.Critical { background: var(--bad); color: #fff; }
+  .sev.High { background: rgba(239, 68, 68, .25); color: #fca5a5; }
+  .sev.Normal, .sev.Low { background: rgba(245, 158, 11, .2); color: #fcd34d; }
+  .sev.Tip { background: rgba(56, 189, 248, .18); color: #7dd3fc; }
+  .career { flex: 1; gap: 6px; }
+  .level { font-weight: 800; font-size: 1.05em; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: .85em; margin-top: 2px; }
+  .stats b { display: block; font-size: 1.2em; }
+  .stats span { color: var(--muted); font-size: .85em; }
+
+  .offline { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+             gap: 8px; background: var(--bg); text-align: center; padding: 30px; }
+  .offline b { font-size: 1.3em; }
+  .demo-tag { position: fixed; right: 10px; bottom: 8px; font-size: .7em; color: var(--dim); }
+  body.embed .truck { display: none; }
+  body.is-offline .offline { display: flex; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head">
+    <span class="dot" id="dot"></span>
+    <span class="conn ellip" id="conn">CONNECTING TO TRUCKINGADVISOR...</span>
+    <span class="spacer"></span>
+    <span class="loc ellip" id="loc"></span>
+    <span class="clock mono" id="clock">--:--</span>
+  </div>
+
+  <div class="truck" id="truck">
+    <div class="card"><span class="cap">Speed</span><span class="big" id="speed">--</span><span class="muted" id="limit">LIMIT --</span></div>
+    <div class="card"><span class="cap">Gear</span><span class="big" id="gear">--</span></div>
+    <div class="card"><span class="cap">Fuel</span><span class="big" id="fuel">--</span><span class="muted ellip" id="range"></span></div>
+    <div class="card"><span class="cap">Economy</span><span class="big" id="mpg" style="font-size:1.4em">--</span></div>
+    <div class="card"><span class="cap">Cruise</span><span class="big" id="cruise" style="font-size:1.4em">--</span></div>
+  </div>
+
+  <div class="grade" id="grade" hidden></div>
+
+  <div class="row top">
+    <div class="card score">
+      <span class="cap">Driver score</span>
+      <div class="ring">
+        <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="12"/>
+          <circle class="val" id="ring" cx="60" cy="60" r="52" fill="none" stroke-width="12" stroke-linecap="round"
+                  stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+        <div class="num"><b id="score">--</b><span>/ 100</span></div>
+      </div>
+      <span class="rating ellip" id="rating">Score appears during a delivery</span>
+    </div>
+    <div class="card delivery">
+      <span class="cap">Delivery</span>
+      <span class="cargo ellip" id="cargo">No active delivery</span>
+      <span class="route ellip" id="route"></span>
+      <div class="bar"><i id="progress"></i></div>
+      <span class="muted ellip" id="remaining" style="font-size:.9em"></span>
+      <div class="kv"><span>State <b id="tripState">No trip</b></span><span id="restWrap" class="ellip"><b id="rest"></b></span></div>
+    </div>
+  </div>
+
+  <div class="card radio">
+    <div class="radio-head">
+      <span class="lcd mono" id="ch">CH 19</span>
+      <div class="chan"><b class="ellip" id="chName">HIGHWAY TRAFFIC</b><span class="muted ellip" id="partner" style="font-size:.8em;display:block"></span></div>
+      <span class="state" id="rstate">READY</span>
+    </div>
+    <div class="msgs" id="msgs"><p class="empty">Nothing on the radio yet.</p></div>
+    <div class="radio-foot"><span id="ai"></span><span id="quiet"></span></div>
+  </div>
+
+  <div class="row bottom">
+    <div class="card coach">
+      <span class="cap">Coaching</span>
+      <div class="list" id="coach"><span class="empty">Clean driving so far.</span></div>
+    </div>
+    <div class="card career">
+      <span class="cap">Career</span>
+      <span class="level ellip" id="level">--</span>
+      <div class="bar"><i id="xp" style="background:var(--info)"></i></div>
+      <span class="muted ellip" id="xpText" style="font-size:.8em"></span>
+      <div class="stats">
+        <div><b id="deliveries">--</b><span>Deliveries</span></div>
+        <div><b id="avgScore">--</b><span>Avg score</span></div>
+        <div><b id="damageFree">--</b><span>Damage-free</span></div>
+        <div><b id="streak">--</b><span>Clean streak</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="offline" id="offline">
+  <b id="offTitle">Waiting for TruckingAdvisor</b>
+  <span class="muted" id="offText">Start TruckingAdvisor. This panel reconnects on its own.</span>
+</div>
+<div class="demo-tag" id="demoTag" hidden>SAMPLE DATA</div>
+
+<script>
+(function () {
+  "use strict";
+  var q = new URLSearchParams(location.search);
+  // Sample data on request, and always in a saved copy of the page (it has no app to ask).
+  var demo = q.get("demo") === "1" || location.protocol === "file:";
+  if (q.get("embed")) document.body.classList.add("embed");
+  if (q.get("scale")) document.documentElement.style.setProperty("--scale", parseFloat(q.get("scale")) || 1);
+  if (/^[0-9a-f]{6}$/i.test(q.get("accent") || "")) document.documentElement.style.setProperty("--accent", "#" + q.get("accent"));
+
+  function $(id) { return document.getElementById(id); }
+  function text(id, v) { var e = $(id); v = v == null ? "" : String(v); if (e.textContent !== v) e.textContent = v; }
+  function show(id, on) { $(id).hidden = !on; }
+  function cls(id, c) { var e = $(id); if (e.className !== c) e.className = c; }
+
+  var lastMsgs = "", lastCoach = "";
+
+  function render(s) {
+    if (!s || s.available === false) {
+      document.body.classList.add("is-offline");
+      text("offTitle", s ? "The SimHub panel is switched off" : "Waiting for TruckingAdvisor");
+      text("offText", s ? "In TruckingAdvisor: More > Twitch, Overlay, SimHub & Convoy > tick “Serve the SimHub panel”, then Save & apply."
+                        : "Start TruckingAdvisor. This panel reconnects on its own.");
+      return;
+    }
+    document.body.classList.remove("is-offline");
+    show("demoTag", demo || s.demo);
+
+    var c = s.connection || {};
+    text("conn", c.text || "");
+    cls("dot", "dot" + (c.live ? " ok" : c.demo ? " warn" : ""));
+    text("loc", s.location || "");
+    text("clock", s.gameTime || "--:--");
+    text("grade", s.gradeAhead || "");
+    show("grade", !!s.gradeAhead);
+
+    var t = s.truck || {};
+    text("speed", t.speed || "--");
+    $("speed").classList.toggle("bad", !!t.speeding);
+    text("limit", t.limit && t.limit !== "--" ? "LIMIT " + t.limit + " " + (t.unit || "") : "LIMIT --");
+    text("gear", t.gear || "--");
+    text("fuel", t.fuel || "--");
+    text("range", t.range || "");
+    text("mpg", t.economy || "--");
+    text("cruise", t.cruise || "--");
+
+    var d = s.trip || {};
+    text("score", d.score || "--");
+    text("rating", d.rating || "");
+    var pct = Math.max(0, Math.min(100, d.scoreValue || 0));
+    $("ring").style.strokeDashoffset = (326.7 * (1 - pct / 100)).toFixed(1);
+    $("ring").style.stroke = pct >= 85 ? "var(--ok)" : pct >= 65 ? "var(--warn)" : pct > 0 ? "var(--bad)" : "#334155";
+    text("cargo", d.cargo || "No active delivery");
+    text("route", d.route || "");
+    $("progress").style.width = (d.progress || 0).toFixed(1) + "%";
+    text("remaining", d.remaining || "");
+    text("tripState", d.state || "No trip");
+    text("rest", s.rest || "");
+
+    var r = s.radio || {};
+    text("ch", "CH " + (r.channel != null ? r.channel : "--"));
+    text("chName", r.channelName || "");
+    text("partner", r.partner || "");
+    text("rstate", r.state || "");
+    cls("rstate", "state " + (r.mode || ""));
+    text("ai", r.ai || "");
+    text("quiet", r.quiet ? "Quiet period on" : "");
+    var msgs = (r.messages || []).slice(-5);
+    var key = JSON.stringify(msgs);
+    if (key !== lastMsgs) {
+      lastMsgs = key;
+      var box = $("msgs");
+      box.textContent = "";
+      if (!msgs.length) {
+        var p = document.createElement("p"); p.className = "empty"; p.textContent = "Nothing on the radio yet."; box.appendChild(p);
+      }
+      msgs.forEach(function (m) {
+        var row = document.createElement("div");
+        row.className = "msg" + (m.mine ? " mine" : "") + (m.dispatch ? " dispatch" : "");
+        var who = document.createElement("span"); who.className = "who ellip"; who.textContent = m.handle;
+        var what = document.createElement("span"); what.className = "what"; what.textContent = m.text;
+        var tm = document.createElement("span"); tm.className = "t mono"; tm.textContent = (m.channel != null ? "CH " + m.channel + " · " : "") + (m.time || "");
+        row.appendChild(who); row.appendChild(what); row.appendChild(tm);
+        box.appendChild(row);
+      });
+    }
+
+    var items = (s.coaching || []).slice(0, 3).map(function (i) { return { sev: i.severity, text: i.message, time: i.time }; })
+      .concat((s.advisories || []).slice(0, 3).map(function (a) { return { sev: "Tip", text: a }; })).slice(0, 4);
+    var ck = JSON.stringify(items);
+    if (ck !== lastCoach) {
+      lastCoach = ck;
+      var list = $("coach");
+      list.textContent = "";
+      if (!items.length) {
+        var e = document.createElement("span"); e.className = "empty"; e.textContent = "Clean driving so far."; list.appendChild(e);
+      }
+      items.forEach(function (i) {
+        var row = document.createElement("div"); row.className = "item";
+        var sev = document.createElement("span"); sev.className = "sev " + (i.sev || ""); sev.textContent = (i.sev === "Tip" ? "TIP" : (i.sev || "").toUpperCase());
+        var tx = document.createElement("span"); tx.className = "ellip"; tx.textContent = i.text;
+        row.appendChild(sev); row.appendChild(tx); list.appendChild(row);
+      });
+    }
+
+    var k = s.career || {};
+    text("level", k.level || "--");
+    $("xp").style.width = (k.xpPercent || 0).toFixed(1) + "%";
+    text("xpText", k.xp || "");
+    text("deliveries", k.deliveries || "--");
+    text("avgScore", k.avgScore || "--");
+    text("damageFree", k.damageFree || "--");
+    text("streak", k.streak != null ? k.streak : "--");
+  }
+
+  // ---- Sample data (?demo=1): lays the panel out without the game or the app ----
+  var tick = 0;
+  function sample() {
+    tick++;
+    var speed = 62 + Math.round(Math.sin(tick / 6) * 4);
+    return {
+      available: true, demo: true,
+      connection: { text: "● DEMO DATA (not from the game)", live: false, demo: true },
+      gameTime: "Tue 14:" + String(20 + (tick % 40)).padStart(2, "0"),
+      location: "near Flagstaff, AZ (estimate) · I-40 E",
+      gradeAhead: tick % 40 < 12 ? "Steep downgrade ahead (6%) — gear down before the top" : "",
+      rest: "Rest due in 6h 40m",
+      truck: { speed: String(speed), limit: "65", unit: "mph", speeding: speed > 66, gear: "12", fuel: "58%", range: "RANGE 640 mi", economy: "6.8 mpg", cruise: "CRUISE 63" },
+      trip: { active: true, cargo: "Lumber (42,000 lb)", route: "Phoenix, AZ  ->  Albuquerque, NM", progress: 38 + (tick % 20) / 4,
+              remaining: "264 mi remaining, ETA 4h 05m (navigation)", state: "Underway", score: "91", scoreValue: 91, rating: "Professional Driver" },
+      radio: { channel: 19, channelName: "HIGHWAY TRAFFIC", state: tick % 12 < 4 ? "RX - RECEIVING" : "MIC READY - HOLD PTT TO TRANSMIT",
+               mode: tick % 12 < 4 ? "rx" : "idle", partner: "LAST HEARD: BIG RED (Peterbilt 389 • Friend)", ai: "AI: ON", quiet: false,
+               messages: [
+                 { handle: "Big Red", text: "Breaker one-nine, anybody westbound on the forty? How's the climb out of Flagstaff?", channel: 19, time: "14:18" },
+                 { handle: "Highway Ghost", text: "Copy that Red, just came over it. Smooth all the way, watch the wind at the top.", channel: 19, time: "14:19", mine: true },
+                 { handle: "Sarah (Dispatch)", text: "Checking in: you're making good time, the receiver opens at six.", channel: 30, time: "14:21", dispatch: true },
+                 { handle: "Mama Bear", text: "Ten-four. Coffee's hot at the stop by exit 195 if anybody needs it.", channel: 19, time: "14:22" }
+               ] },
+      coaching: [{ severity: "Normal", message: "6 over the limit — ease off a little", time: "14:12" }],
+      advisories: ["Fuel will last the trip with 180 mi to spare"],
+      career: { level: "LEVEL 7  •  ROAD VETERAN", xpPercent: 64, xp: "6,400 / 10,000 XP to level 8", deliveries: "48", avgScore: "88", damageFree: "92%", streak: 9 }
+    };
+  }
+
+  var failures = 0;
+  function poll() {
+    if (demo) { render(sample()); setTimeout(poll, 1000); return; }
+    var x = new XMLHttpRequest();
+    x.open("GET", "/simhub/state.json?t=" + Date.now(), true);
+    x.timeout = 3000;
+    x.onload = function () {
+      var s = null;
+      try { s = JSON.parse(x.responseText); } catch (e) { }
+      failures = 0;
+      render(s || { available: false });
+      setTimeout(poll, 500);
+    };
+    x.onerror = x.ontimeout = function () {
+      if (++failures >= 3) render(null);
+      setTimeout(poll, 2000);
+    };
+    x.send();
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

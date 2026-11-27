@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,8 +9,8 @@ using TruckingAdvisor.AI.Streaming;
 namespace TruckingAdvisor.UI;
 
 /// <summary>
-/// Twitch, Overlay & Convoy: lets Twitch chat talk to the AI truckers, serves the OBS overlay, and links
-/// TruckingAdvisor users into a shared convoy radio. Changes are applied when "Save & apply" is clicked.
+/// Twitch, Overlay, SimHub & Convoy: lets Twitch chat talk to the AI truckers, serves the OBS overlay and the
+/// SimHub dashboard's panel, and links TruckingAdvisor users into a shared convoy radio. Changes are applied when "Save & apply" is clicked.
 /// </summary>
 public sealed class StreamWindow : Window
 {
@@ -41,6 +42,12 @@ public sealed class StreamWindow : Window
     private readonly CheckBox _overlayLan = new() { Content = "Allow other PCs on my network (two-PC streaming setup)" };
     private readonly TextBlock _overlayStatus = Status();
 
+    // SimHub
+    private readonly CheckBox _simHubOn = new() { Content = "Serve the SimHub panel (TruckingAdvisor's live data for the SimHub dashboard)" };
+    private readonly CheckBox _simHubAuto = new() { Content = "Switch SimHub's round and 4\" screens to the triple set while TruckingAdvisor runs, and back when it closes" };
+    private readonly CheckBox _simHubSwap = new() { Content = "Swap the round screens (left and right came out the wrong way round)" };
+    private readonly TextBlock _simHubStatus = Status();
+
     // Convoy
     private readonly CheckBox _convoyOn = new() { Content = "Join a convoy: share the AI radio with friends who use TruckingAdvisor" };
     private readonly PasswordBox _convoyCode = new();
@@ -56,7 +63,7 @@ public sealed class StreamWindow : Window
         _settings = settings;
         _hub = hub;
         _save = save;
-        Title = "Twitch, Overlay & Convoy";
+        Title = "Twitch, Overlay, SimHub & Convoy";
         Width = 760;
         Height = 860;
         MinWidth = 600;
@@ -132,6 +139,50 @@ public sealed class StreamWindow : Window
             "?mode=ticker for a compact rotating strip, ?scale=1.3 to resize. The overlay never shows your convoy code."));
         body.Children.Add(_overlayStatus);
 
+        // ---- SimHub ----
+        body.Children.Add(Header("SIMHUB DASHBOARD"));
+        body.Children.Add(Note(
+            "A dashboard for SimHub (free, simhubdash.com) to show on a second screen, tablet or phone. SimHub draws your speed, " +
+            "speed limit, gear, RPM, fuel and warning lights from its own ATS / ETS2 data; beside them, TruckingAdvisor's live panel " +
+            "shows your driver score, the delivery, the CB radio, coaching and your career. The panel uses the port above."));
+        body.Children.Add(_simHubOn);
+        var simRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var addDash = MakeButton("Add the dashboard to SimHub", async (_, _) => await AddToSimHubAsync(new[] { SimHubDashboard.Main }));
+        addDash.SetResourceReference(BackgroundProperty, "AccentBrush");
+        addDash.SetResourceReference(ForegroundProperty, "BgBrush");
+        simRow.Children.Add(addDash);
+        simRow.Children.Add(MakeButton("Save .simhubdash file...", (_, _) => SaveSimHubPackages(new[] { SimHubDashboard.Main })));
+        simRow.Children.Add(MakeButton("Open the panel", (_, _) =>
+        {
+            if (_hub.SimHubPanelUrl is { } url) OpenAddress(url);
+            else Log("The SimHub panel isn't running yet: tick it and click Save & apply.");
+        }));
+        simRow.Children.Add(MakeButton("Preview with sample data", (_, _) => PreviewSimHubPanel()));
+        body.Children.Add(simRow);
+        body.Children.Add(Note(
+            "Triple-screen DDU (two round screens either side of a 4\" screen, such as the DaSIMSIMMA triple on VoCore screens): " +
+            "a set of three dashboards. Left round: speed ring, speed limit, cruise and your driver score. Centre: the CB radio " +
+            "(channel and the last line heard), driver score, delivery progress and warnings. Right round: RPM and fuel rings, " +
+            "gear, park brake and air warnings, and your CB channel. With the switch below on, TruckingAdvisor's SimHub plugin shows " +
+            "them on your screens whenever TruckingAdvisor is running and puts your own dashboards back a few seconds after it closes."));
+        body.Children.Add(_simHubAuto);
+        body.Children.Add(_simHubSwap);
+        var tripleRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        tripleRow.Children.Add(MakeButton("Add the triple-screen set to SimHub", async (_, _) =>
+        {
+            if (_simHubAuto.IsChecked == true) await InstallSimHubPluginAsync(quietIfCurrent: true);
+            await AddToSimHubAsync(SimHubDashboard.Triple);
+        }));
+        tripleRow.Children.Add(MakeButton("Install the SimHub plugin", async (_, _) => await InstallSimHubPluginAsync(quietIfCurrent: false)));
+        tripleRow.Children.Add(MakeButton("Save the triple-screen set...", (_, _) => SaveSimHubPackages(SimHubDashboard.Triple)));
+        body.Children.Add(tripleRow);
+        body.Children.Add(Note(
+            "\"Add the dashboard to SimHub\" switches the panel on and hands the dashboard to SimHub, which asks to import it. Then in SimHub open " +
+            "Dash Studio, pick \"TruckingAdvisor\" and show it on a screen or device. If SimHub isn't installed here, save the file and import it " +
+            "in Dash Studio on the SimHub PC (tick \"Allow other PCs\" above, and change localhost in the dashboard's web view to this PC's address). " +
+            "Change the port? Add the dashboard again. The panel also works in any browser: http://localhost:PORT/simhub."));
+        body.Children.Add(_simHubStatus);
+
         // ---- Convoy ----
         body.Children.Add(Header("CONVOY CB"));
         body.Children.Add(Note(
@@ -187,6 +238,9 @@ public sealed class StreamWindow : Window
         _overlayOn.IsChecked = S.OverlayEnabled;
         _overlayPort.Text = S.OverlayPort.ToString();
         _overlayLan.IsChecked = S.OverlayAllowLan;
+        _simHubOn.IsChecked = S.SimHubPanelEnabled;
+        _simHubAuto.IsChecked = S.SimHubAutoTriple;
+        _simHubSwap.IsChecked = S.SimHubSwapRounds;
         _convoyOn.IsChecked = S.ConvoyEnabled;
         _convoyCode.Password = S.ConvoyCode;
         _convoyHost.IsChecked = S.ConvoyHost;
@@ -213,6 +267,9 @@ public sealed class StreamWindow : Window
         S.OverlayEnabled = _overlayOn.IsChecked == true;
         S.OverlayPort = ParseInt(_overlayPort.Text, S.OverlayPort, 1024, 65535);
         S.OverlayAllowLan = _overlayLan.IsChecked == true;
+        S.SimHubPanelEnabled = _simHubOn.IsChecked == true;
+        S.SimHubAutoTriple = _simHubAuto.IsChecked == true;
+        S.SimHubSwapRounds = _simHubSwap.IsChecked == true;
         S.ConvoyEnabled = _convoyOn.IsChecked == true;
         S.ConvoyCode = _convoyCode.Password.Trim();
         S.ConvoyHost = _convoyHost.IsChecked == true;
@@ -230,6 +287,7 @@ public sealed class StreamWindow : Window
     {
         _twitchStatus.Text = _hub.TwitchStatus;
         _overlayStatus.Text = _hub.OverlayStatus;
+        _simHubStatus.Text = _hub.SimHubStatus;
         _convoyStatus.Text = _hub.ConvoyStatus;
     }
 
@@ -250,6 +308,111 @@ public sealed class StreamWindow : Window
         }
         catch (Exception ex) { Log($"Couldn't copy: {ex.Message}"); }
         if (_hub.OverlayUrl is null) Log("The overlay isn't running yet: tick it and click Save & apply.");
+    }
+
+    // ---- SimHub ----
+
+    /// <summary>Switches the panel on (if needed), writes the dashboard packages and opens them, which SimHub imports.</summary>
+    private async Task AddToSimHubAsync(IReadOnlyList<SimHubLayout> layouts)
+    {
+        if (_simHubOn.IsChecked != true || _hub.SimHubPanelUrl is null)
+        {
+            _simHubOn.IsChecked = true;
+            await ApplyAsync();
+        }
+        string dir = Path.Combine(Path.GetTempPath(), "TruckingAdvisor SimHub");
+        for (int i = 0; i < layouts.Count; i++)
+        {
+            var layout = layouts[i];
+            string path;
+            try
+            {
+                Directory.CreateDirectory(dir);
+                path = SimHubDashboard.WritePackage(Path.Combine(dir, layout.FileName), layout, S.OverlayPort);
+            }
+            catch (Exception ex) { Log($"Couldn't write {layout.Name}: {ex.Message}"); return; }
+            // SimHub shows one import window per package; give each a moment so they open one after another.
+            if (i > 0) await Task.Delay(TimeSpan.FromSeconds(2));
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                Log($"\"{layout.Name}\" handed to SimHub: confirm the import there.");
+            }
+            catch (Exception ex)
+            {
+                Log($"SimHub didn't open the dashboard ({ex.Message}). Is SimHub installed? Use \"Save\" and import the file in SimHub's Dash Studio.");
+                return;
+            }
+        }
+        Log(layouts.Count == 1
+            ? $"Then pick \"{layouts[0].Name}\" in SimHub's Dash Studio."
+            : "Then in SimHub give each screen its dashboard: Triple Left, Triple Center, Triple Right.");
+    }
+
+    /// <summary>Copies TruckingAdvisor's SimHub plugin into SimHub's folder (asks Windows for permission if needed).</summary>
+    private async Task InstallSimHubPluginAsync(bool quietIfCurrent)
+    {
+        string? dir = SimHubPluginInstaller.FindSimHub();
+        if (dir is null)
+        {
+            Log("SimHub wasn't found on this PC. Install SimHub (simhubdash.com), then try again.");
+            return;
+        }
+        if (SimHubPluginInstaller.IsInstalled(dir, S.OverlayPort))
+        {
+            if (!quietIfCurrent) Log($"The TruckingAdvisor plugin is already installed in {dir}.");
+            return;
+        }
+        Log($"Installing the TruckingAdvisor plugin into {dir}...");
+        string? problem = await SimHubPluginInstaller.InstallAsync(dir, S.OverlayPort);
+        if (problem is not null) { Log($"The SimHub plugin wasn't installed: {problem}"); return; }
+        Log(SimHubPluginInstaller.IsSimHubRunning()
+            ? "SimHub plugin installed. Restart SimHub and say yes when it asks to enable \"TruckingAdvisor\"."
+            : "SimHub plugin installed. Start SimHub and say yes when it asks to enable \"TruckingAdvisor\".");
+    }
+
+    private void SaveSimHubPackages(IReadOnlyList<SimHubLayout> layouts)
+    {
+        try
+        {
+            if (layouts.Count == 1)
+            {
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    FileName = layouts[0].FileName,
+                    Filter = "SimHub dashboard (*.simhubdash)|*.simhubdash",
+                    Title = "Save the TruckingAdvisor dashboard for SimHub"
+                };
+                if (dlg.ShowDialog(this) != true) return;
+                SimHubDashboard.WritePackage(dlg.FileName, layouts[0], S.OverlayPort);
+                Log($"Saved {dlg.FileName}. Import it in SimHub > Dash Studio (or double-click it on the SimHub PC).");
+                return;
+            }
+            var folder = new Microsoft.Win32.OpenFolderDialog { Title = "Choose a folder for the three SimHub dashboards" };
+            if (folder.ShowDialog(this) != true) return;
+            foreach (var layout in layouts)
+                SimHubDashboard.WritePackage(Path.Combine(folder.FolderName, layout.FileName), layout, S.OverlayPort);
+            Log($"Saved {string.Join(", ", layouts.Select(l => l.FileName))} in {folder.FolderName}. Import each in SimHub > Dash Studio.");
+        }
+        catch (Exception ex) { Log($"Couldn't save: {ex.Message}"); }
+    }
+
+    /// <summary>The panel with sample data, from a local copy of the page (works with the panel switched off).</summary>
+    private void PreviewSimHubPanel()
+    {
+        try
+        {
+            string path = Path.Combine(Path.GetTempPath(), "TruckingAdvisor-simhub-preview.html");
+            File.WriteAllText(path, StreamOverlayServer.SimHubPanelHtml());
+            OpenAddress(path); // a saved copy shows sample data (it has no app to ask)
+        }
+        catch (Exception ex) { Log($"Couldn't open the preview: {ex.Message}"); }
+    }
+
+    private void OpenAddress(string address)
+    {
+        try { Process.Start(new ProcessStartInfo(address) { UseShellExecute = true }); }
+        catch (Exception ex) { Log($"Couldn't open the browser: {ex.Message}"); }
     }
 
     private void OpenUrl(string path)

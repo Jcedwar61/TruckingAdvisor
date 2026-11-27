@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A stand-in for the few public types of SimHub's SimHub.Plugins.dll that the TruckingAdvisor SimHub plugin
+    compiles against (the plugin interface, its manager and its attributes). Only signatures, no SimHub code:
+    SimHub's own assembly isn't redistributable, and it isn't strong-named, so at run time the plugin binds to the
+    real SimHub.Plugins.dll by name. This assembly is never shipped.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>SimHub.Plugins</AssemblyName>
+    <RootNamespace>SimHub.Plugins</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

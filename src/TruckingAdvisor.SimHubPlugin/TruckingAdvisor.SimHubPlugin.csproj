@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    TruckingAdvisor's SimHub plugin. SimHub loads it from its own folder (TruckingAdvisor copies it there from
+    More > Twitch, Overlay, SimHub & Convoy). While TruckingAdvisor runs, it switches SimHub's round and 4" screens to
+    the TruckingAdvisor triple-screen dashboards; when TruckingAdvisor closes, it puts back what they showed before.
+    .NET Framework 4.8 because SimHub is; builds on any OS against the SimHub API stub next to it (see SimHubApi).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>TruckingAdvisor.SimHubPlugin</AssemblyName>
+    <RootNamespace>TruckingAdvisor.SimHubPlugin</RootNamespace>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Version>1.0.0</Version>
+    <IsPackable>false</IsPackable>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Compile Remove="SimHubApi\**" />
+    <None Remove="SimHubApi\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- SimHub supplies the real SimHub.Plugins.dll; the stub is only compiled against, never copied. -->
+    <ProjectReference Include="SimHubApi\SimHub.Plugins.csproj" Private="false" />
+  </ItemGroup>
+</Project>

@@ -1,7 +1,7 @@
 namespace TruckingAdvisor.AI.Streaming;
 
 /// <summary>
-/// Twitch chat, convoy and stream-overlay settings (saved inside the AI settings file).
+/// Twitch chat, convoy, stream-overlay and SimHub-panel settings (saved inside the AI settings file).
 /// Nothing here is secret: Twitch chat is read anonymously, and the convoy code is only a room name.
 /// </summary>
 public sealed class StreamSettings
@@ -39,6 +39,17 @@ public sealed class StreamSettings
     public int OverlayPort { get; set; } = 8789;
     /// <summary>Also answer other PCs on the network (for a two-PC streaming setup). Off = this PC only.</summary>
     public bool OverlayAllowLan { get; set; }
+
+    // ---- SimHub dashboard ----
+
+    /// <summary>Serve TruckingAdvisor's live panel (score, delivery, CB radio, coaching) for the SimHub dashboard's web view.
+    /// Uses the same local web server and port as the overlay.</summary>
+    public bool SimHubPanelEnabled { get; set; }
+    /// <summary>With TruckingAdvisor's SimHub plugin installed: show the triple-screen dashboards on the round and 4" screens
+    /// while TruckingAdvisor runs, and put SimHub's own back when it closes.</summary>
+    public bool SimHubAutoTriple { get; set; } = true;
+    /// <summary>The plugin found the two round screens the wrong way round: swap left and right.</summary>
+    public bool SimHubSwapRounds { get; set; }
 
     // ---- Convoy CB (several TruckingAdvisor users share one AI radio) ----
 

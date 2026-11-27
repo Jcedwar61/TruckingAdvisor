@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\src\TruckingAdvisor.EdgeTts\TruckingAdvisor.EdgeTts.csproj" />
     <ProjectReference Include="..\..\src\TruckingAdvisor.Audio\TruckingAdvisor.Audio.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The SimHub plugin targets .NET Framework for SimHub; its SimHub-free logic is tested here. -->
+    <Compile Include="..\..\src\TruckingAdvisor.SimHubPlugin\TriplePlan.cs" Link="SimHubPlugin\TriplePlan.cs" />
+  </ItemGroup>
 </Project>

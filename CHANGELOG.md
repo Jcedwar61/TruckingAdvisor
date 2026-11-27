@@ -1,5 +1,13 @@
 # Changelog - TruckingAdvisor
 
+## [v3.9.0] - 2026-11-27
+### SimHub dashboards
+- **A TruckingAdvisor dashboard for SimHub** (1280 x 720, for a monitor, tablet or phone). SimHub draws your speed (red when you're over the limit), the speed-limit sign, gear, RPM and fuel bars, cruise, park brake and warning lights from its own ATS / ETS2 data; beside them, TruckingAdvisor's live panel shows your driver score, the delivery and its progress, the CB radio (channel, who's talking and the last lines), coaching calls and tips, grade warnings and your career.
+- **A triple-screen set for DDUs with two round screens and a 4" one**, such as the DaSIMSIMMA triple on VoCore screens. Left round: speedometer ring, speed limit, cruise, left blinker and your driver score. Centre: CB channel and the last line heard, driver score, delivery progress and warnings. Right round: RPM and fuel rings, gear, park brake and air warnings, right blinker and your CB channel. They are drawn only with SimHub's own items, so they work on VoCore screens.
+- **The triple set switches itself on.** TruckingAdvisor's new SimHub plugin shows it on your round and 4" screens whenever TruckingAdvisor is running, and puts back the dashboards they showed before a few seconds after TruckingAdvisor closes. If SimHub closes (or crashes) first, it restores them then, or at SimHub's next start. Left and right can be swapped; the automatic switch can be turned off.
+- One click in **More > Twitch, Overlay, SimHub & Convoy** imports the dashboards into SimHub and installs the plugin. The panel also works in any browser at `http://localhost:8789/simhub` (`?demo=1` shows sample data), and **Preview with sample data** opens it without the game.
+- A new User Guide page explains it all.
+
 ## [v3.8.3] - 2026-11-18
 ### Fixed
 - **The radio could get stuck repeating itself.** Its random choices (which trucker answers or chimes in, conversation length, pauses) came from a generator shared by several threads at once, which can break for good and keep returning the same value: the same trucker every time and no more cross-talk. It is now safe to share.

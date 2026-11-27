@@ -53,8 +53,11 @@ public partial class MainWindow : Window
     private readonly GitHubPluginInstallerService _pluginInstaller = new();
     private readonly MainDashboardViewModel _viewModel;
     private HudOverlayWindow? _overlay;
-    /// <summary>Twitch chat, the OBS overlay and the convoy link.</summary>
+    /// <summary>Twitch chat, the OBS overlay, the SimHub panel and the convoy link.</summary>
     private readonly TruckingAdvisor.AI.Streaming.StreamHub _streamHub;
+    /// <summary>The SimHub panel's latest snapshot, rebuilt on the UI thread twice a second while the panel is served.</summary>
+    private volatile object? _simHubPanel;
+    private readonly System.Windows.Threading.DispatcherTimer _simHubTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private HudChannelBar? _channelBar;
     private string? _lastAdvisory;
     /// <summary>Set by "--screenshot &lt;folder&gt;": render every tab to PNG, then exit (used by CI and for docs).</summary>
@@ -132,6 +135,15 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _streamHub = new TruckingAdvisor.AI.Streaming.StreamHub(_cbRadio, _aiSettings, _company,
             () => _viewModel?.EnrichedSnapshot ?? _telemetry.LatestSnapshot);
+        // The SimHub panel reads a snapshot made here on the UI thread (the radio and coaching lists live there).
+        _streamHub.SimHubPanelState = () => _simHubPanel;
+        _simHubTimer.Tick += (_, _) =>
+        {
+            if (!_streamHub.SimHubPanelServing) { _simHubPanel = null; return; }
+            try { _simHubPanel = _viewModel.BuildSimHubPanelState(); }
+            catch (Exception ex) { TruckingAdvisor.Shared.Diagnostics.AppLog.Error("SimHub panel: snapshot failed", ex); }
+        };
+        _simHubTimer.Start();
         // Show on the main window why a chat call didn't make it on air (cooldown, busy radio, ...), not only in
         // the Stream window, which is usually closed while streaming.
         _streamHub.Activity += line =>
@@ -670,7 +682,7 @@ public partial class MainWindow : Window
         sb.AppendLine($"Voices: {_aiSettings.VoiceEngine}; radio {_cbRadio.CurrentState} on channel {_cbRadio.ActiveChannel}; AI replies {(_cbRadio.AiAvailable ? "available" : "not available (built-in replies)")}");
         var st = _aiSettings.Stream;
         sb.AppendLine($"Twitch: {_streamHub.TwitchStatus} Cooldowns {st.GlobalCooldownSeconds} s / {st.UserCooldownSeconds} s per viewer, subs only {st.SubscribersOnly}, read aloud {st.ReadViewerMessageAloud}");
-        sb.AppendLine($"Overlay: {_streamHub.OverlayStatus} Convoy: {_streamHub.ConvoyStatus}");
+        sb.AppendLine($"Overlay: {_streamHub.OverlayStatus} SimHub: {_streamHub.SimHubStatus} Convoy: {_streamHub.ConvoyStatus}");
         sb.AppendLine();
         sb.AppendLine("Recent log:");
         foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(line);
@@ -1077,6 +1089,7 @@ public partial class MainWindow : Window
     {
         InstallUpdateOnExit();
         // Leaves the convoy and closes the overlay; run off the UI thread so it can't wait on itself.
+        _simHubTimer.Stop();
         try { Task.Run(() => _streamHub.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(4)); } catch { }
         _keyboardHook.Dispose();
         _controllers?.Dispose();

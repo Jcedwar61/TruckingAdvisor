@@ -10,6 +10,9 @@ namespace TruckingAdvisor.AI.Streaming;
 /// A tiny local web server for the stream overlay: add http://localhost:PORT/overlay as an OBS (or Streamlabs)
 /// Browser Source. It serves one page and pushes live updates over Server-Sent Events (/events): the chat
 /// commands, the radio cooldown, and a CB caller banner while a viewer is on the air.
+/// It also serves TruckingAdvisor's SimHub panel (/simhub, polled from /simhub/state.json), which the SimHub
+/// dashboard shows in its web view; a compact copy of that state (/simhub/dash.json) that the triple-screen
+/// dashboards read with SimHub's downloadstringasync; and the dashboard packages (/simhub/NAME.simhubdash).
 /// Listens on this PC only unless LAN access is switched on. Read-only: it accepts no commands.
 /// </summary>
 public sealed class StreamOverlayServer : IAsyncDisposable
@@ -26,6 +29,10 @@ public sealed class StreamOverlayServer : IAsyncDisposable
     public bool AllowLan { get; }
     public string Url => $"http://localhost:{Port}/overlay";
     public int ClientCount { get { lock (_clients) return _clients.Count; } }
+    /// <summary>Builds the SimHub panel's state (null: the panel is switched off, so the page says so).</summary>
+    public Func<object?>? PanelState { get; set; }
+    /// <summary>Adds settings to /simhub/dash.json (e.g. whether the SimHub plugin should switch screens).</summary>
+    public Action<System.Text.Json.Nodes.JsonObject>? DecorateCompact { get; set; }
 
     /// <param name="state">Builds the full overlay state (sent on connect and with every <see cref="PushState"/>).</param>
     public StreamOverlayServer(int port, Func<object> state, bool allowLan = false)
@@ -113,6 +120,31 @@ public sealed class StreamOverlayServer : IAsyncDisposable
                 case "/state.json":
                     await WriteAsync(stream, "200 OK", "application/json; charset=utf-8", JsonSerializer.Serialize(_state(), Json), ct);
                     break;
+                case "/simhub":
+                case "/simhub/panel":
+                    await WriteAsync(stream, "200 OK", "text/html; charset=utf-8", PageHtml("simhub.html"), ct);
+                    break;
+                case "/simhub/state":
+                case "/simhub/state.json":
+                    object panel = PanelState?.Invoke() ?? new { available = false };
+                    await WriteAsync(stream, "200 OK", "application/json; charset=utf-8", JsonSerializer.Serialize(panel, Json), ct);
+                    break;
+                case "/simhub/dash.json":
+                {
+                    var compact = SimHubDashboard.CompactState(PanelState?.Invoke() is { } p ? JsonSerializer.SerializeToNode(p, Json) : null);
+                    DecorateCompact?.Invoke(compact);
+                    await WriteAsync(stream, "200 OK", "application/json; charset=utf-8", compact.ToJsonString(), ct);
+                    break;
+                }
+                case var r when r.StartsWith("/simhub/", StringComparison.Ordinal) && r.EndsWith(".simhubdash", StringComparison.Ordinal)
+                                && SimHubDashboard.FindByFileName(Uri.UnescapeDataString(r["/simhub/".Length..])) is { } layout:
+                {
+                    using var package = new MemoryStream();
+                    SimHubDashboard.WritePackage(package, layout, Port);
+                    await WriteAsync(stream, "200 OK", "application/octet-stream", package.ToArray(), ct,
+                        $"Content-Disposition: attachment; filename=\"{layout.FileName}\"\r\n");
+                    break;
+                }
                 case "/events":
                     keepOpen = true;
                     await StartEventsAsync(client, stream, ct);
@@ -155,10 +187,12 @@ public sealed class StreamOverlayServer : IAsyncDisposable
         return null;
     }
 
-    private static async Task WriteAsync(Stream stream, string status, string contentType, string body, CancellationToken ct)
+    private static Task WriteAsync(Stream stream, string status, string contentType, string body, CancellationToken ct) =>
+        WriteAsync(stream, status, contentType, Encoding.UTF8.GetBytes(body), ct);
+
+    private static async Task WriteAsync(Stream stream, string status, string contentType, byte[] bytes, CancellationToken ct, string extraHeaders = "")
     {
-        byte[] bytes = Encoding.UTF8.GetBytes(body);
-        string header = $"HTTP/1.1 {status}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\n" +
+        string header = $"HTTP/1.1 {status}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\n" + extraHeaders +
                         "Cache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(header), ct);
         await stream.WriteAsync(bytes, ct);
@@ -178,17 +212,21 @@ public sealed class StreamOverlayServer : IAsyncDisposable
         lock (_clients) _clients.Add(client);
     }
 
-    private static string? _html;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Pages = new();
 
     /// <summary>The overlay page (embedded in the app).</summary>
-    public static string OverlayHtml()
+    public static string OverlayHtml() => PageHtml("overlay.html");
+
+    /// <summary>The SimHub panel page (embedded in the app).</summary>
+    public static string SimHubPanelHtml() => PageHtml("simhub.html");
+
+    private static string PageHtml(string file) => Pages.GetOrAdd(file, f =>
     {
-        if (_html is not null) return _html;
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("TruckingAdvisor.AI.Streaming.overlay.html")
-            ?? throw new InvalidOperationException("Overlay page is missing from the build.");
+        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream($"TruckingAdvisor.AI.Streaming.{f}")
+            ?? throw new InvalidOperationException($"{f} is missing from the build.");
         using var r = new StreamReader(s, Encoding.UTF8);
-        return _html = r.ReadToEnd();
-    }
+        return r.ReadToEnd();
+    });
 
     public async ValueTask DisposeAsync()
     {

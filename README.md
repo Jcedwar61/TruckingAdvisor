@@ -10,7 +10,7 @@ Everything except the AI radio works offline with no account. If AI is off or un
 
 ## Quick start
 
-1. Download **TruckingAdvisor-Setup-3.8.3.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
+1. Download **TruckingAdvisor-Setup-3.9.0.exe** from the [latest release](https://github.com/Jcedwar61/TruckingAdvisor/releases/latest) and run it. It installs for your Windows account only (no admin prompt) and needs 64-bit Windows 10 or 11. .NET doesn't need to be installed.
    - Windows SmartScreen may warn because the installer isn't code-signed: choose **More info > Run anyway**.
 2. Start TruckingAdvisor. It searches every drive for American Truck Simulator (and ETS2): Steam's registry entries and library list, Windows' installed-programs list, and common folders like `D:\SteamLibrary`. If the telemetry plugin is missing it offers to install it. If the game isn't found, **Install Telemetry Plugin** lets you pick the game folder.
 3. Start ATS. The header shows **CONNECTED TO ATS** once data flows.
@@ -45,8 +45,9 @@ The window can be resized and maximized (drag the divider between the dashboard 
 | AI models | Nothing to pick: choose **AI quality** (Economy / Balanced / Best); built-in model lists, automatic fallback if a model is unavailable. Each job gets its own model: the quickest for replies to you, the strongest writer for the truckers' conversations. |
 | Trucker conversations | With AI on, the truckers talk to each other in real back-and-forth conversations, each reply building on the last (stories, questions, friendly arguments, the road you're on), and sometimes chime in after one answers you. Push-to-talk cuts in any time. Optional **DeepSeek** key: DeepSeek writes the conversations while OpenAI answers you, each covering for the other. |
 | Radio language | **R-rated** by default (uncensored: heavy swearing, raunchy and dark humour; only slurs/hate and anything involving minors are off limits) or **TV-friendly** (clean, for family or streaming), for every AI voice. Settings > Radio language, or bind it to a wheel button. |
-| Twitch chat on the CB | **More > Twitch, Overlay & Convoy**. Viewers type `!cb`, `!dispatch`, `!mechanic` or `!safety` with a message (or redeem a Channel Points reward) and an AI trucker or crew member answers on your radio, out loud, with your live truck data. No Twitch login or token. Cooldowns, sub-only mode, blocked words. Works with AI off too. |
+| Twitch chat on the CB | **More > Twitch, Overlay, SimHub & Convoy**. Viewers type `!cb`, `!dispatch`, `!mechanic` or `!safety` with a message (or redeem a Channel Points reward) and an AI trucker or crew member answers on your radio, out loud, with your live truck data. No Twitch login or token. Cooldowns, sub-only mode, blocked words. Works with AI off too. |
 | Stream overlay | An OBS / Streamlabs Browser Source (`http://localhost:8789/overlay`) listing the chat commands with a live cooldown, plus a CB radio banner while a viewer is on the air. |
+| SimHub dashboards | For [SimHub](https://www.simhubdash.com/): a 1280 x 720 dashboard (SimHub's own speed, limit, gear, RPM, fuel and telltales beside TruckingAdvisor's live panel: driver score, delivery, CB radio, coaching, career), and a **triple-screen set** for DDUs with two round screens either side of a 4" one (such as the DaSIMSIMMA triple). TruckingAdvisor's SimHub plugin shows the triple set automatically while TruckingAdvisor runs and puts your own dashboards back when it closes. See [SimHub dashboards](#simhub-dashboards). |
 | Convoy CB | Friends running TruckingAdvisor type the same convoy code and share one AI radio: everyone sees each other's lines and hears the same AI reply. Encrypted, through the free ntfy.sh relay. |
 | Guide | **F1**, the **?** button or **More > User Guide**: searchable help for every feature, voice command and CB tip, with your own key and wheel bindings. |
 | Updates | Checks GitHub releases in the background, downloads new versions and verifies them against the published SHA-256 checksum, then offers **Restart & update** in a quiet banner (or installs when you close the app). **More > Check for Updates** checks now; **Settings > Updates** turns it off. |
@@ -62,7 +63,7 @@ The truckers are simulated radio characters. ATS doesn't expose nearby traffic, 
 
 ## Streaming on Twitch
 
-1. Open **More > Twitch, Overlay & Convoy**, tick **Let Twitch chat talk on the CB radio**, type your channel name and click **Save & apply**. No login or token is needed: chat is only read.
+1. Open **More > Twitch, Overlay, SimHub & Convoy**, tick **Let Twitch chat talk on the CB radio**, type your channel name and click **Save & apply**. No login or token is needed: chat is only read.
 2. In OBS (or Streamlabs), add a **Browser Source**: URL `http://localhost:8789/overlay`, width 1920, height 1080. It shows viewers the commands and pops up a CB radio banner while someone is on the air. Use `/overlay/commands` or `/overlay/banner` for separate sources, `?pos=br` to move the panel, `?mode=ticker` for a compact strip.
 3. Optional: create a Channel Points reward named **Key Up on Channel 19** with "Require viewer to enter text" ticked. Redeeming it skips the cooldown.
 4. Click **Play a test call** to hear it and see the overlay react.
@@ -77,6 +78,16 @@ The truckers are simulated radio characters. ATS doesn't expose nearby traffic, 
 With AI on, replies come from your AI. With AI off they come from a built-in responder that answers about fuel, wear, speed, load, rest and location with your real numbers.
 
 **Convoy:** friends who also run TruckingAdvisor tick **Join a convoy** and type the same code. Lines said on the CB show on everyone's radio on that channel, and one shared AI answers everybody (one PC answers for the AI; tick **This PC answers** on one, or let the app pick). Traffic is encrypted and relayed through ntfy.sh, which allows a few hundred messages a day per PC; set your own ntfy server if you need more.
+
+## SimHub dashboards
+
+Open **More > Twitch, Overlay, SimHub & Convoy** and tick **Serve the SimHub panel** (it shares the overlay's port, 8789 by default).
+
+- **One screen, tablet or phone:** **Add the dashboard to SimHub** hands the `TruckingAdvisor` dashboard (1280 x 720) to SimHub, which asks to import it. The left side is SimHub's own gauges; the right side is TruckingAdvisor's panel in SimHub's web view. The panel also opens in any browser at `http://localhost:8789/simhub`.
+- **Triple-screen DDU** (two 3.4" round VoCore screens and a 4" one, such as the DaSIMSIMMA triple): **Add the triple-screen set to SimHub** imports `TruckingAdvisor Triple Left` (speed ring, limit, cruise, driver score), `Triple Center` (CB channel and last line heard, driver score, delivery progress, warnings) and `Triple Right` (RPM and fuel rings, gear, park brake and air, CB channel), and installs TruckingAdvisor's SimHub plugin into SimHub's folder (Windows asks for permission once). Restart SimHub and enable the plugin when asked.
+- **Automatic switching:** while TruckingAdvisor runs, the plugin shows the triple set on the round screens and the 4" screen; a few seconds after TruckingAdvisor closes it restores the dashboards they showed before (also if SimHub is closed or crashes in between). **Swap the round screens** fixes left and right; untick the automatic switch to choose dashboards yourself.
+
+Truck readouts come from SimHub's own ATS / ETS2 telemetry, so they keep working with TruckingAdvisor closed. The triple dashboards use only SimHub's own items and read TruckingAdvisor's data with SimHub's `downloadstringasync` from `http://localhost:8789/simhub/dash.json`. The plugin logs what it does to `PluginsData\TruckingAdvisor\plugin.log` in SimHub's folder.
 
 ## AI setup and cost
 

@@ -182,6 +182,23 @@ public static class Guide
 
             new GuideTopic("Twitch, overlay & convoy", "Let stream chat talk to the truckers; share the radio with friends", StreamingLines()),
 
+            new GuideTopic("SimHub dashboards", "Second screen, tablet, or a triple-screen DDU with round screens", new[]
+            {
+                "Open More > Twitch, Overlay, SimHub & Convoy. SimHub is free from simhubdash.com.",
+                "• SimHub draws your speed, speed limit, gear, RPM, fuel and warning lights from its own ATS / ETS2 data, so those keep working with TruckingAdvisor closed. TruckingAdvisor adds your driver score, the delivery, the CB radio, coaching and your career.",
+                "• Tick \"Serve the SimHub panel\". It uses the same local port as the stream overlay (8789 unless you changed it).",
+                "## One screen, tablet or phone",
+                "• \"Add the dashboard to SimHub\" hands the 1280 x 720 \"TruckingAdvisor\" dashboard to SimHub, which asks to import it. Pick it in Dash Studio and show it on a monitor, or open SimHub's dashboard on a tablet or phone.",
+                "• The right half is TruckingAdvisor's panel in SimHub's web view. It also works on its own in any browser: http://localhost:8789/simhub.",
+                "## Triple-screen DDU (two rounds and a 4\" screen)",
+                "• Made for units such as the DaSIMSIMMA triple: two 3.4\" round VoCore screens either side of a 4\" one. Three dashboards: Triple Left (speed ring, speed limit, cruise, driver score), Triple Center (CB channel and the last line heard, driver score, delivery progress, warnings) and Triple Right (RPM and fuel rings, gear, park brake and air, CB channel).",
+                "• \"Add the triple-screen set to SimHub\" imports all three and installs TruckingAdvisor's SimHub plugin (Windows may ask for permission, because SimHub lives in Program Files). Restart SimHub and say yes when it asks to enable \"TruckingAdvisor\".",
+                "• From then on the plugin switches the round screens and the 4\" screen to the triple set whenever TruckingAdvisor is running, and puts your own dashboards back a few seconds after TruckingAdvisor closes. Untick the automatic switch to choose dashboards yourself.",
+                "• Left and right the wrong way round? Tick \"Swap the round screens\".",
+                "• Without the plugin, give each screen its dashboard in SimHub (Devices > the screen > Dashboard).",
+                "• The plugin keeps a log in SimHub's folder: PluginsData\\TruckingAdvisor\\plugin.log (which screens it found and what it switched).",
+            }),
+
             new GuideTopic("Map & real places", "Self-drawing map, real towns and highways", new[]
             {
                 "• The Map tab draws every road you drive, separately for ATS and ETS2, in any DLC region or map mod. Drag to pan, mouse wheel to zoom, double-click to follow the truck.",
@@ -230,7 +247,7 @@ public static class Guide
     {
         var lines = new List<string>
         {
-            "Open More > Twitch, Overlay & Convoy.",
+            "Open More > Twitch, Overlay, SimHub & Convoy.",
             "## Twitch chat on the CB",
             "• Tick \"Let Twitch chat talk on the CB radio\" and type your channel name. Chat is read anonymously: no Twitch login or token, and nothing is ever posted.",
             "• Viewers type a command and their message; the message is read out in a caller voice, then a trucker or crew member answers on the radio, out loud, using your live truck data.",

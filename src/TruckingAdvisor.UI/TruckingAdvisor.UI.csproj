@@ -7,7 +7,7 @@
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>TruckingAdvisor</AssemblyName>
-    <Version>3.8.3</Version>
+    <Version>3.9.0</Version>
     <Product>TruckingAdvisor</Product>
     <Company>TruckingAdvisor contributors</Company>
     <Description>ATS telemetry dashboard, driving coach and AI CB radio</Description>
@@ -27,6 +27,15 @@
     <ProjectReference Include="..\TruckingAdvisor.Audio\TruckingAdvisor.Audio.csproj" />
     <ProjectReference Include="..\TruckingAdvisor.AI\TruckingAdvisor.AI.csproj" />
     <ProjectReference Include="..\TruckingAdvisor.Presentation\TruckingAdvisor.Presentation.csproj" />
+  </ItemGroup>
+  <!-- TruckingAdvisor's SimHub plugin (.NET Framework 4.8, for SimHub) is built first and carried inside the exe;
+       More > Twitch, Overlay, SimHub & Convoy copies it into SimHub's folder. The app itself never loads it. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TruckingAdvisor.SimHubPlugin\TruckingAdvisor.SimHubPlugin.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true"
+                      UndefineProperties="%3BTargetFramework%3BRuntimeIdentifier%3BSelfContained%3BPublishSingleFile%3BIncludeNativeLibrariesForSelfExtract%3BPublishReadyToRun" />
+    <EmbeddedResource Include="..\TruckingAdvisor.SimHubPlugin\bin\$(Configuration)\net48\TruckingAdvisor.SimHubPlugin.dll"
+                      LogicalName="TruckingAdvisor.SimHubPlugin.dll" Link="SimHub\TruckingAdvisor.SimHubPlugin.dll" />
   </ItemGroup>
   <!-- The offline speech engine (whisper.cpp) is loaded by path at runtime, so it must sit next to the exe
        in runtimes\win-x64 instead of inside the single-file bundle. Other platforms' copies aren't shipped. -->

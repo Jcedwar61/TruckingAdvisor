@@ -7,8 +7,8 @@ using TruckingAdvisor.Shared.Models;
 namespace TruckingAdvisor.AI.Streaming;
 
 /// <summary>
-/// Runs the streaming features from the settings: Twitch chat -> radio calls, the convoy link and the OBS
-/// overlay. Call <see cref="ApplyAsync"/> after the settings change; it starts, restarts or stops each part.
+/// Runs the streaming features from the settings: Twitch chat -> radio calls, the convoy link, the OBS
+/// overlay and the SimHub panel (both served by the same local web server). Call <see cref="ApplyAsync"/> after the settings change; it starts, restarts or stops each part.
 /// </summary>
 public sealed class StreamHub : IAsyncDisposable
 {
@@ -38,7 +38,18 @@ public sealed class StreamHub : IAsyncDisposable
     public string TwitchStatus { get; private set; } = "Twitch chat is off.";
     public string ConvoyStatus { get; private set; } = "Convoy is off.";
     public string OverlayStatus { get; private set; } = "Overlay is off.";
+    public string SimHubStatus { get; private set; } = "The SimHub panel is off.";
     public string? OverlayUrl => _overlay?.Url;
+    /// <summary>The SimHub panel's address while it is being served, else null.</summary>
+    public string? SimHubPanelUrl => _overlay is { } o && S.SimHubPanelEnabled ? $"http://localhost:{o.Port}/simhub" : null;
+    /// <summary>True while the SimHub panel is served (the UI only builds the panel state then).</summary>
+    public bool SimHubPanelServing => SimHubPanelUrl is not null;
+
+    /// <summary>
+    /// Builds the SimHub panel's data (score, delivery, radio, coaching...). Set by the UI, which owns that state;
+    /// it is called on the web server's threads, so it must return a ready-made snapshot.
+    /// </summary>
+    public Func<object?>? SimHubPanelState { get; set; }
     public ConvoySync? Convoy => _convoy;
     public ViewerCallGate Gate => _gate;
     /// <summary>Raised (on a background thread) when any status text changes.</summary>
@@ -86,23 +97,47 @@ public sealed class StreamHub : IAsyncDisposable
 
     private async Task ApplyOverlayAsync()
     {
-        string key = S.OverlayEnabled ? $"{S.OverlayPort}|{S.OverlayAllowLan}" : string.Empty;
-        if (key == _overlayKey) return;
-        if (_overlay is not null) { await _overlay.DisposeAsync(); _overlay = null; }
-        _overlayKey = key;
-        if (key.Length == 0) { SetOverlayStatus("Overlay is off."); return; }
-        try
+        // One local web server serves both the overlay and the SimHub panel; it runs while either is on.
+        string key = S.OverlayEnabled || S.SimHubPanelEnabled ? $"{S.OverlayPort}|{S.OverlayAllowLan}" : string.Empty;
+        if (key != _overlayKey)
         {
-            var server = new StreamOverlayServer(S.OverlayPort, BuildOverlayState, S.OverlayAllowLan);
-            server.Start();
-            _overlay = server;
-            SetOverlayStatus($"Overlay ready: add {server.Url} as a Browser Source in OBS.");
+            if (_overlay is not null) { await _overlay.DisposeAsync(); _overlay = null; }
+            _overlayKey = key;
+            if (key.Length > 0)
+            {
+                try
+                {
+                    var server = new StreamOverlayServer(S.OverlayPort, BuildOverlayState, S.OverlayAllowLan)
+                    {
+                        PanelState = PanelState,
+                        // Read by TruckingAdvisor's SimHub plugin, which switches SimHub's screens.
+                        DecorateCompact = o => { o["autoTriple"] = S.SimHubAutoTriple; o["swapRounds"] = S.SimHubSwapRounds; }
+                    };
+                    server.Start();
+                    _overlay = server;
+                }
+                catch (Exception ex)
+                {
+                    _overlayKey = string.Empty;
+                    string problem = $"couldn't start on port {S.OverlayPort} ({ex.Message}). Pick another port.";
+                    SetOverlayStatus(S.OverlayEnabled ? $"Overlay {problem}" : "Overlay is off.");
+                    SetSimHubStatus(S.SimHubPanelEnabled ? $"The SimHub panel {problem}" : "The SimHub panel is off.");
+                    return;
+                }
+            }
         }
-        catch (Exception ex)
-        {
-            _overlayKey = string.Empty;
-            SetOverlayStatus($"Overlay couldn't start on port {S.OverlayPort} ({ex.Message}). Pick another port.");
-        }
+        SetOverlayStatus(_overlay is null || !S.OverlayEnabled ? "Overlay is off." : $"Overlay ready: add {_overlay.Url} as a Browser Source in OBS.");
+        SetSimHubStatus(SimHubPanelUrl is { } url
+            ? $"SimHub panel ready at {url}. Add the dashboard to SimHub below (once), then pick \"TruckingAdvisor\" in SimHub's Dash Studio."
+            : "The SimHub panel is off.");
+    }
+
+    /// <summary>What /simhub/state.json returns: null while the panel is switched off (the page then says how to turn it on).</summary>
+    private object? PanelState()
+    {
+        if (!S.SimHubPanelEnabled) return null;
+        try { return SimHubPanelState?.Invoke(); }
+        catch (Exception ex) { AppLog.Error("SimHub panel: building its state failed", ex); return null; }
     }
 
     private async Task ApplyTwitchAsync()
@@ -306,6 +341,7 @@ public sealed class StreamHub : IAsyncDisposable
     private void SetTwitchStatus(string s) { if (s != TwitchStatus) AppLog.Info($"Stream: {s}"); TwitchStatus = s; StatusChanged?.Invoke(); }
     private void SetConvoyStatus(string s) { if (s != ConvoyStatus) AppLog.Info($"Stream: {s}"); ConvoyStatus = s; StatusChanged?.Invoke(); }
     private void SetOverlayStatus(string s) { if (s != OverlayStatus) AppLog.Info($"Stream: {s}"); OverlayStatus = s; StatusChanged?.Invoke(); }
+    private void SetSimHubStatus(string s) { if (s != SimHubStatus) AppLog.Info($"SimHub: {s}"); SimHubStatus = s; StatusChanged?.Invoke(); }
 
     public async ValueTask DisposeAsync()
     {

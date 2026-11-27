@@ -8,6 +8,8 @@
   <ItemGroup>
     <!-- The stream overlay page served to OBS by StreamOverlayServer. -->
     <EmbeddedResource Include="Streaming\overlay.html" LogicalName="TruckingAdvisor.AI.Streaming.overlay.html" />
+    <!-- TruckingAdvisor's panel for the SimHub dashboard's web view. -->
+    <EmbeddedResource Include="Streaming\simhub.html" LogicalName="TruckingAdvisor.AI.Streaming.simhub.html" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />

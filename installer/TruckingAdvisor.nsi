@@ -17,7 +17,7 @@
 
 !define APP "TruckingAdvisor"
 !ifndef VERSION
-  !define VERSION "3.8.3"
+  !define VERSION "3.9.0"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\publish\bin"
