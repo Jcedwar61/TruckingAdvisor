@@ -108,7 +108,8 @@ public sealed class AudioPriorityManagerTests
     [Fact]
     public async Task StopAllStopsPlaybackAndClearsQueue()
     {
-        var sink = new FakeSink { Duration = TimeSpan.FromSeconds(5) };
+        // Long enough that "a" can only end by being stopped, even if a busy CI runner delays this test for seconds.
+        var sink = new FakeSink { Duration = TimeSpan.FromSeconds(30) };
         using var mgr = new AudioPriorityManager(sink);
         mgr.EnqueueAnnouncement("a", AudioPriority.Normal);
         await WaitUntil(() => sink.Started.Count == 1);

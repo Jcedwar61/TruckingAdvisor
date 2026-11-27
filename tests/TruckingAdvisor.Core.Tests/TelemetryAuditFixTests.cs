@@ -297,25 +297,28 @@ public sealed class TelemetryAuditFixTests
         var grades = new GradeMemory();
         string dir = Path.Combine(Path.GetTempPath(), $"ta-mem-{Guid.NewGuid():N}");
         var errors = new ConcurrentQueue<Exception>();
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(1.5));
+        // A fixed, small amount of work (not "as fast as possible for 1.5 s"): an unbounded loop grew the grade map
+        // by a cell per pass and re-serialised it each save, which hogged the CPU and the GC and made unrelated
+        // timing-based tests in the same run fail. Concurrency is still exercised: both loops overlap throughout.
+        const int Writes = 20_000, Reads = 200;
+        int written = 0;
 
         var writer = Task.Run(() =>
         {
-            int i = 0;
-            while (!stop.IsCancellationRequested)
+            for (int i = 0; i < Writes; i++)
             {
                 try
                 {
-                    cities.Learn($"City{i % 5000}", 1000 + i, 2000 + i);
-                    grades.Record(i * 100.0, i * 7.0, -6f, 90f, 50f);
-                    i++;
+                    cities.Learn($"City{i % 300}", 1000 + i % 300, 2000 + i % 300);
+                    grades.Record(i % 400 * 100.0, i % 400 * 7.0, -6f, 90f, 50f);
+                    Volatile.Write(ref written, i + 1);
                 }
                 catch (Exception ex) { errors.Enqueue(ex); return; }
             }
         });
-        var reader = Task.Run(() =>
+        var reader = Task.Run(async () =>
         {
-            while (!stop.IsCancellationRequested)
+            for (int i = 0; i < Reads; i++)
             {
                 try
                 {
@@ -325,6 +328,7 @@ public sealed class TelemetryAuditFixTests
                     grades.Save(Path.Combine(dir, "grades.json"));
                 }
                 catch (Exception ex) { errors.Enqueue(ex); return; }
+                if (Volatile.Read(ref written) < Writes) await Task.Yield();
             }
         });
         await Task.WhenAll(writer, reader);
