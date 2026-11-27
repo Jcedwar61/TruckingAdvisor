@@ -58,7 +58,7 @@ jobs:
         shell: pwsh
         run: ./installer/build-installer.ps1 -Version $env:VERSION
 
-      - name: Smoke test - silent install, launch, uninstall
+      - name: Smoke test - silent install, launch, update, voices, screenshots
         shell: pwsh
         run: |
           $dir = Join-Path $env:RUNNER_TEMP "TA-install"
@@ -111,6 +111,102 @@ jobs:
           if (Test-Path "$shots\error.txt") { Get-Content "$shots\error.txt"; throw "Screenshot mode failed" }
           if (-not (Test-Path "$shots\dashboard.png")) { throw "No screenshots were produced" }
 
+      # The elevated half of "Install SimHub plugin" (TruckingAdvisor.exe --install-simhub-plugin "<SimHub dir>" <port>),
+      # run here without elevation against temp folders (writable, so no UAC prompt). Runs on the installed app.
+      - name: Smoke test - SimHub plugin install mode
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "TA-install"
+          $exe = "$dir\TruckingAdvisor.exe"
+          $root = Join-Path $env:RUNNER_TEMP "TA simhub test"
+          $sim = Join-Path $root "Sim Hub"          # spaces: the folder argument must survive quoting
+          $notSim = Join-Path $root "Not SimHub"
+          $dll = Join-Path $sim "TruckingAdvisor.SimHubPlugin.dll"
+          $cfg = Join-Path $sim "TruckingAdvisor.SimHubPlugin.cfg"
+          New-Item -ItemType Directory -Force -Path $sim, $notSim | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $sim "SimHubWPF.exe") | Out-Null
+          $before = @(Get-Process TruckingAdvisor -ErrorAction SilentlyContinue | ForEach-Object Id)
+          $log = Join-Path $env:LOCALAPPDATA "TruckingAdvisor\logs\app.log"
+          $logBefore = if (Test-Path $log) { $i = Get-Item $log; "$($i.Length) $($i.LastWriteTimeUtc.Ticks)" } else { "none" }
+
+          # Runs the mode and returns its exit code; never waits more than 60 s.
+          function Invoke-Install([string[]]$Arguments) {
+            $p = Start-Process $exe -ArgumentList $Arguments -PassThru
+            $null = $p.Handle   # keeps the handle so ExitCode is available after the process ends
+            if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw "--install-simhub-plugin $Arguments did not exit within 60 s" }
+            $p.WaitForExit()
+            Write-Host "--install-simhub-plugin $($Arguments[1..9] -join ' ') -> exit $($p.ExitCode)"
+            return $p.ExitCode
+          }
+          function Assert-NoTempFiles([string]$folder) {
+            $left = @(Get-ChildItem $folder -Filter *.tmp -File)
+            if ($left) { throw "Temp files left in ${folder}: $($left.Name -join ', ')" }
+          }
+
+          # 1. A SimHub folder: plugin and config are written, exit 0.
+          $code = Invoke-Install '--install-simhub-plugin', "`"$sim`"", '8789'
+          if ($code -ne 0) { throw "Install into a SimHub folder failed (exit $code, expected 0)" }
+          if (-not (Test-Path $dll)) { throw "The plugin DLL was not written" }
+          if (-not (Test-Path $cfg)) { throw "The plugin config was not written" }
+          if ((Get-Content $cfg -Raw) -notmatch '(?m)^port=8789$') { Get-Content $cfg; throw "The plugin config does not hold port 8789" }
+          $bytes = [IO.File]::ReadAllBytes($dll)
+          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "The plugin DLL is not a PE file" }
+          $built = "src\TruckingAdvisor.SimHubPlugin\bin\Release\net48\TruckingAdvisor.SimHubPlugin.dll"   # what the publish embedded
+          $hash = (Get-FileHash $dll -Algorithm SHA256).Hash
+          if (Test-Path $built) {
+            if ($hash -ne (Get-FileHash $built -Algorithm SHA256).Hash) { throw "The installed plugin differs from the built plugin" }
+          } else { Write-Warning "No built plugin at $built; checked the PE header only" }
+          if ((Get-Item (Join-Path $sim "SimHubWPF.exe")).Length -ne 0) { throw "SimHubWPF.exe was modified" }
+          Assert-NoTempFiles $sim
+
+          # 2. Again with another port: both files are replaced in place.
+          $code = Invoke-Install '--install-simhub-plugin', "`"$sim`"", '8790'
+          if ($code -ne 0) { throw "Re-install over an existing plugin failed (exit $code, expected 0)" }
+          if ((Get-Content $cfg -Raw) -notmatch '(?m)^port=8790$') { Get-Content $cfg; throw "Re-install did not update the port" }
+          if ((Get-FileHash $dll -Algorithm SHA256).Hash -ne $hash) { throw "Re-install changed the plugin bytes" }
+          Assert-NoTempFiles $sim
+
+          # 3. Plugin held open (as by a running SimHub): fails with "in use" (4) or "failed" (5), leaves no temp
+          #    files, and leaves the config alone (the plugin is written first).
+          $lock = [IO.File]::Open($dll, 'Open', 'Read', 'None')
+          try { $code = Invoke-Install '--install-simhub-plugin', "`"$sim`"", '8791' } finally { $lock.Dispose() }
+          if ($code -notin 4, 5) { throw "Install over a locked plugin returned $code (expected 4 or 5)" }
+          if ((Get-Content $cfg -Raw) -notmatch '(?m)^port=8790$') { throw "A failed install changed the config" }
+          if ((Get-FileHash $dll -Algorithm SHA256).Hash -ne $hash) { throw "A failed install changed the plugin" }
+          Assert-NoTempFiles $sim
+
+          # 4. A folder without SimHubWPF.exe: exit 3, nothing written.
+          $code = Invoke-Install '--install-simhub-plugin', "`"$notSim`"", '8789'
+          if ($code -ne 3) { throw "Install into a non-SimHub folder returned $code (expected 3)" }
+          if (@(Get-ChildItem $notSim -Force).Count -ne 0) { throw "Files were written into a non-SimHub folder" }
+          $code = Invoke-Install '--install-simhub-plugin', "`"$(Join-Path $root 'Missing')`"", '8789'
+          if ($code -ne 3) { throw "Install into a missing folder returned $code (expected 3)" }
+
+          # 5. Bad arguments: exit 2, nothing written.
+          $bad = @(
+            @('--install-simhub-plugin', '"Sim Hub"', '8789'),          # relative path
+            @('--install-simhub-plugin', "`"$sim`"", 'abc'),            # port not a number
+            @('--install-simhub-plugin', "`"$sim`"", '0'),              # port out of range
+            @('--install-simhub-plugin', "`"$sim`"", '65536'),
+            @('--install-simhub-plugin', "`"$sim`""),                   # no port
+            @('--install-simhub-plugin', "`"$sim`"", '8789', 'extra'))
+          foreach ($a in $bad) {
+            $code = Invoke-Install $a
+            if ($code -ne 2) { throw "Bad arguments ($($a[1..9] -join ' ')) returned $code (expected 2)" }
+          }
+          if ((Get-Content $cfg -Raw) -notmatch '(?m)^port=8790$') { throw "A call with bad arguments changed the config" }
+
+          # The mode exits by itself (no window, no single-instance mutex) and writes no log.
+          $left = @(Get-Process TruckingAdvisor -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $before })
+          if ($left) { $left | Stop-Process -Force; throw "TruckingAdvisor processes were left running by the install mode" }
+          $logAfter = if (Test-Path $log) { $i = Get-Item $log; "$($i.Length) $($i.LastWriteTimeUtc.Ticks)" } else { "none" }
+          if ($logAfter -ne $logBefore) { throw "The install mode wrote to the app log" }
+          Remove-Item $root -Recurse -Force
+
+      - name: Smoke test - silent uninstall
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "TA-install"
           Start-Process "$dir\Uninstall.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 5   # the NSIS uninstaller finishes from a temp copy
           if (Test-Path "$dir\TruckingAdvisor.exe") { throw "Uninstaller left the app behind" }
