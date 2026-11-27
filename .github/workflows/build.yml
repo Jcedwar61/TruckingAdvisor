@@ -24,7 +24,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     env:
-      VERSION: 3.9.0
+      VERSION: 3.9.1
     steps:
       - uses: actions/checkout@v4
 
@@ -172,7 +172,7 @@ jobs:
       id-token: write       # build provenance attestation
       attestations: write
     env:
-      VERSION: 3.9.0
+      VERSION: 3.9.1
       BUILD_VERSION: ${{ needs.build.outputs.version }}
     steps:
       - uses: actions/checkout@v4

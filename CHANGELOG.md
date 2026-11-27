@@ -1,5 +1,38 @@
 # Changelog - TruckingAdvisor
 
+## [v3.9.1] - 2026-11-27
+Fixes from a full security and reliability audit.
+
+### Important
+- **Convoy needs a new code, and every PC on 3.9.1.** Convoy encryption is much stronger (protocol v2). Old 4-character codes could be guessed by anyone who saw the relay topic. Click **Generate code** (16 letters and digits), share it privately, and everyone saves it. Codes need at least 12 characters. Older versions can't hear 3.9.1 and vice versa, and PC clocks must be within 10 minutes of each other.
+- **The daily AI spend limit now works out of the box.** It used to count $0 unless you typed in prices yourself, so only the request limit applied. It now uses cautious built-in estimates for each OpenAI and DeepSeek model, including realtime voice audio, unless you enter your own prices. Every request (fallbacks, voices, transcription and realtime) is checked before it is sent, even when several go out at once.
+- **Other websites can no longer read your live data.** The overlay and SimHub web server used to let any web page open in your browser read your truck, approximate location, route and the last radio lines. It now answers only OBS, SimHub and its own pages.
+
+### Fixed
+- **A closed or crashed game now shows NOT CONNECTED** instead of freezing on the last speed, and the radio, SimHub and overlay stop describing a moving truck.
+- **A game restart mid-trip no longer records a fake completed delivery** (with pay and XP) or fake fines and tolls. Switching between ATS and ETS2 no longer mixes up trips, and a game that crashes while paused is noticed.
+- **Free Microsoft voices no longer stay broken until a restart** on a PC whose clock is off.
+- **Push-to-talk keys** are handled on their own thread, so a busy window no longer delays keystrokes in the game or makes Windows drop the key hook.
+- **Keying up again straight after a transmission** no longer cuts the new one short.
+- **Voice and speech model downloads** no longer hang on a stalled connection, or fail forever after an interrupted finish.
+- **Learned cities and grades** are saved safely while driving and when you close the app.
+- **Settings, usage totals and saved API keys** are written safely, so a crash can't corrupt them or reset today's spending.
+- The **Install Telemetry Plugin** button no longer stays greyed out if the game search fails.
+- Turning on **Quiet** mid-conversation stops the next exchange from being written (and billed).
+- The SimHub plugin no longer switches your screens back to TruckingAdvisor's set while SimHub is closing.
+- Less work on the UI thread: your API key is no longer decrypted several times a second.
+
+### Security and privacy
+- **Convoy:** other PCs in a convoy can't take over as host, flood your radio, inject text into the AI's instructions or break the voices, and your blocked words now apply to convoy lines and names. Replayed old packets are refused.
+- **Twitch:** only the Channel Points reward you choose (**Use the last redeemed reward** in the Stream window) skips the cooldowns and the subscriber rule. Other rewards count as ordinary chat.
+- **Logs and Copy Diagnostics** no longer include Twitch viewer names, chat text, your channel name or convoy member names, and hide your Windows user name in more forms of file path.
+- **API keys** are only sent to the address they were saved for, and only over HTTPS (or to a server on this PC).
+- **Updates** are checked again against the published checksum just before installing, while the app holds the file; a changed file is deleted, never run. An update that can't close the app within a minute gives up instead of half-installing.
+- **SimHub plugin install** into Program Files now runs TruckingAdvisor itself with admin rights, instead of a command prompt copying a file from the temp folder.
+- The uninstaller removes only files it installed.
+- **Releases** are built only from `main`, the version must match, and every release carries GitHub build provenance.
+- **SECURITY.md** now lists every service the app talks to, including the free Microsoft voices (which send each spoken line to Microsoft, even with AI off), DeepSeek, Hugging Face, GitHub updates, Twitch and the local web server.
+
 ## [v3.9.0] - 2026-11-27
 ### SimHub dashboards
 - **A TruckingAdvisor dashboard for SimHub** (1280 x 720, for a monitor, tablet or phone). SimHub draws your speed (red when you're over the limit), the speed-limit sign, gear, RPM and fuel bars, cruise, park brake and warning lights from its own ATS / ETS2 data; beside them, TruckingAdvisor's live panel shows your driver score, the delivery and its progress, the CB radio (channel, who's talking and the last lines), coaching calls and tips, grade warnings and your career.
