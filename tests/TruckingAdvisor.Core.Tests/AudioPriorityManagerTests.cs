@@ -26,7 +26,9 @@ public sealed class AudioPriorityManagerTests
 
     private static async Task WaitUntil(Func<bool> condition)
     {
-        for (int i = 0; i < 100 && !condition(); i++) await Task.Delay(20);
+        // A deadline, not a count of 20 ms naps: on a busy CI runner a nap can take far longer than 20 ms.
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (!condition() && DateTime.UtcNow < until) await Task.Delay(20);
         Assert.True(condition());
     }
 

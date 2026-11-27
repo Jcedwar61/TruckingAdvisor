@@ -209,19 +209,20 @@ public sealed class TelemetryAuditFixTests
         }
     }
 
-    private static bool WaitFor(Func<bool> condition, TimeSpan timeout)
+    // Waits without holding a thread-pool thread: the provider and many other tests need the pool meanwhile.
+    private static async Task<bool> WaitFor(Func<bool> condition, TimeSpan timeout)
     {
         var until = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < until)
         {
             if (condition()) return true;
-            Thread.Sleep(20);
+            await Task.Delay(20);
         }
         return condition();
     }
 
     [Fact]
-    public void Provider_PublishesNotLive_WhenTheGameStops_ThenOnlyOnceASecond()
+    public async Task Provider_PublishesNotLive_WhenTheGameStops_ThenOnlyOnceASecond()
     {
         using var plugin = new FakePlugin();
         using var provider = new AtsMemoryMappedTelemetryProvider(plugin.Name);
@@ -229,9 +230,9 @@ public sealed class TelemetryAuditFixTests
         provider.TelemetryUpdated += (_, s) => seen.Enqueue(s);
         provider.Start();
 
-        Assert.True(WaitFor(() => seen.Any(s => s.IsLive), TimeSpan.FromSeconds(5)), "no live snapshot");
+        Assert.True(await WaitFor(() => seen.Any(s => s.IsLive), TimeSpan.FromSeconds(10)), "no live snapshot");
         plugin.Deactivate();
-        Assert.True(WaitFor(() => seen.LastOrDefault() is { IsLive: false }, TimeSpan.FromSeconds(3)), "no disconnect published");
+        Assert.True(await WaitFor(() => seen.LastOrDefault() is { IsLive: false }, TimeSpan.FromSeconds(10)), "no disconnect published");
 
         var notLive = seen.Last();
         Assert.Equal(ConnectionState.Disconnected, notLive.ConnectionState);
@@ -241,14 +242,14 @@ public sealed class TelemetryAuditFixTests
         Assert.False(notLive.JobActive);
 
         int before = seen.Count(s => !s.IsLive);
-        Thread.Sleep(2500);
+        await Task.Delay(2500);
         int during = seen.Count(s => !s.IsLive) - before;
         Assert.InRange(during, 1, 4);                // throttled, not 20 a second
         Assert.Equal(ConnectionState.Disconnected, provider.CurrentState);
     }
 
     [Fact]
-    public void Provider_PausedGameWhoseProcessIsGone_IsReportedDisconnected()
+    public async Task Provider_PausedGameWhoseProcessIsGone_IsReportedDisconnected()
     {
         // No amtrucks/eurotrucks2 process runs during tests, so a paused, frozen block means the game is gone.
         using var plugin = new FakePlugin(paused: true);
@@ -257,8 +258,8 @@ public sealed class TelemetryAuditFixTests
         provider.TelemetryUpdated += (_, s) => seen.Enqueue(s);
         provider.Start();
 
-        Assert.True(WaitFor(() => seen.Any(s => s.ConnectionState == ConnectionState.GamePaused), TimeSpan.FromSeconds(5)), "never saw the paused game");
-        Assert.True(WaitFor(() => seen.LastOrDefault() is { IsLive: false }, TimeSpan.FromSeconds(10)), "paused forever");
+        Assert.True(await WaitFor(() => seen.Any(s => s.ConnectionState == ConnectionState.GamePaused), TimeSpan.FromSeconds(10)), "never saw the paused game");
+        Assert.True(await WaitFor(() => seen.LastOrDefault() is { IsLive: false }, TimeSpan.FromSeconds(15)), "paused forever");
         Assert.Contains("no longer running", provider.StatusDetail);
     }
 

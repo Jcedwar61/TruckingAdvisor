@@ -155,7 +155,7 @@ public sealed class NetworkAuditFixTests
         string request = $"GET {path} HTTP/1.1\r\nHost: {host}\r\n" + (origin is null ? "" : $"Origin: {origin}\r\n") + "Connection: close\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(request));
         var received = new MemoryStream();
-        try { await stream.CopyToAsync(received).WaitAsync(TimeSpan.FromSeconds(5)); }
+        try { await stream.CopyToAsync(received).WaitAsync(TimeSpan.FromSeconds(20)); }
         catch (IOException) { /* closed without a response */ }
         return Encoding.UTF8.GetString(received.ToArray());
     }
