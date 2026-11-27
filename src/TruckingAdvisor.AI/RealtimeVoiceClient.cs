@@ -72,6 +72,10 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
     /// <summary>Longest wait for the server during one step before giving up (then the radio falls back).</summary>
     public TimeSpan StepTimeout { get; set; } = TimeSpan.FromSeconds(20);
     private string _voice = "ash";
+    /// <summary>Character count of the current instructions and seconds of player audio sent (for cost estimates).</summary>
+    private int _instructionChars;
+    private double _audioSecondsSent;
+    private const string LimitReached = "Daily AI limit reached (requests or estimated spend).";
 
     private RealtimeVoiceSession(IRealtimeTransport transport, AiSettings settings, AiUsageTracker usage)
     {
@@ -80,16 +84,58 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
         _usage = usage;
     }
 
+    /// <summary>
+    /// Connects and configures the session. The connection (including a TLS handshake that stalls) is bounded by
+    /// the step timeout: a <see cref="TimeoutException"/> is thrown instead of hanging. The transport is disposed
+    /// on any failure. The key is only sent to the OpenAI address it was saved for, over wss (ws only to this PC).
+    /// </summary>
     public static async Task<RealtimeVoiceSession> StartAsync(IRealtimeTransport transport, AiSettings settings, AiUsageTracker usage,
-        string apiKey, string instructions, string voice, CancellationToken ct)
+        string apiKey, string instructions, string voice, CancellationToken ct, TimeSpan? stepTimeout = null)
     {
-        var session = new RealtimeVoiceSession(transport, settings, usage);
-        string baseUrl = settings.ApiBaseUrl.TrimEnd('/').Replace("https://", "wss://", StringComparison.OrdinalIgnoreCase);
-        await transport.ConnectAsync(new Uri($"{baseUrl}/realtime?model={Uri.EscapeDataString(settings.RealtimeModel)}"), apiKey, ct);
-        session._voice = voice;
-        await transport.SendAsync(SessionUpdate(instructions, voice, settings), ct);
-        session.StepTimeout = TimeSpan.FromSeconds(Math.Max(10, settings.RequestTimeoutSeconds));
-        return session;
+        var session = new RealtimeVoiceSession(transport, settings, usage)
+        {
+            StepTimeout = stepTimeout ?? TimeSpan.FromSeconds(Math.Max(10, settings.RequestTimeoutSeconds))
+        };
+        try
+        {
+            var uri = RealtimeUri(settings);
+            if (uri is null || !settings.KeyMayBeSentTo(AiLlmProvider.OpenAI, uri))
+                throw new InvalidOperationException("The realtime address isn't secure (https/wss) or isn't the OpenAI address the key was saved for.");
+            using var step = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            step.CancelAfter(session.StepTimeout);
+            try
+            {
+                await transport.ConnectAsync(uri, apiKey, step.Token);
+                session._voice = voice;
+                session._instructionChars = instructions.Length;
+                await transport.SendAsync(SessionUpdate(instructions, voice, settings), step.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException("Realtime connection timed out.");
+            }
+            catch (WebSocketException) when (step.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                throw new TimeoutException("Realtime connection timed out.");
+            }
+            return session;
+        }
+        catch
+        {
+            await transport.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>wss URL for the realtime model (https base -> wss, http to this PC -> ws), or null if it isn't secure.</summary>
+    public static Uri? RealtimeUri(AiSettings settings)
+    {
+        var b = AiSettings.TryUri(settings.ApiBaseUrl.TrimEnd('/'));
+        if (b is null || !AiSettings.IsSecureEndpoint(b)) return null;
+        var ub = new UriBuilder(b) { Scheme = b.Scheme == "https" ? "wss" : "ws", Port = b.IsDefaultPort ? -1 : b.Port };
+        ub.Path = ub.Path.TrimEnd('/') + "/realtime";
+        ub.Query = "model=" + Uri.EscapeDataString(settings.RealtimeModel);
+        return ub.Uri;
     }
 
     public static string SessionUpdate(string instructions, string voice, AiSettings settings) => new JsonObject
@@ -122,6 +168,7 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
     public Task UpdateInstructionsAsync(string instructions, string voice, CancellationToken ct)
     {
         _voice = string.IsNullOrWhiteSpace(voice) ? _voice : voice;
+        _instructionChars = instructions.Length;
         return _transport.SendAsync(SessionUpdate(instructions, _voice, _settings), ct);
     }
 
@@ -141,13 +188,19 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
     {
         byte[] pcm = WavAudio.ToPcm16Mono(wav, SampleRate);
         if (pcm.Length < SampleRate / 5) return string.Empty; // under ~0.1 s: nothing said
+        double seconds = pcm.Length / 2.0 / SampleRate;
+        // Billable (input transcription): check the limit and reserve before sending any audio.
+        using var reservation = _usage.TryReserve(_settings,
+            (decimal)(Math.Max(seconds, 1.0) / 60.0) * AiModelCatalog.EffectiveTranscriptionPrice(_settings, _settings.SpeechToTextModel));
+        if (reservation is null) { LastError = LimitReached; return null; }
         for (int i = 0; i < pcm.Length; i += 12_000) // 250 ms per message
         {
             string chunk = Convert.ToBase64String(pcm, i, Math.Min(12_000, pcm.Length - i));
             await _transport.SendAsync(new JsonObject { ["type"] = "input_audio_buffer.append", ["audio"] = chunk }.ToJsonString(), ct);
         }
         await _transport.SendAsync("""{"type":"input_audio_buffer.commit"}""", ct);
-        _usage.RecordSpeechToText(_settings, pcm.Length / 2.0 / SampleRate);
+        _usage.RecordSpeechToText(_settings, seconds, _settings.SpeechToTextModel, reservation);
+        _audioSecondsSent += seconds;
 
         while (await NextAsync(ct) is { } msg)
         {
@@ -167,20 +220,62 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
     }
 
     /// <summary>Asks the model to answer (in the session's character) and returns its voice and text, or null on failure.</summary>
+    /// <remarks>
+    /// The reply is reserved against the daily limit first (worst-case estimate for this model). If the server doesn't
+    /// finish within <see cref="StepTimeout"/>, <c>response.cancel</c> is sent so it stops generating, and the estimate
+    /// is charged (no usage report will come back for it).
+    /// </remarks>
     public async Task<RealtimeReply?> ReplyAsync(int maxOutputTokens, CancellationToken ct)
     {
-        using var step = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        step.CancelAfter(StepTimeout);
-        try { return await ReplyCoreAsync(maxOutputTokens, step.Token); }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { LastError = "Realtime reply timed out."; return null; }
+        int maxOut = Math.Max(64, maxOutputTokens * 4); // audio tokens included
+        var price = AiModelCatalog.RealtimePrice(_settings.RealtimeModel);
+        // Input: the instructions as text, every second of player audio so far (~10 tokens/s, rounded up), plus slack.
+        int textIn = _instructionChars / 3 + 200;
+        int audioIn = (int)Math.Ceiling(_audioSecondsSent * 12) + 100;
+        decimal estimate = (textIn * price.TextIn + audioIn * price.AudioIn + maxOut * price.AudioOut) / 1_000_000m;
+        using var reservation = _usage.TryReserve(_settings, estimate);
+        if (reservation is null) { LastError = LimitReached; return null; }
+
+        using var hard = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var timer = new CancellationTokenSource(StepTimeout);
+        bool timedOut = false;
+        // On timeout: ask the server to stop first (cancelling a receive aborts a WebSocket), then give up.
+        using var onTimeout = timer.Token.Register(() =>
+        {
+            timedOut = true;
+            _ = CancelResponseThenAsync(hard);
+        });
+        try { return await ReplyCoreAsync(maxOut, reservation, hard.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timedOut)
+        {
+            reservation.CommitEstimate();
+            LastError = "Realtime reply timed out.";
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            reservation.CommitEstimate(); // cut off mid-reply: part of it was probably generated and billed
+            throw;
+        }
     }
 
-    private async Task<RealtimeReply?> ReplyCoreAsync(int maxOutputTokens, CancellationToken ct)
+    private async Task CancelResponseThenAsync(CancellationTokenSource hard)
+    {
+        try
+        {
+            using var shortWait = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await _transport.SendAsync("""{"type":"response.cancel"}""", shortWait.Token);
+        }
+        catch { /* best effort: the connection is closed right after anyway */ }
+        try { hard.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    private async Task<RealtimeReply?> ReplyCoreAsync(int maxOutputTokens, AiUsageTracker.Reservation reservation, CancellationToken ct)
     {
         await _transport.SendAsync(new JsonObject
         {
             ["type"] = "response.create",
-            ["response"] = new JsonObject { ["max_output_tokens"] = Math.Max(64, maxOutputTokens * 4) } // audio tokens included
+            ["response"] = new JsonObject { ["max_output_tokens"] = maxOutputTokens }
         }.ToJsonString(), ct);
 
         using var pcm = new MemoryStream();
@@ -203,8 +298,8 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
                     if (msg["transcript"]?.GetValue<string>() is { Length: > 0 } t) { text.Clear(); text.Append(t); }
                     break;
                 case "response.done":
-                    var usage = msg["response"]?["usage"];
-                    _usage.RecordChat(_settings, usage?["input_tokens"]?.GetValue<int>() ?? 0, usage?["output_tokens"]?.GetValue<int>() ?? 0);
+                    // Mostly audio tokens: priced at the realtime model's audio/text/cached rates, not the chat price.
+                    _usage.RecordRealtime(_settings.RealtimeModel, ParseUsage(msg["response"]?["usage"]), reservation);
                     if (msg["response"]?["status"]?.GetValue<string>() is "failed" or "cancelled") { LastError = "Realtime reply failed."; return null; }
                     return pcm.Length == 0 ? null : new RealtimeReply(text.ToString().Trim(), WavAudio.FromPcm16Mono(pcm.ToArray(), SampleRate));
                 case "error":
@@ -213,6 +308,30 @@ public sealed class RealtimeVoiceSession : IAsyncDisposable
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Token counts from a <c>response.done</c> usage block. Input/output not broken down by type are counted as audio
+    /// (the dearest), so a missing breakdown never makes the estimate cheaper.
+    /// </summary>
+    public static AiUsageTracker.RealtimeTokens ParseUsage(JsonNode? usage)
+    {
+        static int I(JsonNode? n)
+        {
+            try { return n is JsonValue v && v.TryGetValue<int>(out int i) ? Math.Max(0, i) : 0; }
+            catch (InvalidOperationException) { return 0; }
+        }
+        int input = I(usage?["input_tokens"]), output = I(usage?["output_tokens"]);
+        var inDetails = usage?["input_token_details"];
+        var outDetails = usage?["output_token_details"];
+        int textIn = I(inDetails?["text_tokens"]), audioIn = I(inDetails?["audio_tokens"]);
+        int textOut = I(outDetails?["text_tokens"]), audioOut = I(outDetails?["audio_tokens"]);
+        audioIn += Math.Max(0, input - textIn - audioIn);
+        audioOut += Math.Max(0, output - textOut - audioOut);
+        var cached = inDetails?["cached_tokens_details"];
+        int cachedText = Math.Min(textIn, I(cached?["text_tokens"]));
+        int cachedAudio = Math.Min(audioIn, I(cached?["audio_tokens"]));
+        return new AiUsageTracker.RealtimeTokens(textIn, audioIn, cachedText, cachedAudio, textOut, audioOut);
     }
 
     private async Task<JsonNode?> NextAsync(CancellationToken ct)

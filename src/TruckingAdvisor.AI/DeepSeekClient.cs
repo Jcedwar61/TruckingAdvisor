@@ -35,7 +35,10 @@ public sealed class DeepSeekClient : ILlmClient
     }
 
     public bool HasKey => !string.IsNullOrWhiteSpace(_key());
-    public bool IsAvailable => _settings.GlobalAiEnabled && !_usage.IsOverLimit(_settings) && HasKey;
+    public bool IsAvailable => _settings.GlobalAiEnabled && KeyMayGoTo($"{BaseUrl}/chat/completions") && !_usage.IsOverLimit(_settings) && HasKey;
+
+    /// <summary>The DeepSeek key only goes to the DeepSeek address it was set up for, over https (http only to this PC).</summary>
+    private bool KeyMayGoTo(string url) => _settings.KeyMayBeSentTo(AiLlmProvider.DeepSeek, AiSettings.TryUri(url));
 
     private string BaseUrl => (string.IsNullOrWhiteSpace(_settings.DeepSeekBaseUrl) ? "https://api.deepseek.com" : _settings.DeepSeekBaseUrl).TrimEnd('/');
 
@@ -55,7 +58,7 @@ public sealed class DeepSeekClient : ILlmClient
     /// <summary>Asks DeepSeek which models this key can use (background; failures ignored).</summary>
     public async Task RefreshModelsAsync(CancellationToken ct = default)
     {
-        if (!IsAvailable) return;
+        if (!IsAvailable || !KeyMayGoTo($"{BaseUrl}/models")) return;
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/models");
@@ -87,6 +90,7 @@ public sealed class DeepSeekClient : ILlmClient
     public async Task<LlmResult?> CompleteAsync(string systemPrompt, string userPrompt, int maxOutputTokens, LlmJobKind job, CancellationToken ct)
     {
         if (!IsAvailable) return null;
+        string url = $"{BaseUrl}/chat/completions"; // IsAvailable checked the key may go there (https, DeepSeek address)
         string? key = _key();
         foreach (var model in Candidates(job))
         {
@@ -94,10 +98,19 @@ public sealed class DeepSeekClient : ILlmClient
             {
                 bool reasoner = model.Contains("reasoner", StringComparison.OrdinalIgnoreCase);
                 bool NoOption(string o) { lock (_lock) return _noOption.Contains((model, o)); }
+                int budget = reasoner ? Math.Max(800, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens);
+
+                // Every attempt is billable: re-check the limit and reserve it before sending.
+                var (priceIn, priceOut) = AiModelCatalog.EffectiveDeepSeekPrice(_settings, model);
+                decimal estimate = ((AiModelCatalog.EstimateTokens(systemPrompt) + AiModelCatalog.EstimateTokens(userPrompt)) * priceIn
+                                    + budget * priceOut) / 1_000_000m;
+                using var reservation = _usage.TryReserve(_settings, estimate);
+                if (reservation is null) { LastError = "Daily AI limit reached (requests or estimated spend)."; return null; }
+
                 var body = new Dictionary<string, object>
                 {
                     ["model"] = model,
-                    ["max_tokens"] = reasoner ? Math.Max(800, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens),
+                    ["max_tokens"] = budget,
                     ["messages"] = new object[]
                     {
                         new { role = "system", content = systemPrompt },
@@ -107,7 +120,7 @@ public sealed class DeepSeekClient : ILlmClient
                 // DeepSeek recommends a livelier temperature for conversation and creative writing.
                 if (!reasoner && !NoOption("temperature")) body["temperature"] = job == LlmJobKind.Conversation ? 1.3 : 1.0;
 
-                using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/chat/completions")
+                using var req = new HttpRequestMessage(HttpMethod.Post, url)
                 {
                     Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
                 };
@@ -118,6 +131,7 @@ public sealed class DeepSeekClient : ILlmClient
                 try { resp = await _http.SendAsync(req, timeout.Token); }
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
                 {
+                    if (ex is TaskCanceledException) reservation.CommitEstimate(); // sent; may still be billed
                     if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
                     LastError = ex is TaskCanceledException ? "DeepSeek timed out." : "Can't reach DeepSeek (network).";
                     return null;
@@ -158,7 +172,7 @@ public sealed class DeepSeekClient : ILlmClient
                             if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
                             if (u.TryGetProperty("completion_tokens", out var cpt)) output = cpt.GetInt32();
                         }
-                        _usage.RecordChatPriced(input, output, _settings.DeepSeekInputPricePerMillionTokens, _settings.DeepSeekOutputPricePerMillionTokens);
+                        _usage.RecordDeepSeek(_settings, model, input, output, reservation);
                         text = text.Trim();
                         if (text.Length == 0) { lock (_lock) _unusable.Add(model); goto nextModel; }
                         LastModel = model;
@@ -168,6 +182,7 @@ public sealed class DeepSeekClient : ILlmClient
                     }
                     catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or JsonException)
                     {
+                        reservation.CommitEstimate();
                         LastError = "Unexpected DeepSeek response.";
                         return null;
                     }

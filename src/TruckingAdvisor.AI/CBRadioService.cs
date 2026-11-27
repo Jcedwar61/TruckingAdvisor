@@ -382,46 +382,56 @@ public sealed partial class CBRadioService : ICBRadioService
         string shape = TruckerConversation.Shapes[_random.Next(TruckerConversation.Shapes.Length)];
         if (shape == "player" && string.IsNullOrWhiteSpace(_company.PlayerHandle) && _random.NextDouble() < 0.5) shape = "story";
 
+        // Exchanges written ahead of time use their own token: when the conversation stops for any reason (Quiet mode
+        // switched on, chatter no longer allowed, key-up, an error), the one being prefetched is cancelled, not billed.
+        using var prefetch = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var prefetchToken = prefetch.Token;
         Task<List<ConversationLine>?> Write(string task, string opener, IReadOnlyList<RadioTurn> extra)
         {
             var turns = RecentTurns().Concat(extra).ToList();
             string system = TruckerConversation.System(voices, _company, _telemetry(), turns, channel, _settings.Rating);
             return Task.Run(async () =>
             {
-                string? raw = await GenerateAsync(system, task, ct, Math.Max(400, _settings.MaxResponseTokens * 4), LlmJob.Conversation);
+                string? raw = await GenerateAsync(system, task, prefetchToken, Math.Max(400, _settings.MaxResponseTokens * 4), LlmJob.Conversation);
                 return raw is null ? null : TruckerConversation.Parse(raw, voices, opener);
-            }, ct);
+            }, prefetchToken);
         }
-
-        var (openTask, opener) = TruckerConversation.Open(shape, voices, _company, snapshot, _random, topic);
-        var pending = _llm?.IsAvailable == true ? Write(openTask, opener, Array.Empty<RadioTurn>()) : Task.FromResult<List<ConversationLine>?>(null);
         var spoken = new List<ConversationLine>();
-        for (int exchange = 0; exchange < max; exchange++)
+        try
         {
-            var lines = await pending;
-            if (lines is null || lines.Count == 0)
+            var (openTask, opener) = TruckerConversation.Open(shape, voices, _company, snapshot, _random, topic);
+            var pending = _llm?.IsAvailable == true ? Write(openTask, opener, Array.Empty<RadioTurn>()) : Task.FromResult<List<ConversationLine>?>(null);
+            for (int exchange = 0; exchange < max; exchange++)
             {
-                if (exchange == 0) lines = OfflineBanter(a, b).Select(l => new ConversationLine(l.Item1, l.Item2)).ToList();
-                else break;
+                var lines = await pending;
+                if (lines is null || lines.Count == 0)
+                {
+                    if (exchange == 0) lines = OfflineBanter(a, b).Select(l => new ConversationLine(l.Item1, l.Item2)).ToList();
+                    else break;
+                }
+                // Write the next exchange while this one is on air.
+                pending = Task.FromResult<List<ConversationLine>?>(null);
+                if (exchange + 1 < max && _llm?.IsAvailable == true)
+                {
+                    var (nextTask, nextOpener) = TruckerConversation.Continue(voices, lines[^1].Handle, exchange + 1, max);
+                    pending = Write(nextTask, nextOpener, spoken.Concat(lines).Select(l => new RadioTurn(l.Handle, l.Text, channel)).ToList());
+                }
+                foreach (var line in lines)
+                {
+                    var speaker = voices.FirstOrDefault(v => v.Handle == line.Handle) ?? a;
+                    ArmWatchdog(version);
+                    await SpeakAsync(speaker.FullName, speaker.Handle, line.Text, speaker.VoiceId, AudioPriority.Low, channel, ct, chatterVersion: version);
+                    ct.ThrowIfCancellationRequested();
+                    spoken.Add(line);
+                    ActivePartner = speaker; // if the player answers without a name, the last voice answers back
+                }
+                if (!ChatterAllowed() || ct.IsCancellationRequested) break;
+                await PauseAsync(ct); // the little gap before someone keys up again
             }
-            // Write the next exchange while this one is on air.
-            pending = Task.FromResult<List<ConversationLine>?>(null);
-            if (exchange + 1 < max && _llm?.IsAvailable == true)
-            {
-                var (nextTask, nextOpener) = TruckerConversation.Continue(voices, lines[^1].Handle, exchange + 1, max);
-                pending = Write(nextTask, nextOpener, spoken.Concat(lines).Select(l => new RadioTurn(l.Handle, l.Text, channel)).ToList());
-            }
-            foreach (var line in lines)
-            {
-                var speaker = voices.FirstOrDefault(v => v.Handle == line.Handle) ?? a;
-                ArmWatchdog(version);
-                await SpeakAsync(speaker.FullName, speaker.Handle, line.Text, speaker.VoiceId, AudioPriority.Low, channel, ct, chatterVersion: version);
-                ct.ThrowIfCancellationRequested();
-                spoken.Add(line);
-                ActivePartner = speaker; // if the player answers without a name, the last voice answers back
-            }
-            if (!ChatterAllowed() || ct.IsCancellationRequested) break;
-            await PauseAsync(ct); // the little gap before someone keys up again
+        }
+        finally
+        {
+            prefetch.Cancel(); // anything still being written ahead is dropped before it's sent (or mid-request)
         }
         RememberConversation(voices, spoken);
     }
