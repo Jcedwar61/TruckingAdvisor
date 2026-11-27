@@ -122,9 +122,9 @@ public static class SimHubDashboard
         RoundSize, RoundSize, LeftItems);
 
     public static readonly SimHubLayout TripleCenter = new($"{Name} Triple Center",
-        "Centre 4\" screen of a triple-screen DDU (e.g. DaSIMSIMMA): TruckingAdvisor's CB radio (channel and the last line " +
-        "heard), driver score, delivery progress and warnings. Needs TruckingAdvisor running with its SimHub panel switched on.",
-        800, 480, CenterItems);
+        "Centre 4\" screen of a triple-screen DDU (e.g. DaSIMSIMMA), portrait: TruckingAdvisor's CB radio (channel and the last " +
+        "line heard), driver score, delivery progress and warnings. Needs TruckingAdvisor running with its SimHub panel switched on.",
+        480, 800, CenterItems);
 
     public static readonly SimHubLayout TripleRight = new($"{Name} Triple Right",
         "Right round screen of a triple-screen DDU (e.g. DaSIMSIMMA): RPM ring, gear, fuel ring, park brake and air " +
@@ -463,55 +463,55 @@ public static class SimHubDashboard
             color: $"if({Raw("Lights.BlinkerRightOn")}, '{Ok}', '{Off}')");
     }
 
+    /// <summary>The 4" screen stood upright (480 x 800): radio at the top, then score, delivery and warnings.</summary>
     private static IEnumerable<JsonObject> CenterItems(int port)
     {
-        const int w = 800, h = 480, pad = 18;
+        const int w = 480, h = 800, pad = 16, inner = w - 2 * pad;
 
-        // CB radio: channel, its name, state, and the last line heard.
-        yield return Rect("ChannelBox", pad, 14, 150, 60, LcdBg, radius: 10);
-        yield return Label("Channel", "CH 19", pad, 14, 150, 60, 36, Lcd, bold: true, align: 1, text: Ta(port, "'CH ' + d.ch", "'CH --'"));
-        yield return Label("ChannelName", "HIGHWAY TRAFFIC", 184, 14, 420, 32, 24, Text, bold: true,
-            text: Ta(port, "d.chName", "'TRUCKINGADVISOR'"));
-        yield return Label("Clock", "", 184, 46, 420, 26, 18, Muted, text: Ta(port, "d.time + (d.location ? '  ·  ' + d.location : '')", "''"));
-        yield return Rect("RadioStateBox", 620, 22, 162, 44, Track, radius: 22,
+        // CB radio: channel, state, its name, the time and place, and the last line heard.
+        yield return Rect("ChannelBox", pad, 16, 150, 64, LcdBg, radius: 10);
+        yield return Label("Channel", "CH 19", pad, 16, 150, 64, 38, Lcd, bold: true, align: 1, text: Ta(port, "'CH ' + d.ch", "'CH --'"));
+        yield return Rect("RadioStateBox", w - pad - 150, 26, 150, 44, Track, radius: 22,
             fill: Ta(port, "d.radioMode == 'tx' ? '#FF3A1212' : d.radioMode == 'rx' ? '#FF0F2A1A' : '#FF1E293B'", "'#FF1E293B'"));
-        yield return Label("RadioState", "READY", 620, 22, 162, 44, 20, Muted, bold: true, align: 1, text: Ta(port, "d.radio", "''"),
+        yield return Label("RadioState", "READY", w - pad - 150, 26, 150, 44, 20, Muted, bold: true, align: 1, text: Ta(port, "d.radio", "''"),
             color: Ta(port, $"d.radioMode == 'tx' ? '{Bad}' : d.radioMode == 'rx' ? '{Ok}' : '{Muted}'", $"'{Muted}'"));
+        yield return Label("ChannelName", "HIGHWAY TRAFFIC", pad, 90, inner, 34, 26, Text, bold: true,
+            text: Ta(port, "d.chName", "'TRUCKINGADVISOR'"));
+        yield return Label("Clock", "", pad, 126, inner, 26, 18, Muted, text: Ta(port, "d.time + (d.location ? '  ·  ' + d.location : '')", "''"));
 
-        yield return Rect("LineBox", pad, 86, w - 2 * pad, 112, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
-        yield return Label("Who", "", pad + 16, 92, w - 2 * pad - 32, 32, 22, Accent, bold: true,
+        yield return Rect("LineBox", pad, 164, inner, 196, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
+        yield return Label("Who", "", pad + 16, 174, inner - 32, 32, 22, Text, bold: true,
             text: Ta(port, "d.who ? d.who : 'Nothing on the radio yet'", "''"),
             color: Ta(port, $"d.dispatch ? '{Info}' : d.mine ? '{Accent}' : '{Text}'", $"'{Text}'"));
-        yield return Label("Line", "", pad + 16, 124, w - 2 * pad - 32, 70, 22, "#FFE2E8F0", wrap: true,
-            text: Ta(port, "d.line.length > 120 ? d.line.substring(0, 117) + '...' : d.line", "''"));
+        yield return Label("Line", "", pad + 16, 208, inner - 32, 144, 22, "#FFE2E8F0", wrap: true,
+            text: Ta(port, "d.line.length > 150 ? d.line.substring(0, 147) + '...' : d.line", "''"));
 
         // Driver score.
-        yield return Rect("ScoreBox", pad, 212, 230, 250, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
-        yield return Label("ScoreCaption", "DRIVER SCORE", pad, 222, 230, 26, 16, Muted, bold: true, align: 1);
-        yield return Label("Score", "--", pad, 250, 230, 120, 100, Text, bold: true, align: 1, text: Ta(port, "d.score", "'--'"),
+        yield return Rect("ScoreBox", pad, 376, inner, 150, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
+        yield return Label("ScoreCaption", "DRIVER SCORE", pad, 386, inner, 24, 16, Muted, bold: true, align: 1);
+        yield return Label("Score", "--", pad, 410, inner, 80, 76, Text, bold: true, align: 1, text: Ta(port, "d.score", "'--'"),
             color: Ta(port, $"d.scoreValue >= 85 ? '{Ok}' : d.scoreValue >= 65 ? '{Accent}' : d.scoreValue > 0 ? '{Bad}' : '{Muted}'", $"'{Muted}'"));
-        yield return Label("Rating", "", pad + 10, 376, 210, 76, 18, Muted, bold: true, align: 1, wrap: true, text: Ta(port, "d.rating", "''"));
+        yield return Label("Rating", "", pad + 10, 492, inner - 20, 28, 18, Muted, bold: true, align: 1, text: Ta(port, "d.rating", "''"));
 
         // Delivery.
-        const int dx = 264, dw = w - dx - pad;
-        yield return Rect("DeliveryBox", dx, 212, dw, 170, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
-        yield return Label("DeliveryCaption", "DELIVERY", dx + 16, 222, 200, 24, 16, Muted, bold: true);
-        yield return Label("Cargo", "No active delivery", dx + 16, 246, dw - 32, 34, 26, Text, bold: true,
+        yield return Rect("DeliveryBox", pad, 542, inner, 160, Card, radius: 12, border: (Edge, 1, 1, 1, 1));
+        yield return Label("DeliveryCaption", "DELIVERY", pad + 16, 552, 200, 24, 16, Muted, bold: true);
+        yield return Label("Cargo", "No active delivery", pad + 16, 576, inner - 32, 32, 24, Text, bold: true,
             text: Ta(port, "d.active ? d.cargo : 'No active delivery'", "'No active delivery'"));
-        yield return Label("Destination", "", dx + 16, 282, dw - 32, 30, 22, Muted, text: Ta(port, "d.dest ? 'to ' + d.dest : ''", "''"));
-        yield return Gauge("Progress", dx + 16, 320, dw - 32, 16, value: Ta(port, "d.active ? d.progress : 0", "0"), color: Accent);
-        yield return Label("Remaining", "", dx + 16, 342, dw - 32, 30, 22, Text,
+        yield return Label("Destination", "", pad + 16, 608, inner - 32, 28, 20, Muted, text: Ta(port, "d.dest ? 'to ' + d.dest : ''", "''"));
+        yield return Gauge("Progress", pad + 16, 642, inner - 32, 16, value: Ta(port, "d.active ? d.progress : 0", "0"), color: Accent);
+        yield return Label("Remaining", "", pad + 16, 664, inner - 32, 30, 20, Text,
             text: Ta(port, "d.left ? d.left + (d.eta ? '  ·  ETA ' + d.eta : '') : ''", "''"));
 
         // Warning (a grade ahead, or the last coaching call); offline notice.
         string hasAlert = Ta(port, "d.alert != ''", "false");
-        yield return Rect("AlertBox", dx, 392, dw, 70, "#FF3A1212", radius: 12, visible: hasAlert,
+        yield return Rect("AlertBox", pad, 716, inner, 70, "#FF3A1212", radius: 12, visible: hasAlert,
             fill: Ta(port, "d.alertLevel == 'bad' ? '#FF7F1D1D' : '#FF78350F'", "'#FF3A1212'"));
-        yield return Label("Alert", "", dx + 14, 392, dw - 28, 70, 20, Text, bold: true, wrap: true, visible: hasAlert, text: Ta(port, "d.alert", "''"));
+        yield return Label("Alert", "", pad + 14, 716, inner - 28, 70, 18, Text, bold: true, wrap: true, visible: hasAlert, text: Ta(port, "d.alert", "''"));
 
         string offline = Ta(port, "false", "true");
         yield return Rect("OfflineBox", 0, 0, w, h, Bg, visible: offline);
-        yield return Label("Offline", "", 60, 150, w - 120, 180, 26, Muted, align: 1, wrap: true, visible: offline,
+        yield return Label("Offline", "", 40, 250, w - 80, 300, 24, Muted, align: 1, wrap: true, visible: offline,
             text: $"'Waiting for TruckingAdvisor (localhost:{port}). Start it and switch on More > Twitch, Overlay, SimHub & Convoy > Serve the SimHub panel.'");
     }
 

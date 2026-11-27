@@ -152,7 +152,7 @@ public sealed class SimHubTests
     }
 
     [Fact]
-    public void Triple_RoundsAreSquare_TheCentreIsA4InchPanel_AndAllButTheCentreWorkWithoutTheApp()
+    public void Triple_RoundsAreSquare_TheCentreIsAPortrait4InchPanel_AndAllReadTheCompactState()
     {
         Assert.Equal(new[] { "TruckingAdvisor Triple Left", "TruckingAdvisor Triple Center", "TruckingAdvisor Triple Right" },
             SimHubDashboard.Triple.Select(l => l.Name));
@@ -160,7 +160,7 @@ public sealed class SimHubTests
         Assert.Equal(TriplePlan.Dashboards, SimHubDashboard.Triple.Select(l => l.Name));
         Assert.Equal(SimHubDashboard.TripleLeft.Width, SimHubDashboard.TripleLeft.Height);
         Assert.Equal(SimHubDashboard.TripleRight.Width, SimHubDashboard.TripleRight.Height);
-        Assert.Equal((800, 480), (SimHubDashboard.TripleCenter.Width, SimHubDashboard.TripleCenter.Height));
+        Assert.Equal((480, 800), (SimHubDashboard.TripleCenter.Width, SimHubDashboard.TripleCenter.Height)); // portrait
 
         foreach (var layout in SimHubDashboard.Triple)
         {

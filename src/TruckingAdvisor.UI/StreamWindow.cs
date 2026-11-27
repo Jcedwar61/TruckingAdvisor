@@ -161,7 +161,7 @@ public sealed class StreamWindow : Window
         body.Children.Add(simRow);
         body.Children.Add(Note(
             "Triple-screen DDU (two round screens either side of a 4\" screen, such as the DaSIMSIMMA triple on VoCore screens): " +
-            "a set of three dashboards. Left round: speed ring, speed limit, cruise and your driver score. Centre: the CB radio " +
+            "a set of three dashboards. Left round: speed ring, speed limit, cruise and your driver score. Centre, portrait: the CB radio " +
             "(channel and the last line heard), driver score, delivery progress and warnings. Right round: RPM and fuel rings, " +
             "gear, park brake and air warnings, and your CB channel. With the switch below on, TruckingAdvisor's SimHub plugin shows " +
             "them on your screens whenever TruckingAdvisor is running and puts your own dashboards back a few seconds after it closes."));
