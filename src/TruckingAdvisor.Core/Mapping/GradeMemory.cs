@@ -21,16 +21,22 @@ public sealed class GradeMemory
 
     /// <summary>Key "x:z" of grid cells.</summary>
     public Dictionary<string, Cell> Cells { get; set; } = new();
+    /// <summary>Record runs on the telemetry thread while Ahead and Save may run elsewhere.</summary>
+    private readonly object _sync = new();
 
     private static string Key(double x, double z) => $"{(int)Math.Floor(x / CellSize)}:{(int)Math.Floor(z / CellSize)}";
 
     /// <summary>Call while moving with the measured grade and compass heading (0 = north, 90 = east).</summary>
     public void Record(double x, double z, float gradePercent, float headingDegrees, float speedMph)
     {
-        if (speedMph < 10 || gradePercent > RecordAtOrBelow || Cells.Count >= MaxCells) return;
+        if (speedMph < 10 || gradePercent > RecordAtOrBelow) return;
         string key = Key(x, z);
-        if (!Cells.TryGetValue(key, out var c) || gradePercent < c.Grade)
-            Cells[key] = new Cell { Grade = gradePercent, Heading = headingDegrees };
+        lock (_sync)
+        {
+            if (Cells.Count >= MaxCells) return;
+            if (!Cells.TryGetValue(key, out var c) || gradePercent < c.Grade)
+                Cells[key] = new Cell { Grade = gradePercent, Heading = headingDegrees };
+        }
     }
 
     /// <summary>
@@ -39,6 +45,11 @@ public sealed class GradeMemory
     /// SCS world: +X is east, -Z is north.
     /// </summary>
     public (float Grade, double Distance)? Ahead(double x, double z, float headingDegrees)
+    {
+        lock (_sync) return AheadCore(x, z, headingDegrees);
+    }
+
+    private (float Grade, double Distance)? AheadCore(double x, double z, float headingDegrees)
     {
         if (Cells.Count == 0) return null;
         double rad = headingDegrees * Math.PI / 180.0;
@@ -70,7 +81,9 @@ public sealed class GradeMemory
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this));
+            string json;
+            lock (_sync) json = JsonSerializer.Serialize(this); // not while Record is adding cells
+            File.WriteAllText(path, json);
         }
         catch { /* best effort */ }
     }

@@ -681,17 +681,45 @@ public partial class MainWindow : Window
         sb.AppendLine($"Controllers: {string.Join(", ", _controllers?.DeviceNames ?? Array.Empty<string>())}");
         sb.AppendLine($"Voices: {_aiSettings.VoiceEngine}; radio {_cbRadio.CurrentState} on channel {_cbRadio.ActiveChannel}; AI replies {(_cbRadio.AiAvailable ? "available" : "not available (built-in replies)")}");
         var st = _aiSettings.Stream;
-        sb.AppendLine($"Twitch: {_streamHub.TwitchStatus} Cooldowns {st.GlobalCooldownSeconds} s / {st.UserCooldownSeconds} s per viewer, subs only {st.SubscribersOnly}, read aloud {st.ReadViewerMessageAloud}");
-        sb.AppendLine($"Overlay: {_streamHub.OverlayStatus} SimHub: {_streamHub.SimHubStatus} Convoy: {_streamHub.ConvoyStatus}");
+        sb.AppendLine(RedactViewers($"Twitch: {_streamHub.TwitchStatus} Cooldowns {st.GlobalCooldownSeconds} s / {st.UserCooldownSeconds} s per viewer, subs only {st.SubscribersOnly}, read aloud {st.ReadViewerMessageAloud}"));
+        sb.AppendLine(RedactViewers($"Overlay: {_streamHub.OverlayStatus} SimHub: {_streamHub.SimHubStatus} Convoy: {_streamHub.ConvoyStatus}"));
         sb.AppendLine();
-        sb.AppendLine("Recent log:");
-        foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(line);
+        sb.AppendLine("Recent log (viewer, caller and convoy names and chat text removed):");
+        foreach (var line in TruckingAdvisor.Shared.Diagnostics.AppLog.Tail(80)) sb.AppendLine(RedactViewers(line));
         try
         {
             Clipboard.SetText(TruckingAdvisor.Shared.Diagnostics.AppLog.Scrub(sb.ToString()));
             ShowNotice("Diagnostics copied to the clipboard (no keys, user name or personal paths). Paste them into a bug report.");
         }
         catch (Exception ex) { ShowNotice($"Couldn't copy diagnostics: {ex.Message}"); }
+    }
+
+    private static readonly (System.Text.RegularExpressions.Regex Pattern, string Replacement)[] ViewerRedactions =
+    {
+        // Chat text (viewer calls put on the air, read-aloud lines).
+        (new(@"""[^""\r\n]*"""), "\"<chat text>\""),
+        // Twitch viewers in the stream log.
+        (new(@"(Stream: ).+? (redeemed a Channel Points reward|is on the air|was answered on the radio)"), "$1<viewer> $2"),
+        (new(@"(Stream: Ignored ).+?: "), "$1<viewer>: "),
+        (new(@"(Couldn't put ).+?( on the air)"), "$1<caller>$2"),
+        // Callers (viewers or convoy drivers) in the radio log.
+        (new(@"(caller ).+?( not answered:| on channel )"), "$1<caller>$2"),
+        // The streamer's own channel name.
+        (new(@"(Twitch chat[^#\r\n]*#)\S+"), "$1<channel>"),
+        // Convoy members: keep only how many.
+        (new(@"In the convoy with (?<names>.+?)\. (?<who>This|Another) PC"), "In the convoy with <names>. ${who} PC"),
+        (new(@"(Stream: |Convoy: ).+? (joined|left) the convoy"), "$1<driver> $2 the convoy"),
+        (new(@"In the convoy as .+?\. Waiting"), "In the convoy as <me>. Waiting"),
+    };
+
+    /// <summary>Removes Twitch viewer names, chat text and convoy member names from a diagnostics line; keeps the rest.</summary>
+    private static string RedactViewers(string line)
+    {
+        // Count convoy members before their names are removed.
+        var convoy = System.Text.RegularExpressions.Regex.Match(line, @"In the convoy with (.+?)\. (?:This|Another) PC");
+        int members = convoy.Success ? convoy.Groups[1].Value.Split(", ").Length : 0;
+        foreach (var (pattern, replacement) in ViewerRedactions) line = pattern.Replace(line, replacement);
+        return convoy.Success ? line.Replace("<names>", $"{members} other driver(s)") : line;
     }
 
     private void BtnGuide_Click(object sender, RoutedEventArgs e) => GuideWindow.ShowGuide(this, _bindings);
@@ -843,9 +871,21 @@ public partial class MainWindow : Window
         var release = GitHubPluginInstallerService.RenCloudPlugin;
         BtnPlugin.IsEnabled = false;
         BtnPlugin.Content = "Searching drives...";
-        var games = (await Task.Run(() => _pluginInstaller.FindGames(_aiSettings.GameFolders))).ToList();
-        BtnPlugin.IsEnabled = true;
-        BtnPlugin.Content = "Install Telemetry Plugin";
+        List<GameInstall> games;
+        try
+        {
+            games = (await Task.Run(() => _pluginInstaller.FindGames(_aiSettings.GameFolders))).ToList();
+        }
+        catch (Exception ex)
+        {
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Error("Game search failed", ex);
+            games = new List<GameInstall>(); // still offer to pick the game folder by hand
+        }
+        finally
+        {
+            BtnPlugin.IsEnabled = true;
+            BtnPlugin.Content = "Install Telemetry Plugin";
+        }
 
         // Found nothing, or the player wants a different copy: let them pick the folder.
         string found = games.Count > 0
@@ -1087,16 +1127,18 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        InstallUpdateOnExit();
-        // Leaves the convoy and closes the overlay; run off the UI thread so it can't wait on itself.
-        _simHubTimer.Stop();
-        try { Task.Run(() => _streamHub.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(4)); } catch { }
+        // The keyboard hook goes first: nothing below may keep the system's keystrokes waiting on this app.
         _keyboardHook.Dispose();
+        InstallUpdateOnExit();
+        _simHubTimer.Stop();
+        // Leaves the convoy and closes the overlay; run off the UI thread so it can't wait on itself.
+        try { Task.Run(() => _streamHub.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(4)); } catch { }
         _controllers?.Dispose();
         _mic.Dispose();
         _whisper.Dispose();
-        _viewModel.Dispose();
+        // Stop telemetry before the view model saves the map memories, so nothing is learned mid-save.
         _telemetry.Dispose();
+        _viewModel.Dispose();
         _audio.Dispose();
         _channelBar?.Close();
         _overlay?.Close();

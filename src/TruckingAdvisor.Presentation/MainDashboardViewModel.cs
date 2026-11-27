@@ -201,7 +201,10 @@ public sealed partial class MainDashboardViewModel : INotifyPropertyChanged, IDi
     {
         ApplyUnits(snapshot.GameId);
         if (snapshot.IsDemoData) SeedDemoHistoryOnce();
-        _analyzer.EvaluateSnapshot(snapshot, _previous);
+        // A disconnect publishes a mostly empty snapshot: nothing to coach, and the speed change across
+        // the gap (live -> empty -> live) is not acceleration or braking.
+        bool hasData = snapshot.IsLive || snapshot.IsDemoData;
+        if (hasData) _analyzer.EvaluateSnapshot(snapshot, _previous is { } p && (p.IsLive || p.IsDemoData) ? p : null);
         if (snapshot.IsLive || snapshot.IsDemoData) World.Roads.Record(snapshot.WorldX, snapshot.WorldZ, !snapshot.IsPaused && snapshot.SpeedMph > 2);
         _gameEvents.Update(snapshot); // before the trip tracker, so a fine in the last frame still lands on the trip
         _trips.Update(snapshot);

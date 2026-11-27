@@ -28,6 +28,10 @@ public sealed class TripTracker
     /// <summary>How long to wait for the delivered/cancelled flag after the job disappears.</summary>
     public static readonly TimeSpan EndGracePeriod = TimeSpan.FromSeconds(10);
     private bool _rebaselineOnReconnect;
+    /// <summary>The last live snapshot, kept across disconnects (unlike <see cref="_last"/>).</summary>
+    private AtsTelemetrySnapshot? _lastLive;
+    /// <summary>A gap shorter than this, with the game clock still moving forward, is a stall, not a restart.</summary>
+    public static readonly TimeSpan MaxStallGap = TimeSpan.FromSeconds(30);
     /// <summary>Set when an end flag flips; the trip closes on the next snapshot so the game's pay figures are in.</summary>
     private DeliveryState? _pendingFinal;
 
@@ -52,6 +56,25 @@ public sealed class TripTracker
 
         bool firstSnapshot = !_seenFirstSnapshot;
         _seenFirstSnapshot = true;
+
+        var previousLive = _lastLive;
+        _lastLive = s;
+        if (previousLive is not null && previousLive.GameId != s.GameId)
+        {
+            // Switched between ATS and ETS2: the other game's flags mean nothing for this trip, and its
+            // job can't be this one. Close the old trip unpaid (as when a job vanishes) and start over.
+            _last = null;
+            _rebaselineOnReconnect = false;
+            if (ActiveTrip is not null) Finish(s, DeliveryState.Cancelled);
+            if (s.JobActive) StartTrip(s, startedMidDelivery: true);
+            _last = s;
+            return;
+        }
+        else if (_rebaselineOnReconnect && previousLive is not null && IsSameGameSession(previousLive, s))
+        {
+            // Only a short stall (game hitch): the plugin kept its flags, so an event during the gap is real.
+            _rebaselineOnReconnect = false;
+        }
 
         if (ActiveTrip is null)
         {
@@ -172,6 +195,15 @@ public sealed class TripTracker
         StateChanged?.Invoke(this, DeliveryState.JobStarted);
         SetState(NextInProgressState(s));
     }
+
+    /// <summary>
+    /// True when <paramref name="after"/> comes from the same running game as <paramref name="before"/>
+    /// (same game, its clock didn't go back, and only a few seconds passed): a restart can't be that quick.
+    /// </summary>
+    public static bool IsSameGameSession(AtsTelemetrySnapshot before, AtsTelemetrySnapshot after) =>
+        before.GameId == after.GameId &&
+        after.SimulationTimeMicros >= before.SimulationTimeMicros &&
+        after.Timestamp - before.Timestamp is var gap && gap >= TimeSpan.Zero && gap < MaxStallGap;
 
     private static bool IsDifferentJob(DeliveryTripRecord t, AtsTelemetrySnapshot s) =>
         (!string.IsNullOrEmpty(t.Cargo) && !string.IsNullOrEmpty(s.CargoName) && !string.Equals(t.Cargo, s.CargoName, StringComparison.Ordinal)) ||

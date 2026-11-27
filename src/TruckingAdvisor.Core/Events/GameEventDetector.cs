@@ -59,6 +59,14 @@ public sealed class GameEventDetector
             return;
         }
         if (_last is null) { _last = s; return; }
+        if (_last.GameId != s.GameId)
+        {
+            // Switched between ATS and ETS2: the other game's flags are a new baseline, not events.
+            _pendingFine = _pendingToll = _pendingFerry = _pendingTrain = false;
+            _refuelGallons = 0;
+            _last = s;
+            return;
+        }
 
         if (_pendingFine) { _pendingFine = false; Raise(GameEventKind.Fine, s.FineAmount, s.FineOffence, 0, s); }
         if (_pendingToll) { _pendingToll = false; Raise(GameEventKind.Toll, s.TollAmount, "", 0, s); }
