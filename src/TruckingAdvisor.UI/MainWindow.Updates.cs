@@ -19,6 +19,8 @@ public partial class MainWindow
     private UpdateChecker? _updater;
     private DispatcherTimer? _updateTimer;
     private string? _readyInstaller;
+    /// <summary>The published SHA-256 <see cref="_readyInstaller"/> matched; checked again right before it runs.</summary>
+    private string? _readyInstallerSha256;
     private UpdateInfo? _readyUpdate;
     private bool _updateLaunched, _checkingUpdates;
 
@@ -61,8 +63,9 @@ public partial class MainWindow
                 return;
 
             if (manual) ShowNotice($"Downloading TruckingAdvisor {update.Version.ToString(3)}...");
-            string path = await _updater.DownloadAsync(update, UpdatesDir);
-            _readyInstaller = path;
+            var download = await _updater.DownloadVerifiedAsync(update, UpdatesDir);
+            _readyInstaller = download.Path;
+            _readyInstallerSha256 = download.Sha256;
             _readyUpdate = update;
             _viewModel.ShowUpdateReady(update.Version.ToString(3), _aiSettings.InstallUpdatesOnExit);
             if (manual) ShowNotice($"TruckingAdvisor {update.Version.ToString(3)} is downloaded and verified.");
@@ -97,6 +100,7 @@ public partial class MainWindow
         _aiSettings.SkippedUpdateVersion = _readyUpdate.Version.ToString(3);
         try { _aiSettings.Save(); } catch { }
         _readyInstaller = null;
+        _readyInstallerSha256 = null;
         _readyUpdate = null;
         _viewModel.HideUpdate();
         ShowNotice("Skipped this version. More > Check for updates installs it if you change your mind.");
@@ -108,13 +112,32 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo(_readyUpdate.ReleasePageUrl) { UseShellExecute = true }); } catch { }
     }
 
-    /// <summary>Starts the verified installer in silent update mode. It waits for this app to exit.</summary>
+    /// <summary>
+    /// Starts the verified installer in silent update mode. It waits for this app to exit. The file is hashed again
+    /// first (it may have been downloaded days ago) and held open, read-only for everyone else, until Windows has
+    /// started it, so what runs is exactly what was checked against the release's SHA256SUMS.txt.
+    /// </summary>
     private bool LaunchInstaller(bool relaunch)
     {
-        if (_readyInstaller is null || _updateLaunched || !File.Exists(_readyInstaller)) return false;
+        if (_readyInstaller is null || _readyInstallerSha256 is null || _updateLaunched) return false;
         try
         {
-            Process.Start(new ProcessStartInfo(_readyInstaller, relaunch ? "/S /UPDATE /RELAUNCH" : "/S /UPDATE") { UseShellExecute = false });
+            using var held = UpdateChecker.OpenVerifiedInstaller(_readyInstaller, _readyInstallerSha256);
+            if (held is null)
+            {
+                TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"Update installer {Path.GetFileName(_readyInstaller)} is missing or no longer matches its checksum; not started.");
+                _readyInstaller = null;
+                _readyInstallerSha256 = null;
+                _readyUpdate = null;
+                _viewModel.HideUpdate();
+                ShowNotice("The downloaded update changed on disk after it was checked, so it was deleted. It downloads again at the next check.");
+                return false;
+            }
+            var psi = new ProcessStartInfo(_readyInstaller) { UseShellExecute = false };
+            psi.ArgumentList.Add("/S");
+            psi.ArgumentList.Add("/UPDATE");
+            if (relaunch) psi.ArgumentList.Add("/RELAUNCH");
+            using (Process.Start(psi)) { }
             _updateLaunched = true;
             return true;
         }

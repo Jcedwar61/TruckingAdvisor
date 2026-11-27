@@ -16,16 +16,28 @@ permissions:
   contents: read
 
 jobs:
+  # Runs on every push and pull request, so it gets no write or signing permissions; the release job attests.
   build:
     runs-on: windows-latest
     permissions:
       contents: read
-      id-token: write       # only used for release attestation on tags
-      attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
       VERSION: 3.9.0
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check version (VERSION = app version; a version tag must be v<VERSION>)
+        id: version
+        shell: pwsh
+        run: |
+          $m = Select-String -Path src\TruckingAdvisor.UI\TruckingAdvisor.UI.csproj -Pattern '<Version>([^<]+)</Version>' | Select-Object -First 1
+          if (-not $m) { throw "No <Version> in src/TruckingAdvisor.UI/TruckingAdvisor.UI.csproj" }
+          $app = $m.Matches[0].Groups[1].Value
+          if ($app -ne $env:VERSION) { throw "VERSION ($env:VERSION) differs from the app's <Version> ($app)" }
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -cne "v$env:VERSION") { throw "Tag $env:GITHUB_REF_NAME does not match v$env:VERSION" }
+          "version=$env:VERSION" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -40,7 +52,7 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) { choco install nsis -y --no-progress }
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) { choco install nsis --version 3.10 -y --no-progress }
 
       - name: Build app and installer
         shell: pwsh
@@ -102,6 +114,7 @@ jobs:
           Start-Process "$dir\Uninstall.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 5   # the NSIS uninstaller finishes from a temp copy
           if (Test-Path "$dir\TruckingAdvisor.exe") { throw "Uninstaller left the app behind" }
+          if (Test-Path "$dir\runtimes") { Get-ChildItem "$dir\runtimes" -Recurse | Select-Object -ExpandProperty FullName; throw "Uninstaller left runtime files behind" }
 
       - name: Telemetry plugin checksum (pinned value must match the official release)
         shell: pwsh
@@ -115,9 +128,16 @@ jobs:
           Invoke-WebRequest $asset.browser_download_url -OutFile $file
           $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
           "$sha  $($asset.name)" | Set-Content "publish\screenshots\plugin-sha256.txt"
-          $pinned = (Select-String -Path src\TruckingAdvisor.Telemetry\GitHubPluginInstallerService.cs -Pattern 'ExpectedAssetSha256: "([0-9a-f]*)"').Matches[0].Groups[1].Value
+          $m = Select-String -Path src\TruckingAdvisor.Telemetry\GitHubPluginInstallerService.cs -Pattern 'ExpectedAssetSha256: "([0-9a-f]{64})"' | Select-Object -First 1
+          $pinned = if ($m) { $m.Matches[0].Groups[1].Value } else { "" }
+          if (-not $pinned) { throw "Could not read the pinned plugin checksum (ExpectedAssetSha256) from GitHubPluginInstallerService.cs" }
           Write-Host "Official asset $($asset.name): $sha (pinned: '$pinned')"
-          if ($pinned -and $pinned -ne $sha) { throw "Pinned plugin checksum does not match the official release asset" }
+          if ($pinned -ne $sha) { throw "Pinned plugin checksum does not match the official release asset" }
+          # Plugins/plugin_manifest.json documents the same pin; it must not drift from the code.
+          $entry = (Get-Content Plugins\plugin_manifest.json -Raw | ConvertFrom-Json).plugins | Where-Object { $_.id -eq 'scs-sdk-plugin' } | Select-Object -First 1
+          if (-not $entry) { throw "Plugins/plugin_manifest.json has no scs-sdk-plugin entry" }
+          if ($entry.sha256 -cne $pinned) { throw "Plugins/plugin_manifest.json sha256 ($($entry.sha256)) differs from the pinned checksum ($pinned)" }
+          if ($entry.releaseTag -cne 'V.1.12.1') { throw "Plugins/plugin_manifest.json releaseTag ($($entry.releaseTag)) differs from the pinned release V.1.12.1" }
 
       - name: Checksums
         shell: pwsh
@@ -140,28 +160,50 @@ jobs:
             publish/screenshots/*.png
             publish/screenshots/*.txt
 
-      - name: Attest build provenance (release tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: 'publish/TruckingAdvisor-Setup-*.exe'
-
-  # Publishes a GitHub Release with the installer when a version tag (v2.4.0, ...) is pushed,
-  # or when the workflow is run by hand with "release" ticked (then it creates the tag itself).
+  # Publishes a GitHub Release with the installer when a version tag v<VERSION> is pushed for a commit on main,
+  # or when the workflow is run by hand on main with "release" ticked (then it creates the tag itself).
+  # The app installs updates by itself, so nothing from another branch may ever become a release.
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write       # create the tag and the release
+      id-token: write       # build provenance attestation
+      attestations: write
     env:
       VERSION: 3.9.0
+      BUILD_VERSION: ${{ needs.build.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # main's history and the tags, for the checks below
       - uses: actions/download-artifact@v4
         with:
           name: TruckingAdvisor-Setup-win-x64
           path: dist
+      - name: Check what is being released
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+          [ "$BUILD_VERSION" = "$VERSION" ] || fail "VERSION differs between the build job ($BUILD_VERSION) and the release job ($VERSION)"
+          app=$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/TruckingAdvisor.UI/TruckingAdvisor.UI.csproj | head -n1)
+          [ "$app" = "$VERSION" ] || fail "VERSION ($VERSION) differs from the app's <Version> ($app)"
+          head=$(git rev-parse 'HEAD^{commit}')
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            [ "$GITHUB_REF_NAME" = "v$VERSION" ] || fail "Tag $GITHUB_REF_NAME does not match v$VERSION"
+          else
+            [ "$GITHUB_REF" = "refs/heads/main" ] || fail "Releases are only made from main (this run is on $GITHUB_REF)"
+            if existing=$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}"); then
+              [ "$existing" = "$head" ] || fail "Tag v$VERSION already exists on another commit ($existing)"
+            fi
+          fi
+          git merge-base --is-ancestor "$head" origin/main || fail "Commit $head is not on main; releases are only made from main"
+          [ -f "dist/TruckingAdvisor-Setup-$VERSION.exe" ] || fail "The build has no TruckingAdvisor-Setup-$VERSION.exe"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'dist/TruckingAdvisor-Setup-*.exe'
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -185,6 +227,8 @@ jobs:
           name: screenshots
           path: shots
       - name: Push to ci-screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cd shots
           git init -q -b ci-screenshots
@@ -193,4 +237,4 @@ jobs:
           echo "UI screenshots rendered by CI from commit ${GITHUB_SHA} (${GITHUB_REF_NAME}), demo data." > README.md
           git add -A
           git commit -q -m "Screenshots for ${GITHUB_SHA}"
-          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots

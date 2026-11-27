@@ -16,6 +16,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // The elevated half of "Install SimHub plugin" (SimHub in Program Files): write the plugin and exit with a
+        // code. No window, no log, no single-instance mutex (that would make a pending update wait for it).
+        if (e.Args.Length > 0 && string.Equals(e.Args[0], SimHubPluginInstaller.ElevatedInstallArg, StringComparison.Ordinal))
+        {
+            int code = SimHubPluginInstaller.RunElevatedInstall(e.Args[1..]);
+            Environment.Exit(code);
+            return;
+        }
+
         try { _running = new Mutex(false, @"Local\TruckingAdvisor.Running"); } catch { /* not critical */ }
         var dataDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TruckingAdvisor");
         TruckingAdvisor.Shared.Diagnostics.AppLog.Init(System.IO.Path.Combine(dataDir, "logs"));

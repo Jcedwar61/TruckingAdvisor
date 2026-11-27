@@ -16,6 +16,9 @@ public sealed record UpdateInfo(
     string ReleasePageUrl,
     string Notes);
 
+/// <summary>A downloaded installer and the published SHA-256 it matched.</summary>
+public sealed record VerifiedInstaller(string Path, string Sha256);
+
 /// <summary>
 /// Finds new versions on the project's GitHub Releases page and downloads the installer.
 /// Only installers that match the release's SHA256SUMS.txt are ever returned, and only over HTTPS
@@ -94,7 +97,14 @@ public sealed class UpdateChecker
     /// Downloads the installer into <paramref name="folder"/> and checks its SHA-256 against SHA256SUMS.txt.
     /// Reuses an earlier verified download. Throws if the file doesn't match.
     /// </summary>
-    public async Task<string> DownloadAsync(UpdateInfo update, string folder, IProgress<double>? progress = null, CancellationToken ct = default)
+    public async Task<string> DownloadAsync(UpdateInfo update, string folder, IProgress<double>? progress = null, CancellationToken ct = default) =>
+        (await DownloadVerifiedAsync(update, folder, progress, ct).ConfigureAwait(false)).Path;
+
+    /// <summary>
+    /// Like <see cref="DownloadAsync"/>, and also returns the published SHA-256 the file was checked against, so it
+    /// can be checked again right before it is run (<see cref="OpenVerifiedInstaller"/>).
+    /// </summary>
+    public async Task<VerifiedInstaller> DownloadVerifiedAsync(UpdateInfo update, string folder, IProgress<double>? progress = null, CancellationToken ct = default)
     {
         Directory.CreateDirectory(folder);
         string sums = await _http.GetStringAsync(update.ChecksumsUrl, ct).ConfigureAwait(false);
@@ -106,7 +116,7 @@ public sealed class UpdateChecker
         if (File.Exists(target) && string.Equals(await HashFileAsync(target, ct).ConfigureAwait(false), expected, StringComparison.OrdinalIgnoreCase))
         {
             progress?.Report(1);
-            return target;
+            return new VerifiedInstaller(target, expected);
         }
 
         string partial = target + ".partial";
@@ -141,7 +151,36 @@ public sealed class UpdateChecker
         // Old installers aren't needed any more.
         foreach (var old in Directory.GetFiles(folder, "TruckingAdvisor-Setup-*.exe*"))
             if (!string.Equals(old, target, StringComparison.OrdinalIgnoreCase)) TryDelete(old);
-        return target;
+        return new VerifiedInstaller(target, expected);
+    }
+
+    /// <summary>
+    /// Re-checks a downloaded installer right before it is started. The file may have been downloaded days ago, so
+    /// it is opened so that nothing else can change, rename or delete it (read sharing only) and hashed through that
+    /// same handle. Keep the returned stream open until the installer process has started, then dispose it.
+    /// Returns null when the file is gone, or deletes it and returns null when it no longer matches.
+    /// </summary>
+    public static FileStream? OpenVerifiedInstaller(string path, string expectedSha256)
+    {
+        FileStream fs;
+        try { fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        bool ok = false;
+        try
+        {
+            ok = expectedSha256.Length == 64 &&
+                 string.Equals(Convert.ToHexString(SHA256.HashData(fs)), expectedSha256, StringComparison.OrdinalIgnoreCase);
+            return ok ? fs : null;
+        }
+        finally
+        {
+            if (!ok)
+            {
+                fs.Dispose();
+                TryDelete(path);
+            }
+        }
     }
 
     /// <summary>"&lt;sha256&gt;  &lt;file&gt;" lines (sha256sum format; '*' binary marker and a BOM are allowed).</summary>

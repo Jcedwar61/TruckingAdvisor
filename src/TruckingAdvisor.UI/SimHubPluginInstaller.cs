@@ -108,26 +108,82 @@ public static class SimHubPluginInstaller
         }
         catch (UnauthorizedAccessException)
         {
-            // Program Files: copy with administrator rights.
-            var psi = new ProcessStartInfo("cmd.exe",
-                $"/c copy /y \"{stagedPlugin}\" \"{simHubDir}\\\" && copy /y \"{stagedConfig}\" \"{simHubDir}\\\"")
+            // Program Files: this app runs itself with administrator rights (one UAC prompt) to write the plugin from
+            // its own copy (see RunElevatedInstall), never from a file another program could swap in the meantime.
+            string? self = Environment.ProcessPath;
+            if (self is null) return "Windows didn't start the copy.";
+            var psi = new ProcessStartInfo(self)
             {
                 UseShellExecute = true,
                 Verb = "runas",
                 WindowStyle = ProcessWindowStyle.Hidden
             };
+            psi.ArgumentList.Add(ElevatedInstallArg);
+            psi.ArgumentList.Add(simHubDir);
+            psi.ArgumentList.Add(port.ToString(System.Globalization.CultureInfo.InvariantCulture));
             try
             {
                 using var p = Process.Start(psi);
                 if (p is null) return "Windows didn't start the copy.";
                 await p.WaitForExitAsync();
                 return p.ExitCode == 0 && IsInstalled(simHubDir, port) ? null
-                    : IsSimHubRunning() ? "SimHub is using the plugin. Close SimHub, then try again." : $"The copy failed (code {p.ExitCode}).";
+                    : IsSimHubRunning() ? "SimHub is using the plugin. Close SimHub, then try again."
+                    : p.ExitCode == ExitNotSimHub ? "That folder doesn't hold SimHub (no SimHubWPF.exe), so nothing was copied."
+                    : $"The copy failed (code {p.ExitCode}).";
             }
             catch (System.ComponentModel.Win32Exception)
             {
                 return "Administrator permission was refused, so the plugin couldn't be copied into SimHub's folder.";
             }
+        }
+    }
+
+    /// <summary>
+    /// Command line of the elevated step: <c>TruckingAdvisor.exe --install-simhub-plugin "&lt;SimHub folder&gt;" &lt;port&gt;</c>.
+    /// Handled by <see cref="App"/> before any window opens.
+    /// </summary>
+    public const string ElevatedInstallArg = "--install-simhub-plugin";
+    public const int ExitOk = 0, ExitBadArguments = 2, ExitNotSimHub = 3, ExitInUse = 4, ExitFailed = 5;
+
+    /// <summary>
+    /// The elevated step (runs with administrator rights, no UI): writes the plugin carried inside this exe and its
+    /// config into SimHub's folder. The folder has to be a full path that holds SimHubWPF.exe. Each file is written
+    /// next to its final name and then moved into place, so SimHub never sees half a file.
+    /// </summary>
+    /// <param name="args">The arguments after <see cref="ElevatedInstallArg"/>: the SimHub folder and the port.</param>
+    /// <returns>The process exit code (<see cref="ExitOk"/> when both files are in place).</returns>
+    public static int RunElevatedInstall(IReadOnlyList<string> args)
+    {
+        if (args.Count != 2 || !int.TryParse(args[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int port)
+            || port is < 1 or > 65535 || string.IsNullOrWhiteSpace(args[0]) || !Path.IsPathFullyQualified(args[0]))
+            return ExitBadArguments;
+        string dir = Path.GetFullPath(args[0]);
+        try
+        {
+            if (!File.Exists(Path.Combine(dir, SimHubExe))) return ExitNotSimHub;
+            WriteAtomically(Path.Combine(dir, PluginFile), PluginBytes());
+            WriteAtomically(Path.Combine(dir, ConfigFile), System.Text.Encoding.UTF8.GetBytes(Config(port)));
+            return ExitOk;
+        }
+        catch (IOException) { return ExitInUse; }
+        catch { return ExitFailed; }
+    }
+
+    private static void WriteAtomically(string path, byte[] bytes)
+    {
+        string temp = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(bytes);
+                fs.Flush(flushToDisk: true);
+            }
+            File.Move(temp, path, overwrite: true);
+        }
+        finally
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch { }
         }
     }
 }

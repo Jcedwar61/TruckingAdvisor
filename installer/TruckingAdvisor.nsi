@@ -101,7 +101,10 @@ Function .onInit
       System::Call 'kernel32::CloseHandle(p R3)'
       IntOp $R2 $R2 + 1
       ${If} $R2 >= 120
-        ${ExitDo}
+        ; Still running after 60 s: installing now would hit the locked exe and leave a half-updated app.
+        ; Give up without touching anything (and without relaunching); the app offers the update again.
+        SetErrorLevel 5
+        Quit
       ${EndIf}
       Sleep 500
     ${Loop}
@@ -181,7 +184,15 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\SECURITY.md"
-  RMDir /r "$INSTDIR\runtimes"
+  ; Only the runtime files this build installed, never a whole folder: the install folder may be one the
+  ; player chose. build-installer.ps1 lists them from the publish output (RUNTIMES_UNINSTALL).
+!ifdef RUNTIMES_UNINSTALL
+  !include "${RUNTIMES_UNINSTALL}"
+!else
+  Delete "$INSTDIR\runtimes\win-x64\*.dll"
+!endif
+  RMDir "$INSTDIR\runtimes\win-x64"
+  RMDir "$INSTDIR\runtimes"
   Delete "$INSTDIR\D3DCompiler_47_cor3.dll"
   Delete "$INSTDIR\PenImc_cor3.dll"
   Delete "$INSTDIR\PresentationNative_cor3.dll"
