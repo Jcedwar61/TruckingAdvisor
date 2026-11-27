@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Security;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace TruckingAdvisor.EdgeTts;
 
@@ -26,6 +27,10 @@ public sealed class EdgeTtsClient
     /// </summary>
     public async Task<byte[]> SynthesizeMp3Async(string text, string voice, string rate = "+0%", string pitch = "+0Hz", CancellationToken ct = default)
     {
+        // Everything but the text goes into SSML attributes: only well-formed values are accepted (no markup injection).
+        if (!IsValidVoice(voice)) throw new EdgeTtsException("That isn't a voice name (expected e.g. en-US-ChristopherNeural).");
+        if (!IsValidProsody(rate, "%")) rate = "+0%";
+        if (!IsValidProsody(pitch, "Hz")) pitch = "+0Hz";
         try
         {
             return await AttemptAsync(text, voice, rate, pitch, ct).ConfigureAwait(false);
@@ -33,9 +38,29 @@ public sealed class EdgeTtsClient
         catch (EdgeTtsException ex) when (ex.ServerDate is { } serverDate)
         {
             // 403 because the PC clock is off: correct for the server's clock and try once more.
-            EdgeTtsToken.ClockSkewSeconds += (serverDate - DateTimeOffset.UtcNow).TotalSeconds;
+            EdgeTtsToken.AdjustClockSkew(serverDate);
             return await AttemptAsync(text, voice, rate, pitch, ct).ConfigureAwait(false);
         }
+    }
+
+    private static readonly Regex VoicePattern = new(@"^[A-Za-z]{2,3}-[A-Za-z]{2,4}(-[A-Za-z]{2,10})?-[A-Za-z]+Neural$", RegexOptions.CultureInvariant);
+    private static readonly Regex ProsodyPattern = new(@"^[+-][0-9]{1,3}(Hz|%)$", RegexOptions.CultureInvariant);
+
+    /// <summary>A Microsoft neural voice name such as "en-US-ChristopherNeural" (or "zh-CN-liaoning-XiaobeiNeural").</summary>
+    public static bool IsValidVoice(string? voice) => voice is not null && VoicePattern.IsMatch(voice);
+
+    /// <summary>A prosody value such as "+0%" or "-6Hz" with the given unit ("%" or "Hz").</summary>
+    public static bool IsValidProsody(string? value, string unit) =>
+        value is not null && ProsodyPattern.IsMatch(value) && value.EndsWith(unit, StringComparison.Ordinal);
+
+    /// <summary>The SSML request. Voice, rate and pitch must be well-formed (else ArgumentException); the text is escaped.</summary>
+    public static string BuildSsml(string text, string voice, string rate, string pitch)
+    {
+        if (!IsValidVoice(voice)) throw new ArgumentException("Not a voice name.", nameof(voice));
+        if (!IsValidProsody(rate, "%")) throw new ArgumentException("Not a rate.", nameof(rate));
+        if (!IsValidProsody(pitch, "Hz")) throw new ArgumentException("Not a pitch.", nameof(pitch));
+        return "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
+               $"<voice name='{voice}'><prosody pitch='{pitch}' rate='{rate}' volume='+0%'>{Escape(Clean(text))}</prosody></voice></speak>";
     }
 
     private async Task<byte[]> AttemptAsync(string text, string voice, string rate, string pitch, CancellationToken ct)
@@ -78,8 +103,7 @@ public sealed class EdgeTtsClient
             "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"true\",\"wordBoundaryEnabled\":\"false\"}," +
             "\"outputFormat\":\"audio-24khz-96kbitrate-mono-mp3\"}}}}\r\n", token).ConfigureAwait(false);
 
-        string ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
-                      $"<voice name='{voice}'><prosody pitch='{pitch}' rate='{rate}' volume='+0%'>{Escape(Clean(text))}</prosody></voice></speak>";
+        string ssml = BuildSsml(text, voice, rate, pitch);
         await SendTextAsync(ws,
             $"X-RequestId:{Guid.NewGuid():N}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:{Timestamp()}Z\r\nPath:ssml\r\n\r\n{ssml}", token).ConfigureAwait(false);
 

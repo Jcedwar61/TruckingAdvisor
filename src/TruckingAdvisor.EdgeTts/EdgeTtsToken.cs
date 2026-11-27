@@ -50,8 +50,34 @@ public static class EdgeTtsToken
         return c;
     }
 
+    // Stored as the bits of a double so reads and updates are atomic across threads (several voices may retry at once).
+    private static long _clockSkewBits;
+
     /// <summary>Clock correction (seconds) learned from the server's Date header after a 403.</summary>
-    public static double ClockSkewSeconds { get; set; }
+    public static double ClockSkewSeconds
+    {
+        get => BitConverter.Int64BitsToDouble(Interlocked.Read(ref _clockSkewBits));
+        set => Interlocked.Exchange(ref _clockSkewBits, BitConverter.DoubleToInt64Bits(value));
+    }
+
+    /// <summary>
+    /// Learns the clock correction from a server Date header: adds only the residual error left after the current
+    /// correction, server - (now + skew), like edge-tts does, so repeated 403s converge instead of compounding.
+    /// Returns the new correction.
+    /// </summary>
+    public static double AdjustClockSkew(DateTimeOffset serverDate, DateTimeOffset? now = null)
+    {
+        var local = now ?? DateTimeOffset.UtcNow;
+        while (true)
+        {
+            long oldBits = Interlocked.Read(ref _clockSkewBits);
+            double old = BitConverter.Int64BitsToDouble(oldBits);
+            double residual = (serverDate - local).TotalSeconds - old;
+            double updated = old + residual;
+            if (Interlocked.CompareExchange(ref _clockSkewBits, BitConverter.DoubleToInt64Bits(updated), oldBits) == oldBits)
+                return updated;
+        }
+    }
 
     /// <summary>The Sec-MS-GEC value for now (or for a given Unix time, for tests).</summary>
     public static string Generate(double? unixTime = null)
