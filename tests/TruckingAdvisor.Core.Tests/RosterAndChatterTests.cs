@@ -191,6 +191,31 @@ public sealed class RosterAndChatterTests
         Assert.NotEqual(global::TruckingAdvisor.Audio.Local.LocalVoiceModel.Repository,
             global::TruckingAdvisor.Audio.Local.KokoroVoiceModel.Repository);
     }
+
+    [Fact]
+    public void EveryModelDownload_IsPinnedToACommit_NotResolveMain()
+    {
+        var pinned = new System.Text.RegularExpressions.Regex(@"^https://huggingface\.co/[^/]+/[^/]+/resolve/[0-9a-f]{40}/[^/]+$");
+        var urls = new List<string>();
+        foreach (var file in global::TruckingAdvisor.Audio.Local.LocalVoiceModel.Files)
+        {
+            Assert.Equal(global::TruckingAdvisor.Audio.Local.LocalVoiceModel.Revision, file.Revision);
+            urls.Add(file.Url);
+        }
+        foreach (var file in global::TruckingAdvisor.Audio.Local.KokoroVoiceModel.Files)
+        {
+            Assert.Equal(global::TruckingAdvisor.Audio.Local.KokoroVoiceModel.Revision, file.Revision);
+            urls.Add(file.Url);
+        }
+        urls.Add(global::TruckingAdvisor.Core.Speech.WhisperModelInfo.Accurate.Url);
+        urls.Add(global::TruckingAdvisor.Core.Speech.WhisperModelInfo.Fast.Url);
+
+        foreach (var url in urls)
+        {
+            Assert.DoesNotContain("/resolve/main/", url);
+            Assert.Matches(pinned, url);
+        }
+    }
 }
 
 /// <summary>

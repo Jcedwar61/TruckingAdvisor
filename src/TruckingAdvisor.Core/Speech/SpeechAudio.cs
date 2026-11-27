@@ -175,9 +175,12 @@ public static class SpeechText
 /// <summary>Local Whisper models (whisper.cpp ggml format, English-only, quantized).</summary>
 public sealed record WhisperModelInfo(string Id, string Label, string FileName, long ApproxBytes, string Sha256)
 {
-    public string Url => $"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{FileName}";
+    /// <summary>The huggingface.co/ggerganov/whisper.cpp commit the checksums below were verified at.</summary>
+    public const string Revision = "5359861c739e955e79d9a303bcbc70fb988958b1";
 
-    // Checksums of the official files (computed by CI from huggingface.co/ggerganov/whisper.cpp).
+    public string Url => $"https://huggingface.co/ggerganov/whisper.cpp/resolve/{Revision}/{FileName}";
+
+    // Checksums of the official files at Revision (computed by CI from huggingface.co/ggerganov/whisper.cpp).
     public static readonly WhisperModelInfo Accurate = new("small.en", "Accurate (small.en, ~180 MB, slower)", "ggml-small.en-q5_1.bin", 190_000_000,
         "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30");
     public static readonly WhisperModelInfo Fast = new("base.en", "Fast (base.en, ~60 MB)", "ggml-base.en-q5_1.bin", 60_000_000,
