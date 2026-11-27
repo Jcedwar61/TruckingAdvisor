@@ -14,7 +14,10 @@ namespace TruckingAdvisor.Telemetry;
 /// - Live data only. Demo data is produced only when <c>enableDemoMode</c> is true, and every demo
 ///   snapshot is flagged with <see cref="AtsTelemetrySnapshot.IsDemoData"/>.
 /// - Refuses to use the data if the plugin layout revision is not the one the offsets were built for.
-/// - Treats the map as stale when the game clock stops advancing while not paused (game crashed).
+/// - Treats the map as stale when the game clock stops advancing while not paused (game crashed),
+///   or while paused once the game process is gone.
+/// - When the data stops being live it publishes a mostly empty snapshot (state not live, game id kept)
+///   once on the change and then once a second, so consumers notice the disconnect.
 /// - Events fire on a background thread; UI code must marshal to its own thread.
 /// </summary>
 public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
@@ -22,10 +25,20 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
     public const string DefaultMapName = ScsTelemetryLayout.MapName;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(3);
+    /// <summary>While not live, a "still disconnected" snapshot is published this often.</summary>
+    public static readonly TimeSpan NotLiveRepublish = TimeSpan.FromSeconds(1);
+    /// <summary>While paused with a frozen clock, how often to check that the game is still running.</summary>
+    private static readonly TimeSpan ProcessCheckInterval = TimeSpan.FromSeconds(5);
+    private static readonly string[] GameProcessNames = { "amtrucks", "eurotrucks2" };
+    private const int StableCopyAttempts = 4;
+    /// <summary>After this many polls in a row without a stable copy, use the last copy anyway.</summary>
+    private const int MaxSkippedPolls = 20;
 
     private readonly string _mapName;
     private readonly bool _enableDemoMode;
     private readonly byte[] _buffer = new byte[ScsTelemetryLayout.RequiredBytes];
+    private readonly byte[] _check = new byte[ScsTelemetryLayout.RequiredBytes];
+    private int _skippedPolls;
     private CancellationTokenSource? _cts;
     private Task? _pollingTask;
     private MemoryMappedFile? _mmf;
@@ -33,6 +46,10 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
     private AtsTelemetrySnapshot? _previousSnapshot;
     private ulong _lastSimTime;
     private DateTimeOffset _lastSimTimeChange = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastProgress = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastNotLivePublish = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastProcessCheck = DateTimeOffset.MinValue;
+    private bool _gameProcessRunning = true;
     private readonly DerivedTelemetryCalculator _derived = new();
     private DemoTelemetryGenerator? _demo;
     private readonly string? _replayFile;
@@ -99,12 +116,14 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
                 Publish(_derived.Enrich(snapshot, _previousSnapshot));
             }
             UpdateState(ConnectionState.Disconnected, "Replay finished");
+            PublishNotLive(DateTimeOffset.UtcNow, force: true);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             AppLog.Error("Replay failed", ex);
             UpdateState(ConnectionState.Disconnected, $"Could not replay the recording: {ex.Message}");
+            PublishNotLive(DateTimeOffset.UtcNow, force: true);
         }
     }
 
@@ -132,16 +151,24 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
         {
             try
             {
-                if (TryReadLive(out var live))
+                switch (ReadLive(out var live))
                 {
-                    Publish(_derived.Enrich(live, _previousSnapshot));
-                }
-                else if (_enableDemoMode)
-                {
-                    _demo ??= new DemoTelemetryGenerator();
-                    var demo = _demo.Next(DateTimeOffset.UtcNow);
-                    UpdateState(ConnectionState.SimulationFallback, "DEMO DATA - not from the game");
-                    Publish(_derived.Enrich(demo, _previousSnapshot));
+                    case LiveRead.Live:
+                        Publish(_derived.Enrich(live, _previousSnapshot));
+                        break;
+                    case LiveRead.Unstable:
+                        break; // the game was writing while we copied: no new data this time
+                    case LiveRead.NotLive when _enableDemoMode:
+                    {
+                        _demo ??= new DemoTelemetryGenerator();
+                        var demo = _demo.Next(DateTimeOffset.UtcNow);
+                        UpdateState(ConnectionState.SimulationFallback, "DEMO DATA - not from the game");
+                        Publish(_derived.Enrich(demo, _previousSnapshot));
+                        break;
+                    }
+                    default:
+                        PublishNotLive(DateTimeOffset.UtcNow);
+                        break;
                 }
 
                 await Task.Delay(PollInterval, ct);
@@ -154,12 +181,35 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
             {
                 CloseMap();
                 UpdateState(ConnectionState.Disconnected, $"Telemetry read error: {ex.Message}");
+                if (!_enableDemoMode) PublishNotLive(DateTimeOffset.UtcNow);
                 try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { break; }
             }
         }
     }
 
     private DateTimeOffset _lastHandlerErrorLogged = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Tells consumers the data is no longer live: a snapshot with only the time, the (non-live)
+    /// state and the last game id, so units and per-game memories don't flip. Published right away
+    /// when leaving live data, then at most once per <see cref="NotLiveRepublish"/>.
+    /// </summary>
+    private void PublishNotLive(DateTimeOffset now, bool force = false)
+    {
+        var previous = _previousSnapshot;
+        bool leavingLive = previous is null || previous.IsLive || previous.IsDemoData;
+        if (!force && !leavingLive && now - _lastNotLivePublish < NotLiveRepublish) return;
+        _lastNotLivePublish = now;
+        var state = CurrentState is ConnectionState.Connected or ConnectionState.GamePaused or ConnectionState.SimulationFallback
+            ? ConnectionState.Disconnected
+            : CurrentState;
+        Publish(new AtsTelemetrySnapshot
+        {
+            Timestamp = now,
+            ConnectionState = state,
+            GameId = previous?.GameId ?? 0
+        });
+    }
 
     private void Publish(AtsTelemetrySnapshot snapshot)
     {
@@ -183,30 +233,36 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
         }
     }
 
-    private bool TryReadLive(out AtsTelemetrySnapshot snapshot)
+    private enum LiveRead { Live, NotLive, Unstable }
+
+    private LiveRead ReadLive(out AtsTelemetrySnapshot snapshot)
     {
         snapshot = new AtsTelemetrySnapshot();
         if (!OperatingSystem.IsWindows())
         {
             UpdateState(ConnectionState.Disconnected, "Live telemetry needs Windows");
-            return false;
+            return LiveRead.NotLive;
         }
 
         if (_view is null && !TryOpenMap())
         {
             UpdateState(ConnectionState.Disconnected,
                 "ATS not running, or the scs-sdk-plugin is not installed in bin\\win_x64\\plugins");
-            return false;
+            return LiveRead.NotLive;
         }
 
-        // Copy the block, then confirm the game clock didn't change mid-copy (torn read).
-        for (int attempt = 0; attempt < 3; attempt++)
+        // Torn read guard: copy the block twice and only use it when both copies match.
+        bool stable = false;
+        for (int attempt = 0; attempt < StableCopyAttempts && !stable; attempt++)
         {
-            ulong before = _view!.ReadUInt64(ScsTelemetryLayout.Time);
-            _view.ReadArray(0, _buffer, 0, _buffer.Length);
-            ulong after = _view.ReadUInt64(ScsTelemetryLayout.Time);
-            if (before == after) break;
+            _view!.ReadArray(0, _buffer, 0, _buffer.Length);
+            _view.ReadArray(0, _check, 0, _check.Length);
+            stable = _buffer.AsSpan().SequenceEqual(_check);
         }
+        // Never stable: skip this poll (no new data, not a disconnect). If that keeps happening,
+        // use the last copy rather than starving every consumer.
+        if (!stable && ++_skippedPolls < MaxSkippedPolls) return LiveRead.Unstable;
+        _skippedPolls = 0;
 
         var now = DateTimeOffset.UtcNow;
         if (_recorder is { } recorder && ++_recordSkip % 4 == 0)
@@ -220,30 +276,66 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
                 break;
             case ParseResult.SdkInactive:
                 UpdateState(ConnectionState.Disconnected, "Plugin loaded but the game isn't sending data (menu or closed)");
-                return false;
+                return LiveRead.NotLive;
             case ParseResult.UnsupportedRevision:
                 UpdateState(ConnectionState.Disconnected,
                     $"Unsupported telemetry plugin revision {snapshot.PluginRevision} (need {ScsTelemetryLayout.SupportedRevision}, RenCloud V.1.12.x)");
-                return false;
+                return LiveRead.NotLive;
             default:
                 UpdateState(ConnectionState.Disconnected, "Telemetry block too small");
-                return false;
+                return LiveRead.NotLive;
         }
 
         // Stale detection: clock frozen while the game says it's running = game crashed or hung.
-        if (snapshot.SimulationTimeMicros != _lastSimTime || snapshot.IsPaused)
+        bool clockMoved = snapshot.SimulationTimeMicros != _lastSimTime;
+        if (clockMoved)
         {
             _lastSimTime = snapshot.SimulationTimeMicros;
             _lastSimTimeChange = now;
         }
-        else if (now - _lastSimTimeChange > StaleAfter)
+        if (clockMoved || snapshot.IsPaused)
+        {
+            _lastProgress = now;
+        }
+        else if (now - _lastProgress > StaleAfter)
         {
             UpdateState(ConnectionState.Disconnected, "Telemetry stopped updating (game closed or frozen)");
-            return false;
+            return LiveRead.NotLive;
+        }
+
+        // Paused stops the clock, so a game that crashed or was killed while paused would look paused
+        // forever. Once the clock has been still for a while, check (every few seconds) that it's running.
+        if (snapshot.IsPaused && now - _lastSimTimeChange > StaleAfter && !IsGameProcessRunning(now))
+        {
+            UpdateState(ConnectionState.Disconnected, "The game is no longer running (it closed while paused)");
+            return LiveRead.NotLive;
         }
 
         UpdateState(snapshot.ConnectionState, snapshot.IsPaused ? "Connected (game paused)" : "Connected to ATS");
-        return true;
+        return LiveRead.Live;
+    }
+
+    private bool IsGameProcessRunning(DateTimeOffset now)
+    {
+        if (now - _lastProcessCheck < ProcessCheckInterval) return _gameProcessRunning;
+        _lastProcessCheck = now;
+        try
+        {
+            bool found = false;
+            foreach (var name in GameProcessNames)
+            {
+                var processes = System.Diagnostics.Process.GetProcessesByName(name);
+                found |= processes.Length > 0;
+                foreach (var p in processes) p.Dispose();
+            }
+            _gameProcessRunning = found;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Couldn't check whether the game is running", ex);
+            _gameProcessRunning = true; // unknown: keep trusting the plugin
+        }
+        return _gameProcessRunning;
     }
 
     private bool TryOpenMap()
@@ -282,6 +374,9 @@ public sealed class AtsMemoryMappedTelemetryProvider : ITelemetryProvider
     public void Dispose()
     {
         StopRecording();
+        _cts?.Cancel();
+        // Let a poll that is mid-publish finish before the map closes (the poll never waits on the caller).
+        try { _pollingTask?.Wait(TimeSpan.FromSeconds(1)); } catch { }
         Stop();
         _cts?.Dispose();
     }

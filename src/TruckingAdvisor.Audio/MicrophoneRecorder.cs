@@ -30,6 +30,8 @@ public sealed class MicrophoneRecorder : IDisposable
     private DateTime _startedAt;
     private DateTime? _stopAt;
     private TaskCompletionSource<byte[]>? _done;
+    /// <summary>Counts recordings, so a stop's fallback timer only ends the recording it was meant for.</summary>
+    private long _generation;
 
     public int DeviceNumber { get; set; }
     /// <summary>Keep the device open between transmissions (pre-roll). Off = open only while talking.</summary>
@@ -69,6 +71,7 @@ public sealed class MicrophoneRecorder : IDisposable
             }
             _startedAt = DateTime.UtcNow;
             _stopAt = null;
+            _generation++;
             _done = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
@@ -81,14 +84,23 @@ public sealed class MicrophoneRecorder : IDisposable
             if (_recording is null || _done is null) return Task.FromResult(Array.Empty<byte>());
             _stopAt ??= DateTime.UtcNow + Tail;
             var task = _done.Task;
-            // If the device stalls, don't wait forever.
-            _ = Task.Delay(Tail + TimeSpan.FromMilliseconds(700)).ContinueWith(_ => { lock (_sync) Finish(); });
+            // If the device stalls, don't wait forever. Only this recording: a new one may have started
+            // by the time the timer fires, and that one must not be cut off.
+            long generation = _generation;
+            _ = Task.Delay(Tail + TimeSpan.FromMilliseconds(700)).ContinueWith(_ => FinishIfStill(generation), TaskScheduler.Default);
             return task;
         }
     }
 
+    /// <summary>Tests: record without opening a real microphone; audio comes from <see cref="Feed"/>.</summary>
+    internal bool WithoutDevice { get; init; }
+
+    /// <summary>Tests: delivers audio as if the device had recorded it.</summary>
+    internal void Feed(byte[] buffer, int bytes) => OnData(this, new WaveInEventArgs(buffer, bytes));
+
     private void OpenDevice()
     {
+        if (WithoutDevice) return;
         if (_waveIn is not null && _openDevice == DeviceNumber) return;
         CloseDevice();
         var waveIn = new WaveInEvent { DeviceNumber = DeviceNumber, WaveFormat = new WaveFormat(Rate, 16, 1), BufferMilliseconds = 40 };
@@ -146,6 +158,15 @@ public sealed class MicrophoneRecorder : IDisposable
                 }
                 _ringFill = Math.Min(_ring.Length, _ringFill + e.BytesRecorded);
             }
+        }
+    }
+
+    /// <summary>Finishes the recording only if it is still the one numbered <paramref name="generation"/>.</summary>
+    internal void FinishIfStill(long generation)
+    {
+        lock (_sync)
+        {
+            if (_recording is not null && _generation == generation) Finish();
         }
     }
 

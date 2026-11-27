@@ -56,11 +56,19 @@ public sealed class LocationMemory
     /// <summary>"in Denver, CO" / "near Denver, CO" / null when nothing learned is close.</summary>
     public string? Describe(double x, double z)
     {
-        if (Cities.Count == 0 || (x == 0 && z == 0)) return null;
-        var best = Cities.Values.Select(c => (City: c, D: Distance(c.X, c.Z, x, z))).MinBy(t => t.D);
-        if (best.D > NearRadius) return null;
-        string state = CityStates.StateFor(best.City.Name) is { } st ? $", {st}" : "";
-        return $"{(best.D <= InCityRadius ? "in" : "near")} {best.City.Name}{state}";
+        if (x == 0 && z == 0) return null;
+        string name;
+        double distance;
+        lock (_sync)
+        {
+            // Under the lock: Learn may add a city on another thread while this enumerates.
+            if (Cities.Count == 0) return null;
+            var best = Cities.Values.Select(c => (City: c, D: Distance(c.X, c.Z, x, z))).MinBy(t => t.D);
+            (name, distance) = (best.City.Name, best.D);
+        }
+        if (distance > NearRadius) return null;
+        string state = CityStates.StateFor(name) is { } st ? $", {st}" : "";
+        return $"{(distance <= InCityRadius ? "in" : "near")} {name}{state}";
     }
 
     private static double Distance(double x1, double z1, double x2, double z2) => Math.Sqrt((x1 - x2) * (x1 - x2) + (z1 - z2) * (z1 - z2));
@@ -76,7 +84,9 @@ public sealed class LocationMemory
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this));
+            string json;
+            lock (_sync) json = JsonSerializer.Serialize(this); // not while Learn is changing the cities
+            File.WriteAllText(path, json);
         }
         catch { /* best effort */ }
     }
