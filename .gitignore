@@ -8,3 +8,5 @@ obj/
 *.db-wal
 *.dpapi
 publish/
+# Hand-made SimHub install bundles (rebuilt from the source; never committed)
+TruckingAdvisor-SimHub*.zip
