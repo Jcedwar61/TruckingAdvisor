@@ -5,7 +5,7 @@ Fixes from a full security and reliability audit.
 
 ### Important
 - **Convoy needs a new code, and every PC on 3.9.1.** Convoy encryption is much stronger (protocol v2). Old 4-character codes could be guessed by anyone who saw the relay topic. Click **Generate code** (16 letters and digits), share it privately, and everyone saves it. Codes need at least 12 characters. Older versions can't hear 3.9.1 and vice versa, and PC clocks must be within 10 minutes of each other.
-- **The daily AI spend limit now works out of the box.** It used to count $0 unless you typed in prices yourself, so only the request limit applied. It now uses cautious built-in estimates for each OpenAI and DeepSeek model, including realtime voice audio, unless you enter your own prices. Every request (fallbacks, voices, transcription and realtime) is checked before it is sent, even when several go out at once.
+- **The daily AI spend limit now works out of the box.** It used to count $0 unless you typed in prices yourself, so only the request limit applied. It now uses cautious built-in estimates for each OpenAI and DeepSeek model, including realtime voice audio, unless you enter your own prices. The estimates were checked against OpenAI's and DeepSeek's published prices on 27 November 2026. The truckers' conversations no longer switch on their own to a premium model (or one too new to have a price yet) that would use up the day's limit early. Every request (fallbacks, voices, transcription and realtime) is checked before it is sent, even when several go out at once.
 - **Other websites can no longer read your live data.** The overlay and SimHub web server used to let any web page open in your browser read your truck, approximate location, route and the last radio lines. It now answers only OBS, SimHub and its own pages.
 
 ### Fixed
@@ -14,7 +14,7 @@ Fixes from a full security and reliability audit.
 - **Free Microsoft voices no longer stay broken until a restart** on a PC whose clock is off.
 - **Push-to-talk keys** are handled on their own thread, so a busy window no longer delays keystrokes in the game or makes Windows drop the key hook.
 - **Keying up again straight after a transmission** no longer cuts the new one short.
-- **Voice and speech model downloads** no longer hang on a stalled connection, or fail forever after an interrupted finish.
+- **Voice and speech model downloads** no longer hang on a stalled connection, or fail forever after an interrupted finish, and always fetch the exact model version the app was tested with.
 - **Learned cities and grades** are saved safely while driving and when you close the app.
 - **Settings, usage totals and saved API keys** are written safely, so a crash can't corrupt them or reset today's spending.
 - The **Install Telemetry Plugin** button no longer stays greyed out if the game search fails.

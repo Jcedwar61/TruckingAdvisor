@@ -40,6 +40,12 @@ public static class AiModelCatalog
     /// <summary>DeepSeek, best writer first (conversations); the reasoner thinks too long for radio chatter.</summary>
     public static readonly IReadOnlyList<string> DeepSeekConversation = new[] { "deepseek-chat", "deepseek-reasoner" };
 
+    /// <summary>
+    /// Most a discovered (not built-in) model may cost per 1M output tokens, by the estimates below: a bit above the
+    /// dearest built-in model, so newer models of the same class qualify and premium or unpriced ones don't.
+    /// </summary>
+    public const decimal MaxDiscoveredOutputPrice = 20m;
+
     private static readonly string[] NotChat =
         { "tts", "audio", "realtime", "transcribe", "whisper", "image", "dall-e", "embedding", "moderation", "search",
           "computer-use", "codex", "instruct", "davinci", "babbage", "sora", "vision", "deep-research", "oss" };
@@ -57,7 +63,11 @@ public static class AiModelCatalog
                         && !System.Text.RegularExpressions.Regex.IsMatch(m.Id, @"-\d{4}-\d{2}-\d{2}$")   // dated snapshots
                         && !m.Id.StartsWith("gpt-3", StringComparison.OrdinalIgnoreCase)
                         // OpenAI's "-pro" models cost many times more and answer far too slowly for the radio.
-                        && !(family == "gpt-" && m.Id.Contains("-pro", StringComparison.OrdinalIgnoreCase)))
+                        && !(family == "gpt-" && m.Id.Contains("-pro", StringComparison.OrdinalIgnoreCase))
+                        // Never jump to a model that costs far more than the built-in ones (premium tiers, or a new
+                        // model the price table doesn't know yet): with the daily spend limit it would just make the
+                        // radio go quiet early. Such models are used once the table prices them.
+                        && ChatPrice(m.Id).Output <= MaxDiscoveredOutputPrice)
             .ToList();
         int Penalty(string id)
         {
@@ -65,7 +75,7 @@ public static class AiModelCatalog
             int p = 0;
             if (job == LlmJobKind.Conversation)
             {
-                if (m.Contains("lite") || m.Contains("nano") || m.Contains("mini")) p += 2;
+                if (m.Contains("lite") || m.Contains("nano") || m.Contains("mini") || m.Contains("luna") || m.Contains("terra")) p += 2;
                 if (m.Contains("flash")) p += 1;
                 if (m.Contains("pro")) p -= 1;
             }

@@ -216,7 +216,13 @@ public class ConversationTests
         Assert.Equal(new[] { "deepseek-v5-pro", "deepseek-v5-flash" }, forConvo);
         var gpt = AiModelCatalog.Discover(new[] { ("gpt-7", 9L), ("gpt-7-pro", 9L), ("gpt-7-mini", 8L), ("gpt-7-realtime", 9L) }, "gpt-",
             AiModelCatalog.Conversation, LlmJobKind.Conversation);
-        Assert.Equal(new[] { "gpt-7", "gpt-7-mini" }, gpt);               // no costly -pro, no realtime
+        // No costly -pro, no realtime, and no full-size model the price table doesn't know yet (priced at the dearest tier).
+        Assert.Equal(new[] { "gpt-7-mini" }, gpt);
+
+        var priced = AiModelCatalog.Discover(new[] { ("gpt-6.2-astra", 9L), ("gpt-6-cyber", 9L), ("gpt-5.4", 8L), ("gpt-6-luna", 7L) }, "gpt-",
+            AiModelCatalog.Conversation, LlmJobKind.Conversation);
+        Assert.Equal(new[] { "gpt-5.4", "gpt-6-luna" }, priced);         // premium astra / cyber tiers are never picked
+        Assert.All(priced, m => Assert.True(AiModelCatalog.ChatPrice(m).Output <= AiModelCatalog.MaxDiscoveredOutputPrice));
     }
 }
 
