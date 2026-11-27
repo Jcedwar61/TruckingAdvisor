@@ -36,6 +36,8 @@ TruckingAdvisor is open source. Everything it does on your PC and on the network
 
 GitHub Actions (`.github/workflows/build.yml`) builds, tests and smoke-tests `TruckingAdvisor-Setup-<version>.exe` with a `SHA256SUMS.txt`, and adds build-provenance attestation to every release (check with `gh attestation verify <file> --repo Jcedwar61/TruckingAdvisor`). Releases are made only from `main`: a pushed `v<version>` tag on a commit that is on `main`, or a manual run on `main`; the version must match the app's own. The installer and app are not code-signed, so Windows SmartScreen may warn on first run.
 
+Known limit: updates are checked against the release's `SHA256SUMS.txt`, which catches corrupted or swapped downloads, but the checksums are not signed with a key held outside GitHub. Anyone who could publish a release to this repository (for example with a stolen GitHub login) could ship an update that the app would install. Release signing with an offline key is planned for a later version.
+
 ## Reporting a problem
 
 Open an issue at https://github.com/Jcedwar61/TruckingAdvisor/issues. Please don't post API keys or other secrets in issues.
