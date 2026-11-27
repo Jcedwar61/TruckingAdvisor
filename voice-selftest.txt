@@ -1,0 +1,12 @@
+Local: On-device voice, 6.0 s at 44100 Hz
+Local playback chain: 1069952 bytes
+LocalKokoro: On-device voice, 5.5 s at 24000 Hz
+LocalKokoro playback chain: 531196 bytes
+FreeNeural: Microsoft neural voice, 5.9 s at 24000 Hz
+FreeNeural playback chain: 576384 bytes
+Windows: Windows voice, 5.2 s at 22050 Hz
+Windows playback chain: 467016 bytes
+Model ggml-base.en-q5_1.bin: sha256 4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f
+Whisper base.en: "Breaker one-nine, this is Big Red, ten-four, I copy you loud and clear." in 0.8 s (gain 1.0, 4 CPUs)
+Model ggml-small.en-q5_1.bin: sha256 bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30
+Whisper small.en: "Breaker one-nine, this is Big Red, ten-four, I copy you loud and clear." in 9.7 s (gain 1.0, 4 CPUs)
