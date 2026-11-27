@@ -41,11 +41,12 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
     public bool IsAvailable =>
         _settings.GlobalAiEnabled &&
         _settings.Provider != AiLlmProvider.Offline &&
+        KeyMayGoTo(ChatEndpoint) &&
         !_usage.IsOverLimit(_settings) &&
         !string.IsNullOrWhiteSpace(_apiKeyProvider());
 
-    bool ISpeechToText.IsAvailable => IsAvailable && _settings.MicrophoneEnabled;
-    bool ITextToSpeech.IsAvailable => IsAvailable && _settings.VoiceEngine == TruckingAdvisor.Shared.Enums.VoiceEngine.OpenAI;
+    bool ISpeechToText.IsAvailable => IsAvailable && _settings.MicrophoneEnabled && KeyMayGoTo($"{BaseUrl}/audio/transcriptions");
+    bool ITextToSpeech.IsAvailable => IsAvailable && _settings.VoiceEngine == TruckingAdvisor.Shared.Enums.VoiceEngine.OpenAI && KeyMayGoTo($"{BaseUrl}/audio/speech");
 
     private string BaseUrl => _settings.ApiBaseUrl.TrimEnd('/');
 
@@ -53,6 +54,15 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
         _settings.Provider == AiLlmProvider.OpenAICompatible && !string.IsNullOrWhiteSpace(_settings.CustomChatEndpoint)
             ? _settings.CustomChatEndpoint
             : $"{BaseUrl}/chat/completions";
+
+    /// <summary>
+    /// The key loaded for <see cref="AiSettings.Provider"/> is only sent to the host it was set up for, over https
+    /// (http only to this PC). E.g. an OpenAI-compatible key with a custom chat endpoint never goes to ApiBaseUrl
+    /// for model lists, transcription or voices, and a DeepSeek key never goes to api.openai.com.
+    /// </summary>
+    private bool KeyMayGoTo(string url) => _settings.KeyMayBeSentTo(_settings.Provider, AiSettings.TryUri(url));
+
+    private const string LimitReached = "Daily AI limit reached (requests or estimated spend).";
 
     // ---- Model choice: built-in lists, first usable model wins, rejected models are skipped ----
 
@@ -85,7 +95,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
     /// </summary>
     public async Task RefreshModelsAsync(CancellationToken ct = default)
     {
-        if (!IsAvailable) return;
+        if (!IsAvailable || !KeyMayGoTo($"{BaseUrl}/models")) return;
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/models");
@@ -153,11 +163,21 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 bool reasoning = AiModelCatalog.IsReasoningModel(model);
+                // Reasoning models count their thinking in this budget; give them room so the reply isn't cut off.
+                int budget = reasoning ? Math.Max(600, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens);
+
+                // Every attempt is a billable request: re-check the limit and reserve it (with a worst-case cost for
+                // this model) before sending, so fallbacks and concurrent callers can't run past the cap.
+                var (priceIn, priceOut) = AiModelCatalog.EffectiveChatPrice(_settings, model);
+                decimal estimate = ((AiModelCatalog.EstimateTokens(systemPrompt) + AiModelCatalog.EstimateTokens(userPrompt)) * priceIn
+                                    + budget * priceOut) / 1_000_000m;
+                using var reservation = _usage.TryReserve(_settings, estimate);
+                if (reservation is null) { LastError = LimitReached; return null; }
+
                 var body = new Dictionary<string, object>
                 {
                     ["model"] = model,
-                    // Reasoning models count their thinking in this budget; give them room so the reply isn't cut off.
-                    ["max_completion_tokens"] = reasoning ? Math.Max(600, maxOutputTokens * 6) : Math.Max(16, maxOutputTokens),
+                    ["max_completion_tokens"] = budget,
                     ["messages"] = new object[]
                     {
                         new { role = "system", content = systemPrompt },
@@ -173,7 +193,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                 {
                     Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
                 };
-                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken, reservation);
                 if (resp is null)
                 {
                     if (modelProblem is not null)
@@ -200,7 +220,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                             if (u.TryGetProperty("prompt_tokens", out var pt)) input = pt.GetInt32();
                             if (u.TryGetProperty("completion_tokens", out var ctk)) output = ctk.GetInt32();
                         }
-                        _usage.RecordChat(_settings, input, output);
+                        _usage.RecordChat(_settings, input, output, model, reservation); // priced for the model that answered
                         text = text.Trim();
                         if (text.Length == 0)
                         {
@@ -213,6 +233,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                     }
                     catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or JsonException)
                     {
+                        reservation.CommitEstimate(); // answered (so likely billed) but unreadable: count the estimate
                         LastError = "Unexpected chat response format.";
                         return null;
                     }
@@ -226,9 +247,14 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
 
     public async Task<string?> TranscribeAsync(byte[] wavAudio, CancellationToken cancellationToken)
     {
-        if (!IsAvailable || wavAudio.Length < 64) return null;
+        if (!IsAvailable || wavAudio.Length < 64 || !KeyMayGoTo($"{BaseUrl}/audio/transcriptions")) return null;
+        double seconds = WavDurationSeconds(wavAudio);
         foreach (var model in Candidates(AiModelCatalog.Transcription))
         {
+            // Billable: check the limit and reserve before each attempt.
+            using var reservation = _usage.TryReserve(_settings,
+                (decimal)(Math.Max(seconds, 1.0) / 60.0) * AiModelCatalog.EffectiveTranscriptionPrice(_settings, model));
+            if (reservation is null) { LastError = LimitReached; return null; }
             using var form = new MultipartFormDataContent();
             var file = new ByteArrayContent(wavAudio);
             file.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
@@ -241,7 +267,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                 ?? "CB radio trucker talk: breaker one-nine, ten-four, copy, handle, rig, hammer down, bear, Jake brake."), "prompt");
 
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/transcriptions") { Content = form };
-            var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+            var (resp, modelProblem) = await SendRawAsync(req, cancellationToken, reservation);
             if (resp is null)
             {
                 if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
@@ -252,7 +278,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                 try
                 {
                     using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-                    _usage.RecordSpeechToText(_settings, WavDurationSeconds(wavAudio));
+                    _usage.RecordSpeechToText(_settings, seconds, model, reservation);
                     _settings.SpeechToTextModel = model;
                     return doc.RootElement.TryGetProperty("text", out var t) ? t.GetString()?.Trim() : null;
                 }
@@ -264,20 +290,22 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
 
     public async Task<byte[]?> SynthesizeAsync(string text, string voiceId, CancellationToken cancellationToken)
     {
-        if (!IsAvailable || string.IsNullOrWhiteSpace(text)) return null;
+        if (!IsAvailable || string.IsNullOrWhiteSpace(text) || !KeyMayGoTo($"{BaseUrl}/audio/speech")) return null;
         foreach (var model in Candidates(AiModelCatalog.Speech))
         {
             string voice = string.IsNullOrWhiteSpace(voiceId) ? "onyx" : voiceId;
             if (model == "tts-1" && !AiModelCatalog.ClassicVoices.Contains(voice)) voice = "onyx";
             // MP3: compact and always complete (streamed WAV can arrive with an unfinished header).
             var body = new { model, input = text, voice, response_format = "mp3" };
+            using var reservation = _usage.TryReserve(_settings, text.Length * AiModelCatalog.EffectiveSpeechPrice(_settings, model) / 1_000_000m);
+            if (reservation is null) { LastError = LimitReached; return null; }
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/audio/speech")
             {
                 Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
             };
             try
             {
-                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken);
+                var (resp, modelProblem) = await SendRawAsync(req, cancellationToken, reservation);
                 if (resp is null)
                 {
                     if (modelProblem is not null) { MarkUnusable(model, modelProblem); continue; }
@@ -286,7 +314,7 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
                 using (resp)
                 {
                     var bytes = await resp.Content.ReadAsByteArrayAsync(cancellationToken);
-                    _usage.RecordTextToSpeech(_settings, text.Length);
+                    _usage.RecordTextToSpeech(_settings, text.Length, model, reservation);
                     _settings.TextToSpeechModel = model;
                     return bytes;
                 }
@@ -304,8 +332,15 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
     /// Sends a request. On failure returns null and, if the failure is about the model itself
     /// (not found, not enabled for this account, retired, unsupported option), a short reason.
     /// </summary>
-    private async Task<(HttpResponseMessage? Response, string? ModelProblem)> SendRawAsync(HttpRequestMessage req, CancellationToken ct)
+    private async Task<(HttpResponseMessage? Response, string? ModelProblem)> SendRawAsync(HttpRequestMessage req, CancellationToken ct,
+        AiUsageTracker.Reservation? reservation = null)
     {
+        if (!_settings.KeyMayBeSentTo(_settings.Provider, req.RequestUri))
+        {
+            // Never send a key to a host it wasn't set up for, or over plain http to another machine.
+            LastError = "This API key isn't set up for that address (or the address isn't https), so it wasn't sent.";
+            return (null, null);
+        }
         string? key = _apiKeyProvider();
         if (string.IsNullOrWhiteSpace(key)) { LastError = "No API key saved."; return (null, null); }
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
@@ -319,6 +354,8 @@ public sealed class OpenAiClientService : ILlmClient, ISpeechToText, ITextToSpee
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            // Timed out: the provider may still finish (and bill) it, so charge the estimate.
+            if (ex is TaskCanceledException) reservation?.CommitEstimate();
             LastError = ex is TaskCanceledException ? "AI request timed out." : "AI request failed (network).";
             return (null, null);
         }

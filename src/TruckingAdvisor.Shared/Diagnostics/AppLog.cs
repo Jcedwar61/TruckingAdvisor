@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace TruckingAdvisor.Shared.Diagnostics;
 
@@ -65,17 +66,44 @@ public static class AppLog
     public static string Scrub(string text) => Scrub(text,
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.UserName);
 
+    /// <summary>A path separator as it shows up in logs: \ (also JSON-escaped \\), /, or URL-encoded %5C / %2F.</summary>
+    private const string Sep = @"(?:\\+|/|%5[Cc]|%2[Ff])";
+
+    private static readonly Regex AnyUserFolder = new(
+        // Any name right after a "Users" folder (also other accounts, or names not known here), up to the next separator.
+        $@"(?<=(?:^|[^A-Za-z0-9_]|%5[Cc]|%2[Ff])Users{Sep})(?!<user>)(?!(?:Public|Default|All Users|Shared)(?:{Sep}|$))[^\\/%""'\s:;,*?<>|]+",
+        RegexOptions.Compiled);
+
     public static string Scrub(string text, string? userProfile, string? userName)
     {
         if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(userProfile) && userProfile.Length > 3)
-            text = text.Replace(userProfile, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+        {
+            // The profile path as written, JSON-escaped (C:\\Users\\Bob), with forward slashes (C:/Users/Bob)
+            // and URL-encoded (C%3A%5CUsers%5CBob).
+            var forms = new[]
+            {
+                userProfile,
+                userProfile.Replace(@"\", @"\\"),
+                userProfile.Replace('\\', '/'),
+                Uri.EscapeDataString(userProfile),
+                Uri.EscapeDataString(userProfile.Replace('\\', '/'))
+            };
+            foreach (var form in forms.Distinct().OrderByDescending(f => f.Length))
+                text = text.Replace(form, "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
+        }
         if (!string.IsNullOrWhiteSpace(userName) && userName.Length >= 3)
-            text = System.Text.RegularExpressions.Regex.Replace(text,
-                $@"(?<=[\\/]Users[\\/]){System.Text.RegularExpressions.Regex.Escape(userName)}(?=[\\/]|$)", "<user>",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\bsk-[A-Za-z0-9_\-]{8,}", "sk-<removed>");
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?i)\bBearer\s+[A-Za-z0-9._\-]{8,}", "Bearer <removed>");
+        {
+            // The user name after any Users folder, with any separator style, also URL-encoded (spaces as %20 or +).
+            var names = new[] { userName, Uri.EscapeDataString(userName), userName.Replace(' ', '+') }
+                .Distinct().Select(Regex.Escape);
+            text = Regex.Replace(text,
+                $@"(?<={Sep}Users{Sep})(?:{string.Join("|", names)})(?={Sep}|$|[^A-Za-z0-9_.\-])", "<user>",
+                RegexOptions.IgnoreCase);
+        }
+        text = AnyUserFolder.Replace(text, "<user>");
+        text = Regex.Replace(text, @"\bsk-[A-Za-z0-9_\-]{8,}", "sk-<removed>");
+        text = Regex.Replace(text, @"(?i)\bBearer\s+[A-Za-z0-9._\-]{8,}", "Bearer <removed>");
         return text;
     }
 }

@@ -47,7 +47,7 @@ public sealed class AiSettings
     /// <summary>Who writes the truckers' conversations among themselves.</summary>
     public ConversationWriter ConversationWriter { get; set; } = ConversationWriter.Automatic;
     public string DeepSeekBaseUrl { get; set; } = "https://api.deepseek.com";
-    /// <summary>DeepSeek prices for the cost estimate (USD per 1M tokens; 0 = not counted).</summary>
+    /// <summary>DeepSeek prices for the cost estimate (USD per 1M tokens; 0 = built-in estimate).</summary>
     public decimal DeepSeekInputPricePerMillionTokens { get; set; }
     public decimal DeepSeekOutputPricePerMillionTokens { get; set; }
     /// <summary>Filled in by the app: the model writing conversations right now (for display).</summary>
@@ -87,8 +87,9 @@ public sealed class AiSettings
     public int MaxMemoriesPerTrucker { get; set; } = 12;
     public int RequestTimeoutSeconds { get; set; } = 20;
 
-    // Spending controls. Prices are entered by the user from their OpenAI pricing page;
-    // with no prices set we still count requests and tokens and enforce the request limit.
+    // Spending controls. A price of 0 (the default) means "use the built-in estimate for the model actually used"
+    // (conservative, see AiModelCatalog); a price the user enters from their pricing page replaces it.
+    // The chat prices, when entered, apply to every OpenAI chat model the app falls back to.
     public decimal ChatInputPricePerMillionTokens { get; set; }
     public decimal ChatOutputPricePerMillionTokens { get; set; }
     public decimal SpeechToTextPricePerMinute { get; set; }
@@ -193,8 +194,79 @@ public sealed class AiSettings
     public void Save(string? path = null)
     {
         path ??= DefaultPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        AtomicFile.Write(path, System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true })));
+    }
+
+    // ---- Which host each API key belongs to. A key is only ever sent to the host it was set up for. ----
+
+    /// <summary>
+    /// True for https URLs, and for plain http only to this PC (localhost, 127.0.0.1, ::1: a local OpenAI-compatible
+    /// server). Same rule for wss/ws. API keys are never sent over anything else.
+    /// </summary>
+    public static bool IsSecureEndpoint(Uri? uri)
+    {
+        if (uri is null || !uri.IsAbsoluteUri) return false;
+        if (uri.Scheme is "https" or "wss") return true;
+        return uri.Scheme is "http" or "ws" && uri.IsLoopback;
+    }
+
+    public static Uri? TryUri(string? url) =>
+        Uri.TryCreate((url ?? "").Trim(), UriKind.Absolute, out var u) ? u : null;
+
+    /// <summary>
+    /// The endpoint the key stored for <paramref name="provider"/> was configured for: OpenAI = <see cref="ApiBaseUrl"/>,
+    /// OpenAI-compatible = its chat endpoint (<see cref="CustomChatEndpoint"/>, else ApiBaseUrl), DeepSeek =
+    /// <see cref="DeepSeekBaseUrl"/>. Null when there is none (offline) or it isn't a secure URL.
+    /// </summary>
+    public Uri? KeyEndpoint(AiLlmProvider provider)
+    {
+        Uri? u = provider switch
+        {
+            AiLlmProvider.OpenAI => TryUri(ApiBaseUrl),
+            AiLlmProvider.OpenAICompatible => TryUri(string.IsNullOrWhiteSpace(CustomChatEndpoint) ? ApiBaseUrl : CustomChatEndpoint),
+            AiLlmProvider.DeepSeek => TryUri(string.IsNullOrWhiteSpace(DeepSeekBaseUrl) ? "https://api.deepseek.com" : DeepSeekBaseUrl),
+            _ => null
+        };
+        return IsSecureEndpoint(u) ? u : null;
+    }
+
+    /// <summary>True when <paramref name="target"/> is secure and on the same host and port as the provider's key endpoint.</summary>
+    public bool KeyMayBeSentTo(AiLlmProvider provider, Uri? target)
+    {
+        var home = KeyEndpoint(provider);
+        if (home is null || !IsSecureEndpoint(target)) return false;
+        return string.Equals(home.Host, target!.Host, StringComparison.OrdinalIgnoreCase) && DefaultPort(home) == DefaultPort(target);
+    }
+
+    private static int DefaultPort(Uri u) => u.IsDefaultPort ? (u.Scheme is "https" or "wss" ? 443 : 80) : u.Port;
+}
+
+/// <summary>Writes a file so a crash never leaves it half-written: write a temp file, then swap it in.</summary>
+internal static class AtomicFile
+{
+    public static void Write(string path, byte[] bytes, bool keepBackup = false)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        string tmp = path + ".tmp";
+        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            fs.Write(bytes, 0, bytes.Length);
+            fs.Flush(flushToDisk: true);
+        }
+        if (keepBackup && File.Exists(path))
+        {
+            try
+            {
+                File.Replace(tmp, path, path + ".bak", ignoreMetadataErrors: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                // Fall through to a plain move (some file systems / AV tools refuse Replace).
+                try { File.Copy(path, path + ".bak", overwrite: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }
+        File.Move(tmp, path, overwrite: true);
     }
 }
 

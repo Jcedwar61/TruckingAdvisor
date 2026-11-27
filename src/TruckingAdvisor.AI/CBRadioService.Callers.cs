@@ -102,13 +102,20 @@ public sealed partial class CBRadioService
     /// <summary>Why the last caller wasn't answered (for the Stream log and app.log). Null after a call that went out.</summary>
     public string? LastCallerProblem { get; private set; }
 
+    /// <summary>
+    /// How a caller appears in app.log: the kind of call and the message length only. Viewer names and what they
+    /// wrote are personal data from other people and never go into a log that may be shared.
+    /// </summary>
+    public static string LogLabel(CallerRequest request) =>
+        $"{request.Source} {request.Role} caller (message {request.Text?.Length ?? 0} chars)";
+
     public async Task<bool> AnswerCallerAsync(CallerRequest request, CancellationToken cancellationToken = default)
     {
         LastCallerProblem = null;
         bool Fail(string why)
         {
             LastCallerProblem = why;
-            TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"Radio: caller {request.CallerName} not answered: {why} (radio state {CurrentState})");
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Warn($"Radio: {LogLabel(request)} not answered: {why} (radio state {CurrentState})");
             return false;
         }
         if (CurrentState == CBRadioState.RadioOff) return Fail("the radio is off");
@@ -156,7 +163,7 @@ public sealed partial class CBRadioService
 
             var (speaker, handle, voice, neural, reply) = await ComposeCallerReplyAsync(request, channel, ct);
             if (ct.IsCancellationRequested) return Fail("you keyed up while the reply was being written");
-            TruckingAdvisor.Shared.Diagnostics.AppLog.Info($"Radio: {handle} answers caller {request.CallerName} on channel {channel}");
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Info($"Radio: {handle} answers {LogLabel(request)} on channel {channel}");
             await PauseAsync(ct);
             Relay?.OnReply(new RelayedReply(speaker, handle, reply, voice, neural, channel, request.ReplyToId));
             CallerAnswered?.Invoke(this, (request, handle, reply, channel));
@@ -171,7 +178,7 @@ public sealed partial class CBRadioService
         }
         catch (Exception ex)
         {
-            TruckingAdvisor.Shared.Diagnostics.AppLog.Error($"Radio: answering caller {request.CallerName} failed", ex);
+            TruckingAdvisor.Shared.Diagnostics.AppLog.Error($"Radio: answering {LogLabel(request)} failed", ex);
             Notice?.Invoke(this, $"Radio error: {ex.Message}");
             return Fail($"error: {ex.Message}");
         }

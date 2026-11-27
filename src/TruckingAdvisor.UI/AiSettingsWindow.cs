@@ -236,7 +236,9 @@ public sealed class AiSettingsWindow : Window
         form.Children.Add(Row("Daily spend limit (USD)", _spendLimit));
         form.Children.Add(Indent(new TextBlock
         {
-            Text = "Enter prices from openai.com/api/pricing to see cost estimates. With no prices, only requests and tokens are counted.",
+            Text = "The spend limit uses built-in cost estimates for each model actually used (set on the high side, so it stops a little early), " +
+                   "unless you enter prices below. Leave a price at 0 to use the built-in estimate; prices you enter (from openai.com/api/pricing) " +
+                   "replace it, and the chat prices then apply to every OpenAI chat model the app falls back to.",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightGray, FontSize = 11
         }));
         form.Children.Add(Row("Chat input $ / 1M tokens", _priceIn));
