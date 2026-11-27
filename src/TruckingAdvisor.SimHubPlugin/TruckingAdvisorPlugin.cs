@@ -112,6 +112,9 @@ namespace TruckingAdvisor.SimHubPlugin
         /// <summary>Shows the triple set on the screens that fit it, remembering what each showed. Repeats are harmless.</summary>
         private void Switch(bool swapRounds)
         {
+            // A check that passed its _ending test may still have queued this on the UI thread; once End has
+            // started (and restored the player's dashboards), switching again would undo that.
+            if (_ending) return;
             var screens = Screens();
             var plan = TriplePlan.Assign(screens.Select(s => s.Info), swapRounds);
             LogScreens(screens, plan);

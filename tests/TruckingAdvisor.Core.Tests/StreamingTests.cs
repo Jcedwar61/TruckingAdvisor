@@ -107,21 +107,26 @@ public sealed class StreamingTests
     }
 
     [Fact]
-    public void Gate_ChannelPoints_SkipCooldown_AndCanBeLimitedToOneReward()
+    public void Gate_ChannelPoints_OnlyTheChosenRewardSkipsTheCooldown()
     {
         var now = DateTimeOffset.UtcNow;
         var settings = new StreamSettings { GlobalCooldownSeconds = 600 };
         var gate = new ViewerCallGate(settings, () => now);
         Assert.NotNull(gate.TryAccept(Chat("!cb first"), out _));
 
+        // No reward chosen yet: a redemption is ordinary chat (needs a command, waits for the cooldown).
+        Assert.Null(gate.TryAccept(Chat("!mechanic is the engine ok", "payer", reward: "abc-123"), out var why));
+        Assert.StartsWith("radio cooldown", why);
+        Assert.Null(gate.TryAccept(Chat("no command, just talking", "payer2", reward: "abc-123"), out why));
+        Assert.StartsWith("no Channel Points reward is chosen", why);
+
+        settings.ChannelPointsRewardId = "abc-123";
         var redeemed = gate.TryAccept(Chat("!mechanic is the engine ok", "payer", reward: "abc-123"), out _);
         Assert.NotNull(redeemed);
         Assert.True(redeemed!.FromChannelPoints);
         Assert.Equal(CallerRole.Mechanic, redeemed.Role);
         Assert.Equal(CallerRole.Trucker, gate.TryAccept(Chat("no command, just talking", "payer2", reward: "abc-123"), out _)!.Role);
-
-        settings.ChannelPointsRewardId = "abc-123";
-        Assert.Null(gate.TryAccept(Chat("hi", "x", reward: "other-reward"), out var why));
+        Assert.Null(gate.TryAccept(Chat("hi", "x", reward: "other-reward"), out why));
         Assert.Equal("a different reward", why);
 
         settings.ChannelPointsEnabled = false;
@@ -443,6 +448,9 @@ public sealed class StreamingTests
 
     // ---------- convoy ----------
 
+    /// <summary>16 letters or digits (the key is derived once and re-used by every test).</summary>
+    private const string TestConvoyCode = "TEST-CODE-ROAD-7740";
+
     /// <summary>Records what a node publishes; the test delivers it to the other node by hand.</summary>
     private sealed class OutboxTransport : IConvoyTransport
     {
@@ -485,7 +493,7 @@ public sealed class StreamingTests
         public Node(string handle, string nodeId, bool host, ConvoyCrypto crypto, ILlmClient? llm = null)
         {
             Name = handle;
-            Settings = new StreamSettings { ConvoyEnabled = true, ConvoyCode = "TEST1234", ConvoyHost = host };
+            Settings = new StreamSettings { ConvoyEnabled = true, ConvoyCode = TestConvoyCode, ConvoyHost = host };
             var settings = new AiSettings { Stream = Settings };
             Radio = Radio(Audio, llm, settings: settings, handle: handle);
             Radio.TransmissionReceived += (_, e) => { lock (Log) Log.Add($"{e.Handle}: {e.Transcript}"); };
@@ -512,9 +520,9 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_HostAnswersTheOtherDriver_AndBothPcsPlayTheSameReply()
     {
-        var crypto = new ConvoyCrypto("test-1234");
-        var host = new Node("Jc", "a-host", host: true, crypto, new FakeLlm { Reply = "Ten-four Zay, you've got more fuel than Jc." });
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var crypto = new ConvoyCrypto(TestConvoyCode);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto, new FakeLlm { Reply = "Ten-four Zay, you've got more fuel than Jc." });
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         await Meet(host, zay, crypto);
         Assert.True(host.Sync.IsEffectiveHost);
         Assert.False(zay.Sync.IsEffectiveHost);
@@ -542,10 +550,10 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_HostPromptIncludesTheOtherDriversTruck()
     {
-        var crypto = new ConvoyCrypto("test-1234");
+        var crypto = new ConvoyCrypto(TestConvoyCode);
         var llm = new FakeLlm();
-        var host = new Node("Jc", "a-host", host: true, crypto, llm);
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto, llm);
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         await Meet(host, zay, crypto);
 
         host.Radio.BeginPushToTalk();
@@ -560,9 +568,9 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_NonHostAnswersItself_WhenTheHostIsSilent()
     {
-        var crypto = new ConvoyCrypto("test-1234");
-        var host = new Node("Jc", "a-host", host: true, crypto);
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var crypto = new ConvoyCrypto(TestConvoyCode);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto);
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         zay.Sync.HostReplyTimeout = TimeSpan.FromMilliseconds(200);
         await Meet(host, zay, crypto);
 
@@ -576,10 +584,10 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_LineForAnotherHuman_GetsNoAiReply()
     {
-        var crypto = new ConvoyCrypto("test-1234");
+        var crypto = new ConvoyCrypto(TestConvoyCode);
         var llm = new FakeLlm();
-        var host = new Node("Jc", "a-host", host: true, crypto, llm);
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto, llm);
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         await Meet(host, zay, crypto);
 
         host.Radio.BeginPushToTalk();
@@ -598,9 +606,9 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_HostElection_LowestIdWins_WhenNobodyOrEveryoneClaims()
     {
-        var crypto = new ConvoyCrypto("test-1234");
-        var a = new Node("Jc", "aaa", host: false, crypto);
-        var b = new Node("Zay", "bbb", host: false, crypto);
+        var crypto = new ConvoyCrypto(TestConvoyCode);
+        var a = new Node("Jc", "aaaaaaaaaa", host: false, crypto);
+        var b = new Node("Zay", "bbbbbbbbbb", host: false, crypto);
         Assert.True(b.Sync.IsEffectiveHost); // alone: answers itself
         await Meet(a, b, crypto);
         Assert.True(a.Sync.IsEffectiveHost);
@@ -616,9 +624,9 @@ public sealed class StreamingTests
     [Fact]
     public async Task Convoy_TwitchViewerLine_IsSharedAndPlayedOnTheOtherPc()
     {
-        var crypto = new ConvoyCrypto("test-1234");
-        var host = new Node("Jc", "a-host", host: true, crypto);
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var crypto = new ConvoyCrypto(TestConvoyCode);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto);
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         await Meet(host, zay, crypto);
 
         await host.Radio.AnswerCallerAsync(new CallerRequest("RoadDog", "how's the fuel", CallerRole.Trucker, CallerSource.Twitch) { SpeakCallerLine = true });
@@ -635,9 +643,9 @@ public sealed class StreamingTests
     [Fact]
     public void Convoy_Crypto_SameCodeSameRoom_OtherCodesCantRead()
     {
-        var a = new ConvoyCrypto("conv-7740");
-        var b = new ConvoyCrypto("CONV 7740");
-        var c = new ConvoyCrypto("conv-7741");
+        var a = new ConvoyCrypto("conv-road-dogs-7740");
+        var b = new ConvoyCrypto("CONV ROAD DOGS 7740");
+        var c = new ConvoyCrypto("conv-road-dogs-7741");
         Assert.Equal(a.Topic, b.Topic);
         Assert.NotEqual(a.Topic, c.Topic);
         Assert.DoesNotContain("7740", a.Topic);
@@ -646,20 +654,21 @@ public sealed class StreamingTests
         Assert.Null(c.Open(sealedText));
         Assert.Null(a.Open("not base64!"));
         Assert.Throws<ArgumentException>(() => new ConvoyCrypto("ab"));
+        Assert.Throws<ArgumentException>(() => new ConvoyCrypto("conv-7740")); // the old 4-character minimum is too weak now
     }
 
     [Fact]
     public async Task Convoy_IgnoresItsOwnEchoesAndDuplicates()
     {
-        var crypto = new ConvoyCrypto("test-1234");
-        var host = new Node("Jc", "a-host", host: true, crypto);
-        var zay = new Node("Zay", "b-zay", host: false, crypto);
+        var crypto = new ConvoyCrypto(TestConvoyCode);
+        var host = new Node("Jc", "a0a0a0a0a0", host: true, crypto);
+        var zay = new Node("Zay", "b0b0b0b0b0", host: false, crypto);
         await Meet(host, zay, crypto);
         string hello = Hello(zay, crypto);
         await zay.Sync.HandleRawAsync(hello); // own echo
         Assert.Empty(zay.Sync.Members.Where(m => m.Node == zay.Sync.NodeId));
 
-        var line = crypto.Seal(JsonSerializer.Serialize(new ConvoyPacket { Type = "tx", Id = "dup1", Node = "b-zay", From = "Zay", Channel = 19, Text = "hey", Ask = false }));
+        var line = crypto.Seal(JsonSerializer.Serialize(new ConvoyPacket { Type = "tx", Id = "dup1", Node = "b0b0b0b0b0", From = "Zay", Channel = 19, Text = "hey", Ask = false }));
         await host.Sync.HandleRawAsync(line);
         await host.Sync.HandleRawAsync(line);
         Assert.Single(host.Log, l => l == "Zay: hey");

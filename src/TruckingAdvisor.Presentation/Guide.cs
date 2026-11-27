@@ -260,7 +260,7 @@ public static class Guide
             "› !cb anybody got eyes on a bear?",
             "› !mechanic how are the tires holding up?",
             "• Cooldowns keep the cab from flooding (30 s between calls, 2 min per viewer by default; mods skip their own). Up to three calls wait in line.",
-            "• Channel Points: make a reward with \"Require viewer to enter text\". Redeeming it keys up on the CB and skips the cooldown. A reward message can start with !mechanic etc. to pick who answers.",
+            "• Channel Points: make a reward with \"Require viewer to enter text\", redeem it once, then click \"Use the last redeemed reward\" (or paste its id). Redeeming that reward keys up on the CB and skips the cooldown; other rewards count as ordinary chat. A reward message can start with !mechanic etc. to pick who answers.",
             "• With AI on, replies come from your AI (OpenAI, or any OpenAI-compatible service such as Groq or a local Ollama). With AI off, built-in replies still use your real fuel, speed, load, wear and rest time.",
             "• Links, emoji and letter spam are stripped; add your own blocked words. Your push-to-talk always cuts in ahead of viewers.",
             "• \"Play a test call\" tries it without Twitch.",
@@ -275,11 +275,11 @@ public static class Guide
             "?scale=1.3 | Bigger or smaller",
             "?demo=1 | Sample data, to position it while offline",
             "## Convoy CB",
-            "• Friends who also run TruckingAdvisor tick \"Join a convoy\" and type the same convoy code. Everyone on the same CB channel sees each other's lines, and one shared AI answers so all of you hear the same reply.",
+            "• Friends who also run TruckingAdvisor tick \"Join a convoy\" and use the same convoy code: one of you clicks \"Generate code\" and shares it privately. Everyone on the same CB channel sees each other's lines, and one shared AI answers so all of you hear the same reply.",
             "• Talk to the AI as usual (\"Big Red, how's my fuel?\"); a line just for a friend (\"Zay, you see that?\") gets no AI reply. Ask about \"my\" truck and the AI uses that driver's own numbers.",
             "• One PC answers for the AI: tick \"This PC answers\" on one of them, or let the app pick. If that PC goes quiet, the asker's own PC answers after a few seconds.",
             "• Your Twitch viewers' calls are heard in the whole convoy.",
-            "• Messages are encrypted with the code and pass through ntfy.sh (free, a few hundred messages a day per PC) or your own ntfy server. Keep the code off stream.",
+            "• Messages are encrypted with the code and pass through ntfy.sh (free, a few hundred messages a day per PC) or your own ntfy server. The code is the convoy's password (at least 12 letters or digits): keep it off stream. Every PC needs the same app version and a correct clock.",
         });
         return lines;
     }

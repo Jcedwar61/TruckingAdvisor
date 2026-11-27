@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using TruckingAdvisor.AI;
+using TruckingAdvisor.AI.Convoy;
 using TruckingAdvisor.AI.Streaming;
 
 namespace TruckingAdvisor.UI;
@@ -29,7 +30,7 @@ public sealed class StreamWindow : Window
     private readonly CheckBox _allowDispatch = new() { Content = "!dispatch" };
     private readonly CheckBox _allowMechanic = new() { Content = "!mechanic" };
     private readonly CheckBox _allowSafety = new() { Content = "!safety" };
-    private readonly CheckBox _pointsOn = new() { Content = "A Channel Points reward with a message keys up too (skips the cooldown)" };
+    private readonly CheckBox _pointsOn = new() { Content = "Your Channel Points reward (its id below) keys up too, skipping the cooldown" };
     private readonly TextBox _rewardName = new();
     private readonly TextBox _rewardId = new();
     private readonly TextBox _blocked = new();
@@ -106,7 +107,20 @@ public sealed class StreamWindow : Window
         body.Children.Add(cmds);
         body.Children.Add(_pointsOn);
         body.Children.Add(Labeled("Reward name (shown on the overlay)", _rewardName, "Create a Channel Points reward with \"Require viewer to enter text\" ticked, and give it this name."));
-        body.Children.Add(Labeled("Only this reward id (optional)", _rewardId, "Leave empty to accept any reward that has a message. The id is shown in the activity log below when a reward is redeemed."));
+        body.Children.Add(Labeled("Reward id", _rewardId,
+            "Only this reward keys up without the cooldowns. Redeem your reward once (with Twitch chat on), then click \"Use the last redeemed reward\" " +
+            "below; the id also shows in the activity log. While this is empty, redemptions count as ordinary chat (they need a command like !cb and wait for the cooldowns)."));
+        var rewardRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        rewardRow.Children.Add(MakeButton("Use the last redeemed reward", (_, _) =>
+        {
+            if (_hub.LastRewardId is { Length: > 0 } id)
+            {
+                _rewardId.Text = id;
+                Log($"Reward id set to {id}. Click Save & apply.");
+            }
+            else Log("No Channel Points redemption seen yet: turn on Twitch chat, redeem your reward once, then click this again.");
+        }));
+        body.Children.Add(rewardRow);
         body.Children.Add(Labeled("Ignore messages with these words", _blocked, "Comma separated. Twitch AutoMod also applies before messages reach the app."));
         var test = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
         var testBtn = MakeButton("Play a test call", (_, _) =>
@@ -186,11 +200,34 @@ public sealed class StreamWindow : Window
         // ---- Convoy ----
         body.Children.Add(Header("CONVOY CB"));
         body.Children.Add(Note(
-            "Friends who also run TruckingAdvisor type the same convoy code. What anyone says on the CB (push-to-talk or typed) shows on " +
+            "Friends who also run TruckingAdvisor use the same convoy code. What anyone says on the CB (push-to-talk or typed) shows on " +
             "everyone's radio on that channel, and one shared AI answers so all of you hear the same reply. Your viewers' calls are shared too. " +
-            "Messages are encrypted with the code and pass through a free relay (ntfy.sh); it allows a few hundred messages a day per PC."));
+            "Messages are encrypted with the code and pass through a free relay (ntfy.sh); it allows a few hundred messages a day per PC. " +
+            "Everyone needs this version of TruckingAdvisor (older versions use a different convoy format) and a correct PC clock."));
         body.Children.Add(_convoyOn);
-        body.Children.Add(Labeled("Convoy code", _convoyCode, "At least 4 letters or digits, e.g. ROADDOGS-7740. Keep it off stream."));
+        body.Children.Add(Labeled("Convoy code", _convoyCode,
+            "The convoy's password: at least 12 letters or digits. One of you clicks \"Generate code\" and sends it to the others privately (never on stream)."));
+        var codeRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        codeRow.Children.Add(MakeButton("Generate code", (_, _) =>
+        {
+            _convoyCode.Password = ConvoyCrypto.GenerateCode();
+            Log("New convoy code made. Click \"Copy code\" to send it to your convoy privately, then Save & apply.");
+        }));
+        codeRow.Children.Add(MakeButton("Copy code", (_, _) =>
+        {
+            if (!ConvoyCrypto.IsCodeLongEnough(_convoyCode.Password))
+            {
+                Log("The convoy code is too short (at least 12 letters or digits): click \"Generate code\" first.");
+                return;
+            }
+            try
+            {
+                Clipboard.SetText(_convoyCode.Password.Trim());
+                Log("Convoy code copied. Send it privately; don't paste it in stream chat.");
+            }
+            catch (Exception ex) { Log($"Couldn't copy: {ex.Message}"); }
+        }));
+        body.Children.Add(codeRow);
         body.Children.Add(_convoyHost);
         body.Children.Add(_convoyRead);
         body.Children.Add(Labeled("Relay server", _convoyServer, "https://ntfy.sh, or your own ntfy server. Everyone must use the same one."));

@@ -67,6 +67,45 @@ public sealed record TruckFacts
         };
     }
 
+    /// <summary>
+    /// A copy that is safe to put in an AI prompt, for a truck that arrived from another PC: texts shortened and without
+    /// control characters, line breaks or quotes (dropped when they contain a blocked word), numbers finite and in range.
+    /// </summary>
+    public TruckFacts Sanitized(string driver, IReadOnlyList<string>? blockedWords = null)
+    {
+        string? T(string? s, int max)
+        {
+            string c = global::TruckingAdvisor.AI.Convoy.ConvoyText.Clean(s, max, isName: true);
+            if (c.Length == 0) return null;
+            return blockedWords is { Count: > 0 } && ViewerCallGate.ContainsBlockedWord(c, blockedWords) ? null : c;
+        }
+        static double? N(double? v, double min, double max) => v is { } x && double.IsFinite(x) ? Math.Clamp(x, min, max) : null;
+        return new TruckFacts
+        {
+            Driver = driver,
+            SpeedMph = N(SpeedMph, 0, 200),
+            LimitMph = N(LimitMph, 0, 200),
+            FuelPercent = N(FuelPercent, 0, 100),
+            FuelGallons = N(FuelGallons, 0, 2000),
+            RangeMiles = N(RangeMiles, 0, 20000),
+            Mpg = N(Mpg, 0, 100),
+            EngineWear = N(EngineWear, 0, 100),
+            TireWear = N(TireWear, 0, 100),
+            ChassisWear = N(ChassisWear, 0, 100),
+            CargoDamage = N(CargoDamage, 0, 100),
+            Cargo = T(Cargo, 60),
+            CargoTons = N(CargoTons, 0, 500),
+            Destination = T(Destination, 60),
+            EtaMinutes = N(EtaMinutes, 0, 100_000),
+            MilesLeft = N(MilesLeft, 0, 100_000),
+            RestDueMinutes = RestDueMinutes is { } r ? Math.Clamp(r, -100_000, 100_000) : null,
+            Place = T(Place, 80),
+            Highway = T(Highway, 30),
+            Night = Night,
+            Truck = T(Truck, 60)
+        };
+    }
+
     /// <summary>One line for an AI prompt ("Zay: 62 mph near Reno, fuel 40%, hauling lumber to Boise").</summary>
     public string Describe()
     {

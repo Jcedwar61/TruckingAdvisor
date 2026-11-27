@@ -80,22 +80,30 @@ public sealed class ViewerCallGate
     public ViewerCall? TryAccept(TwitchChatMessage message, out string? rejectedBecause)
     {
         rejectedBecause = null;
-        bool reward = message.CustomRewardId is { Length: > 0 };
+        // Only the one reward the streamer chose skips the cooldowns and subscriber rule. Any other redemption (or every
+        // redemption, while no reward is chosen) is treated like an ordinary chat line: it needs a command and waits its turn.
+        bool redemption = message.CustomRewardId is { Length: > 0 };
+        string chosenReward = (_settings.ChannelPointsRewardId ?? string.Empty).Trim();
+        bool reward = redemption && _settings.ChannelPointsEnabled && chosenReward.Length > 0 &&
+                      string.Equals(chosenReward, message.CustomRewardId, StringComparison.OrdinalIgnoreCase);
         CallerRole role;
         string body;
 
         if (reward)
         {
-            if (!_settings.ChannelPointsEnabled) { rejectedBecause = "channel points are off"; return null; }
-            if (_settings.ChannelPointsRewardId.Length > 0 &&
-                !string.Equals(_settings.ChannelPointsRewardId.Trim(), message.CustomRewardId, StringComparison.OrdinalIgnoreCase))
-            { rejectedBecause = "a different reward"; return null; }
             // A reward message may still start with a crew command to pick who answers.
             (role, body) = ParseCommand(message.Text) ?? (CallerRole.Trucker, message.Text);
         }
         else
         {
-            if (ParseCommand(message.Text) is not { } parsed) { rejectedBecause = "not a command"; return null; }
+            if (ParseCommand(message.Text) is not { } parsed)
+            {
+                rejectedBecause = !redemption ? "not a command"
+                    : !_settings.ChannelPointsEnabled ? "channel points are off"
+                    : chosenReward.Length == 0 ? "no Channel Points reward is chosen yet (Stream settings), so it counts as chat"
+                    : "a different reward";
+                return null;
+            }
             (role, body) = parsed;
         }
 

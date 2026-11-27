@@ -167,7 +167,14 @@ public sealed class StreamHub : IAsyncDisposable
     private async Task ApplyConvoyAsync()
     {
         string code = ConvoyCrypto.NormalizeCode(S.ConvoyCode);
-        string key = S.ConvoyEnabled && code.Length >= 4 ? $"{code}|{S.ConvoyServer.Trim()}" : string.Empty;
+        string key = S.ConvoyEnabled && code.Length >= ConvoyCrypto.MinCodeLength ? $"{code}|{S.ConvoyServer.Trim()}" : string.Empty;
+        if (key.Length == 0)
+        {
+            // Off, no code yet, or a short code saved by an older version: never join with it.
+            SetConvoyStatus(!S.ConvoyEnabled ? "Convoy is off."
+                : code.Length == 0 ? "Generate a convoy code (or type the one your convoy uses) - everyone in the convoy uses the same one."
+                : ConvoyCrypto.TooShortMessage);
+        }
         if (key == _convoyKey) return;
         if (_convoy is not null)
         {
@@ -176,15 +183,27 @@ public sealed class StreamHub : IAsyncDisposable
             _convoy = null;
         }
         _convoyKey = key;
-        if (key.Length == 0)
+        if (key.Length == 0) return;
+        ConvoyCrypto crypto;
+        try
         {
-            SetConvoyStatus(S.ConvoyEnabled ? "Type a convoy code (at least 4 letters or digits) - everyone in the convoy uses the same one." : "Convoy is off.");
+            SetConvoyStatus("Preparing the convoy's encryption...");
+            crypto = await ConvoyCrypto.CreateAsync(code); // slow on purpose (key stretching): off the UI thread
+        }
+        catch (Exception ex)
+        {
+            _convoyKey = string.Empty;
+            SetConvoyStatus(ex is ArgumentException ? ConvoyCrypto.TooShortMessage : $"Couldn't set up the convoy: {ex.Message}");
             return;
         }
-        var crypto = new ConvoyCrypto(code);
         var sync = new ConvoySync(_radio, _company, S, _telemetry, _transportFactory(S, crypto.Topic), crypto);
-        sync.StatusChanged += msg => { SetConvoyStatus(msg); };
-        sync.MembersChanged += () => { SetConvoyStatus(ConvoySummary(sync)); PushState(); };
+        sync.StatusChanged += msg => SetConvoyStatus(msg, forLog: string.Empty);
+        sync.LogLine += line => AppLog.Info($"Stream: convoy: {line}");
+        sync.MembersChanged += () =>
+        {
+            SetConvoyStatus(ConvoySummary(sync), $"In the convoy with {sync.Members.Count} other driver(s).");
+            PushState();
+        };
         _convoy = sync;
         _radio.Relay = sync;
         sync.Start();
@@ -199,25 +218,38 @@ public sealed class StreamHub : IAsyncDisposable
 
     // ---- Twitch -> radio ----
 
-    /// <summary>Reports to the Stream window and to app.log (so a test on another PC can be diagnosed later).</summary>
-    private void Report(string line)
+    /// <summary>
+    /// Reports to the Stream window (with names and text) and to app.log (so a test on another PC can be diagnosed later).
+    /// The log line never holds viewer names or chat text: only what kind of message it was and how long.
+    /// </summary>
+    private void Report(string line, string forLog)
     {
-        AppLog.Info($"Stream: {line}");
+        AppLog.Info($"Stream: {forLog}");
         Activity?.Invoke(line);
     }
 
+    /// <summary>The reward id of the last Channel Points redemption seen in chat (the settings window can pick it).</summary>
+    public string? LastRewardId { get; private set; }
+
     private void OnChatMessage(TwitchChatMessage message)
     {
-        if (message.CustomRewardId is { } rewardId)
-            Report($"{message.DisplayName} redeemed a Channel Points reward (reward id {rewardId}).");
+        if (message.CustomRewardId is { Length: > 0 } rewardId)
+        {
+            string id = new string(rewardId.Where(c => char.IsAsciiLetterOrDigit(c) || c == '-').Take(64).ToArray());
+            LastRewardId = id;
+            Report($"{message.DisplayName} redeemed a Channel Points reward (reward id {id}).",
+                $"A Channel Points reward was redeemed (reward id {id}).");
+        }
         var call = _gate.TryAccept(message, out string? reason);
         if (call is null)
         {
-            if (reason is not "not a command") Report($"Ignored {message.DisplayName}: {reason}.");
+            if (reason is not "not a command")
+                Report($"Ignored {message.DisplayName}: {reason}.", $"Ignored a viewer message ({message.Text.Length} chars): {reason}.");
             return;
         }
-        if (!Enqueue(call)) Report($"Ignored {message.DisplayName}: too many calls waiting.");
-        else Report($"{message.DisplayName} is on the air: \"{call.Text}\"");
+        string kind = $"{CommandFor(call.Role)}{(call.FromChannelPoints ? ", channel points" : "")}, {call.Text.Length} chars";
+        if (!Enqueue(call)) Report($"Ignored {message.DisplayName}: too many calls waiting.", $"Ignored a viewer call ({kind}): too many calls waiting.");
+        else Report($"{message.DisplayName} is on the air: \"{call.Text}\"", $"A viewer call is on the air ({kind}).");
         PushState();
     }
 
@@ -254,10 +286,11 @@ public sealed class StreamHub : IAsyncDisposable
                 try { ok = await _radio.AnswerCallerAsync(request, perCall.Token); }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested) { ok = false; }
                 catch (Exception ex) { AppLog.Error("Stream: answering a caller failed", ex); ok = false; }
+                string problem = _radio.LastCallerProblem ?? "the radio was busy or off";
                 if (!ok)
-                    Report($"Couldn't put {request.CallerName} on the air: {_radio.LastCallerProblem ?? "the radio was busy or off"}.");
+                    Report($"Couldn't put {request.CallerName} on the air: {problem}.", $"Couldn't put a viewer call on the air: {problem}.");
                 else
-                    Report($"{request.CallerName} was answered on the radio.");
+                    Report($"{request.CallerName} was answered on the radio.", "A viewer call was answered on the radio.");
                 PushState();
             }
         }
@@ -331,7 +364,8 @@ public sealed class StreamHub : IAsyncDisposable
             subsOnly = S.SubscribersOnly
         },
         commands = _gate.EnabledCommands().Select(c => new { command = c.Command, aliases = c.Aliases, description = c.Description, example = c.Example }),
-        channelPoints = new { enabled = S.ChannelPointsEnabled, reward = S.ChannelPointsRewardName },
+        // Only advertised once a reward is chosen: until then redemptions are ordinary chat.
+        channelPoints = new { enabled = S.ChannelPointsEnabled && (S.ChannelPointsRewardId ?? "").Trim().Length > 0, reward = S.ChannelPointsRewardName },
         convoy = new { active = _convoy is not null, members = _convoy?.Members.Select(m => m.Name).ToArray() ?? Array.Empty<string>() }
     };
 
@@ -339,7 +373,13 @@ public sealed class StreamHub : IAsyncDisposable
     public void PushState() => _overlay?.PushState();
 
     private void SetTwitchStatus(string s) { if (s != TwitchStatus) AppLog.Info($"Stream: {s}"); TwitchStatus = s; StatusChanged?.Invoke(); }
-    private void SetConvoyStatus(string s) { if (s != ConvoyStatus) AppLog.Info($"Stream: {s}"); ConvoyStatus = s; StatusChanged?.Invoke(); }
+    /// <param name="forLog">What app.log gets instead (no driver names); empty: the caller logs it itself.</param>
+    private void SetConvoyStatus(string s, string? forLog = null)
+    {
+        if (s != ConvoyStatus && forLog is not { Length: 0 }) AppLog.Info($"Stream: {forLog ?? s}");
+        ConvoyStatus = s;
+        StatusChanged?.Invoke();
+    }
     private void SetOverlayStatus(string s) { if (s != OverlayStatus) AppLog.Info($"Stream: {s}"); OverlayStatus = s; StatusChanged?.Invoke(); }
     private void SetSimHubStatus(string s) { if (s != SimHubStatus) AppLog.Info($"SimHub: {s}"); SimHubStatus = s; StatusChanged?.Invoke(); }
 

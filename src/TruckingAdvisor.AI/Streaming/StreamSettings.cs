@@ -2,7 +2,8 @@ namespace TruckingAdvisor.AI.Streaming;
 
 /// <summary>
 /// Twitch chat, convoy, stream-overlay and SimHub-panel settings (saved inside the AI settings file).
-/// Nothing here is secret: Twitch chat is read anonymously, and the convoy code is only a room name.
+/// Twitch chat is read anonymously, so the Twitch settings aren't secret. The convoy code is: it is the convoy's
+/// encryption secret (anyone who has it can read and join the convoy's radio), so keep it off stream.
 /// </summary>
 public sealed class StreamSettings
 {
@@ -18,9 +19,10 @@ public sealed class StreamSettings
     public int UserCooldownSeconds { get; set; } = 120;
     /// <summary>Only subscribers, VIPs, mods and the broadcaster can use the commands.</summary>
     public bool SubscribersOnly { get; set; }
-    /// <summary>A Channel Points reward with a message keys up on the CB (no cooldown: the viewer paid for it).</summary>
+    /// <summary>The chosen Channel Points reward (<see cref="ChannelPointsRewardId"/>) keys up on the CB with its message
+    /// (no cooldown or subscriber rule: the viewer paid for it).</summary>
     public bool ChannelPointsEnabled { get; set; } = true;
-    /// <summary>Optional: only this reward triggers a call. Empty = any reward that has a message.</summary>
+    /// <summary>The reward that keys up. Empty = no reward is special: redemptions count as ordinary chat (command, cooldowns).</summary>
     public string ChannelPointsRewardId { get; set; } = string.Empty;
     /// <summary>Shown on the overlay so viewers know which reward to redeem.</summary>
     public string ChannelPointsRewardName { get; set; } = "Key Up on Channel 19";
@@ -54,7 +56,8 @@ public sealed class StreamSettings
     // ---- Convoy CB (several TruckingAdvisor users share one AI radio) ----
 
     public bool ConvoyEnabled { get; set; }
-    /// <summary>Everyone in the convoy types the same code. Keep it off stream.</summary>
+    /// <summary>Everyone in the convoy types the same code (at least 12 letters or digits; "Generate code" makes one).
+    /// It is the convoy's encryption secret: keep it off stream.</summary>
     public string ConvoyCode { get; set; } = string.Empty;
     /// <summary>This PC answers for the convoy's AI. If nobody ticks it, one PC is picked automatically.</summary>
     public bool ConvoyHost { get; set; }
